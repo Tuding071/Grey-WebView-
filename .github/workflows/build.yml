@@ -77,16 +77,10 @@ jobs:
               }
 
               buildTypes {
-                  debug {
-                      isDebuggable = true
-                      // Enable LeakCanary for debug builds
-                      buildConfigField("boolean", "ENABLE_LEAK_CANARY", "true")
-                  }
                   release {
                       isMinifyEnabled = false
                       isShrinkResources = false
                       signingConfig  = signingConfigs.getByName("release")
-                      buildConfigField("boolean", "ENABLE_LEAK_CANARY", "false")
                   }
               }
 
@@ -95,10 +89,7 @@ jobs:
                   targetCompatibility = JavaVersion.VERSION_17
               }
               kotlinOptions { jvmTarget = "17" }
-              buildFeatures { 
-                  compose = true
-                  buildConfig = true
-              }
+              buildFeatures { compose = true }
 
               splits {
                   abi {
@@ -123,9 +114,6 @@ jobs:
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material-icons-extended")
               implementation("androidx.compose.animation:animation")
-
-              // Memory leak detection
-              debugImplementation("com.squareup.leakcanary:leakcanary-android:3.0-alpha-8")
           }
           EOF
 
@@ -186,25 +174,6 @@ jobs:
           </resources>
           EOF
 
-          # Create LeakCanary initialization
-          mkdir -p app/src/main/java/com/grey/browser
-          cat > app/src/main/java/com/grey/browser/GreyApplication.kt << 'KOTLIN'
-          package com.grey.browser
-
-          import android.app.Application
-          import com.grey.browser.BuildConfig
-
-          class GreyApplication : Application() {
-              override fun onCreate() {
-                  super.onCreate()
-                  if (BuildConfig.ENABLE_LEAK_CANARY) {
-                      // LeakCanary auto-initializes in debug builds
-                      // No manual setup needed with newer versions
-                  }
-              }
-          }
-          KOTLIN
-
       - name: Generate dummy keystore
         run: |
           keytool -genkey -v \
@@ -258,20 +227,6 @@ jobs:
       - name: Set Android SDK path
         run: echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Check for memory leaks
-        run: |
-          echo "🔍 Checking for memory leak patterns in build..."
-          # Analyze heap dumps would be generated during testing
-          # For CI, we verify LeakCanary is properly configured
-          if ./gradlew app:dependencies --configuration debugRuntimeClasspath | grep -q "leakcanary"; then
-              echo "✅ LeakCanary dependency confirmed"
-          else
-              echo "⚠️  LeakCanary not found in dependencies"
-          fi
-
       - name: Build signed release APK
         run: ./gradlew assembleRelease --no-daemon
 
@@ -280,7 +235,6 @@ jobs:
           APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
           if [ -f "$APK_PATH" ]; then
               echo "✅ Release APK generated"
-              # Verify APK is signed
               $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs "$APK_PATH"
           else
               echo "❌ Release APK not found"
@@ -290,38 +244,15 @@ jobs:
       - name: Bundle release
         run: |
           mkdir -p Grey-release/.github/workflows
-          # Include signed release APK
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk Grey-release/Grey-release.apk
-          # Include debug APK with memory leak detection
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk Grey-release/Grey-debug.apk
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk Grey-release/Grey.apk
           cp Browser.kt Grey-release/
-          cp .github/workflows/build.yml Grey-release/.github/workflows/ 2>/dev/null || true
-          
-          # Generate memory leak detection report
-          cat > Grey-release/MEMORY_LEAK_INFO.txt << 'LEAKINFO'
-          Memory Leak Detection Status:
-          =============================
-          LeakCanary: ✅ Integrated (debug builds only)
-          Version: 3.0-alpha-8
-          
-          To check for memory leaks:
-          1. Install Grey-debug.apk on test device
-          2. Use the browser normally for 5-10 minutes
-          3. Check LeakCanary notification for leak reports
-          4. Heap dumps are stored in Downloads/leakcanary-[app]
-          
-          Automated checks in CI:
-          ✅ Dummy signing key generated
-          ✅ LeakCanary dependency verified
-          ✅ APK signing verified
-          LEAKINFO
+          cp .github/workflows/build.yml Grey-release/.github/workflows/
           
           cat > Grey-release/BUILD_INFO.txt << EOF
           Build:      #${{ github.run_number }}
           Commit:     ${{ github.sha }}
           Timestamp:  $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           Signed:     Yes (dummy keys)
-          LeakCheck:  Enabled (debug)
           EOF
 
       - name: Upload artifact
@@ -330,16 +261,3 @@ jobs:
           name: Grey-${{ github.run_number }}
           path: Grey-release/
           retention-days: 30
-
-      - name: Memory leak analysis summary
-        if: always()
-        run: |
-          echo "📊 Build Summary"
-          echo "================"
-          echo "🔐 Signed APK: Grey-release.apk"
-          echo "🐛 Debug APK: Grey-debug.apk (with LeakCanary)"
-          echo "🔑 Signing: Dummy keystore (for development only)"
-          echo "🛡️  Memory Leak Detection: LeakCanary 3.0-alpha-8"
-          echo ""
-          echo "⚠️  Note: Using dummy signing keys - NOT for production!"
-          echo "   To use real keys, replace app/dummy.keystore with your production keystore"
