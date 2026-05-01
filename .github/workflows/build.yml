@@ -78,9 +78,10 @@ jobs:
 
               buildTypes {
                   release {
-                      isMinifyEnabled = false
-                      isShrinkResources = false
+                      isMinifyEnabled = true
+                      isShrinkResources = true
                       signingConfig  = signingConfigs.getByName("release")
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
                   }
               }
 
@@ -125,6 +126,30 @@ jobs:
           android.suppressUnsupportedCompileSdk=36
           EOF
 
+          cat > app/proguard-rules.pro << 'EOF'
+          # Keep Compose
+          -keep class androidx.compose.** { *; }
+          -keepclassmembers class * {
+              @androidx.compose.runtime.Composable <methods>;
+          }
+          
+          # Keep Kotlin
+          -keep class kotlin.** { *; }
+          -keepclassmembers class kotlin.Metadata {
+              public <methods>;
+          }
+          
+          # Keep WebView
+          -keep class android.webkit.** { *; }
+          
+          # General optimization
+          -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
+          -optimizationpasses 5
+          -dontusemixedcaseclassnames
+          -dontskipnonpubliclibraryclasses
+          -verbose
+          EOF
+
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -137,7 +162,8 @@ jobs:
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:theme="@style/AppTheme"
                   android:hardwareAccelerated="true"
-                  android:largeHeap="true">
+                  android:largeHeap="true"
+                  android:extractNativeLibs="true">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -230,6 +256,48 @@ jobs:
       - name: Build signed release APK
         run: ./gradlew assembleRelease --no-daemon
 
+      - name: Optimize and compress APK
+        run: |
+          APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          OPTIMIZED_APK="app/build/outputs/apk/release/app-arm64-v8a-release-optimized.apk"
+          
+          echo "📦 Original size:"
+          ls -lh "$APK_PATH" | awk '{print $5}'
+          
+          # Step 1: Zipalign (optimizes for faster loading & saves space)
+          $ANDROID_HOME/build-tools/36.0.0/zipalign -v -p 4 "$APK_PATH" "$OPTIMIZED_APK"
+          
+          # Step 2: Verify alignment
+          $ANDROID_HOME/build-tools/36.0.0/zipalign -c -v 4 "$OPTIMIZED_APK"
+          
+          # Step 3: Re-sign the aligned APK
+          $ANDROID_HOME/build-tools/36.0.0/apksigner sign \
+            --ks app/dummy.keystore \
+            --ks-pass pass:password \
+            --ks-key-alias dummy \
+            --key-pass pass:password \
+            "$OPTIMIZED_APK"
+          
+          echo "📦 Optimized size:"
+          ls -lh "$OPTIMIZED_APK" | awk '{print $5}'
+          
+          # Replace original with optimized version
+          mv "$OPTIMIZED_APK" "$APK_PATH"
+
+      - name: Compress APK with 7z (maximum compression)
+        run: |
+          sudo apt-get install -y p7zip-full
+          APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          
+          echo "📦 APK size before compression:"
+          ls -lh "$APK_PATH" | awk '{print $5}'
+          
+          # Create ultra-compressed 7z archive
+          7z a -mx=9 -mfb=256 -md=256m -ms=on Grey.apk.7z "$APK_PATH"
+          
+          echo "📦 Compressed size:"
+          ls -lh Grey.apk.7z | awk '{print $5}'
+
       - name: Verify APK signing
         run: |
           APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
@@ -244,15 +312,24 @@ jobs:
       - name: Bundle release
         run: |
           mkdir -p Grey-release/.github/workflows
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk Grey-release/Grey.apk
+          cp Grey.apk.7z Grey-release/
           cp Browser.kt Grey-release/
           cp .github/workflows/build.yml Grey-release/.github/workflows/
+          
+          # Get sizes for info
+          APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          APK_SIZE=$(ls -lh "$APK_PATH" | awk '{print $5}')
+          COMPRESSED_SIZE=$(ls -lh Grey.apk.7z | awk '{print $5}')
           
           cat > Grey-release/BUILD_INFO.txt << EOF
           Build:      #${{ github.run_number }}
           Commit:     ${{ github.sha }}
           Timestamp:  $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           Signed:     Yes (dummy keys)
+          APK Size:   $APK_SIZE
+          Compressed: $COMPRESSED_SIZE (7z ultra)
+          
+          To extract: Use 7-Zip or `7z x Grey.apk.7z`
           EOF
 
       - name: Upload artifact
