@@ -502,13 +502,14 @@ fun GreyBrowser() {
     
     
     
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) ===
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
         return WebView(context).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#121212"))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -706,8 +707,6 @@ fun GreyBrowser() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 7/10 — BackHandler, WebViewBox Composable ===
 // ═══════════════════════════════════════════════════════════════════
@@ -783,9 +782,8 @@ fun GreyBrowser() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -868,6 +866,21 @@ fun GreyBrowser() {
                 delay(1500)
                 showBlink = false
                 blinkTargetDomain.value = ""
+            }
+        }
+
+        // ── Blink when currentTabIndex changes while Tab Manager is open ──
+        LaunchedEffect(currentTabIndex) {
+            if (showTabManager && currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                val domain = getDomainName(tabs[currentTabIndex].url)
+                if (domain.isNotBlank()) {
+                    selectedDomain = domain
+                    blinkTargetDomain.value = domain
+                    showBlink = true
+                    delay(1200)
+                    showBlink = false
+                    blinkTargetDomain.value = ""
+                }
             }
         }
 
@@ -1094,7 +1107,7 @@ fun GreyBrowser() {
                     ) {
                         OutlinedButton(
                             onClick = {
-                                createForegroundTab("about:blank")
+                                currentTabIndex = -1
                                 showTabManager = false
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1290,12 +1303,12 @@ fun GreyBrowser() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // New Tab button
+                    // New Tab button — goes to homepage overlay
                     Box(
                         Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)
                     ) {
                         IconButton({
-                            createForegroundTab("about:blank")
+                            currentTabIndex = -1
                         }) {
                             Icon(Icons.Default.Add, "New Tab", tint = WHITE)
                         }
@@ -1378,7 +1391,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
 
 
 
