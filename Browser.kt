@@ -780,10 +780,8 @@ fun GreyBrowser() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -858,6 +856,7 @@ fun GreyBrowser() {
             getDomainName(tabs[highlightedTabIndex].url)
         } else ""
 
+        // ── On open: stay on All, blink the current tab's group chip ──
         LaunchedEffect(Unit) {
             selectedDomain = ""
             if (highlightDomain.isNotBlank()) {
@@ -866,21 +865,6 @@ fun GreyBrowser() {
                 delay(1500)
                 showBlink = false
                 blinkTargetDomain.value = ""
-            }
-        }
-
-        // ── Blink when currentTabIndex changes while Tab Manager is open ──
-        LaunchedEffect(currentTabIndex) {
-            if (showTabManager && currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                val domain = getDomainName(tabs[currentTabIndex].url)
-                if (domain.isNotBlank()) {
-                    selectedDomain = domain
-                    blinkTargetDomain.value = domain
-                    showBlink = true
-                    delay(1200)
-                    showBlink = false
-                    blinkTargetDomain.value = ""
-                }
             }
         }
 
@@ -1391,8 +1375,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
-
 
 
 
