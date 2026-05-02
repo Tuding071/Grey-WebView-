@@ -521,9 +521,12 @@ fun GreyBrowser() {
 
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v6] ===
-// ═══════════════════════════════════════════════════════════════════
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v5] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -611,18 +614,6 @@ fun GreyBrowser() {
 
     // ── Create tabs ─────────────────────────────────────────────────
     fun createForegroundTab(url: String) {
-        // Check for duplicate — if URL already open, switch to it
-        val cleanUrl = url.substringBefore("#")
-        val existingIndex = tabs.indexOfFirst {
-            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
-        }
-        if (existingIndex >= 0) {
-            currentTabIndex = existingIndex
-            highlightedTabIndex = existingIndex
-            manageTabLifecycle(currentTabIndex)
-            return
-        }
-
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -638,13 +629,6 @@ fun GreyBrowser() {
     }
 
     fun createBackgroundTab(url: String) {
-        // Check for duplicate
-        val cleanUrl = url.substringBefore("#")
-        val existingIndex = tabs.indexOfFirst {
-            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
-        }
-        if (existingIndex >= 0) return
-
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -745,10 +729,8 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v14] ===
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v15] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -777,7 +759,7 @@ fun GreyBrowser() {
 
     @Composable
     fun ContentLayer() {
-        // Always resolve which WebView to show — never null
+        // Resolve which WebView to show — never null
         val wv = if (currentTabIndex == -1) {
             baseWebView
         } else {
@@ -814,8 +796,11 @@ fun GreyBrowser() {
 
 
 
+
+
+
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v16] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v17] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1266,26 +1251,7 @@ fun GreyBrowser() {
                             if (input.isNotBlank()) {
                                 focusManager.clearFocus()
                                 val uri = resolveUrl(input)
-                                if (currentTabIndex == -1) {
-                                    // Homepage: create a new tab (dedup built in)
-                                    createForegroundTab(uri)
-                                } else {
-                                    // Real tab: check if URL already open
-                                    val cleanUri = uri.substringBefore("#")
-                                    val existingIndex = tabs.indexOfFirst {
-                                        it.url.substringBefore("#") == cleanUri && !it.isBlankTab
-                                    }
-                                    if (existingIndex >= 0 && existingIndex != currentTabIndex) {
-                                        // Switch to existing tab
-                                        currentTabIndex = existingIndex
-                                    } else if (existingIndex == currentTabIndex) {
-                                        // Already on this tab, reload
-                                        currentTab?.webView?.reload()
-                                    } else {
-                                        // Navigate in current tab
-                                        currentTab?.webView?.loadUrl(uri)
-                                    }
-                                }
+                                createForegroundTab(uri)
                             }
                         }
                     ),
@@ -1387,6 +1353,7 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+
 
 
 
