@@ -705,10 +705,8 @@ fun GreyBrowser() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, WebViewBox Composable ===
+// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -760,10 +758,12 @@ fun GreyBrowser() {
             val tab = tabs.getOrNull(currentTabIndex)
             val wv = tab?.webView
             if (wv != null) {
-                AndroidView(
-                    factory = { wv },
-                    modifier = Modifier.fillMaxSize()
-                )
+                key(currentTabIndex) {
+                    AndroidView(
+                        factory = { wv },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             } else {
                 Box(
                     Modifier.fillMaxSize().background(BG),
@@ -776,12 +776,11 @@ fun GreyBrowser() {
     }
 
     // END OF PART 7/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v2] ===
+    
+    
+    
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -852,21 +851,10 @@ fun GreyBrowser() {
         )
         val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
         val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
+        val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
         val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
             getDomainName(tabs[highlightedTabIndex].url)
         } else ""
-
-        // ── On open: stay on All, blink the current tab's group chip ──
-        LaunchedEffect(Unit) {
-            selectedDomain = ""
-            if (highlightDomain.isNotBlank()) {
-                blinkTargetDomain.value = highlightDomain
-                showBlink = true
-                delay(1500)
-                showBlink = false
-                blinkTargetDomain.value = ""
-            }
-        }
 
         Popup(
             alignment = Alignment.TopStart,
@@ -901,7 +889,24 @@ fun GreyBrowser() {
                     Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
                         // ── Sidebar ──────────────────────────────────
                         val groupListState = rememberLazyListState()
-                        val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
+
+                        // ── Blink logic: scroll to chip, blink, scroll back to All ──
+                        LaunchedEffect(Unit) {
+                            selectedDomain = ""
+                            if (highlightDomain.isNotBlank()) {
+                                val blinkIdx = allSidebarItems.indexOf(highlightDomain)
+                                if (blinkIdx >= 0) {
+                                    groupListState.scrollToItem(blinkIdx)
+                                    blinkTargetDomain.value = highlightDomain
+                                    showBlink = true
+                                    delay(1200)
+                                    showBlink = false
+                                    blinkTargetDomain.value = ""
+                                    groupListState.scrollToItem(0)
+                                }
+                            }
+                        }
+
                         LaunchedEffect(allSidebarItems, selectedDomain) {
                             val idx = if (selectedDomain.isBlank()) 0
                             else allSidebarItems.indexOf(selectedDomain)
@@ -1175,11 +1180,15 @@ fun GreyBrowser() {
 
     // ── Main layout ─────────────────────────────────────────────────
     Surface(Modifier.fillMaxSize(), color = BG) {
-        Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                // ── Top Bar ──────────────────────────────────────────
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            // ── Top Bar ──────────────────────────────────────────────
+            Surface(
+                color = SURFACE,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp, end = 4.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Tabs button
@@ -1230,7 +1239,6 @@ fun GreyBrowser() {
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(vertical = 8.dp)
                             .background(SURFACE)
                             .focusRequester(focusRequester)
                             .onFocusChanged { isUrlFocused = it.isFocused }
@@ -1343,31 +1351,31 @@ fun GreyBrowser() {
                         }
                     }
                 }
-
-                // ── WebView area ─────────────────────────────────────
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    WebViewBox()
-                }
             }
 
-            // ── Toast ────────────────────────────────────────────────
-            if (showToast) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.BottomCenter
+            // ── WebView area ─────────────────────────────────────────
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                WebViewBox()
+            }
+        }
+
+        // ── Toast ────────────────────────────────────────────────────
+        if (showToast) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Surface(
+                    modifier = Modifier.padding(bottom = 80.dp),
+                    color = TOAST_BG,
+                    shape = RectangleShape
                 ) {
-                    Surface(
-                        modifier = Modifier.padding(bottom = 80.dp),
-                        color = TOAST_BG,
-                        shape = RectangleShape
-                    ) {
-                        Text(
-                            toastMessage,
-                            color = TOAST_TEXT,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                        )
-                    }
+                    Text(
+                        toastMessage,
+                        color = TOAST_TEXT,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
                 }
             }
         }
@@ -1375,6 +1383,7 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+
 
 
 
