@@ -406,9 +406,8 @@ fun resolveUrl(input: String): String {
 // END OF PART 4/10
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v7] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v9] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -450,6 +449,17 @@ fun GreyBrowser() {
                 setSupportZoom(true)
             }
             loadUrl("about:blank")
+        }
+    }
+
+    // ── Stable container — AndroidView always renders this ──────────
+    val webViewContainer = remember {
+        android.widget.FrameLayout(context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.parseColor("#121212"))
         }
     }
 
@@ -518,6 +528,8 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
+
+
 
 
 
@@ -729,9 +741,9 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v15] ===
-// ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v16] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
         when {
@@ -759,21 +771,27 @@ fun GreyBrowser() {
 
     @Composable
     fun ContentLayer() {
-        // Resolve which WebView to show — never null
-        val wv = if (currentTabIndex == -1) {
-            baseWebView
-        } else {
-            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-        }
-
         Box(Modifier.fillMaxSize().background(BG)) {
-            // ONE AndroidView — always present, key forces proper swap
-            key(currentTabIndex) {
-                AndroidView(
-                    factory = { wv },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            // ONE AndroidView — factory never changes, container always exists
+            AndroidView(
+                factory = { webViewContainer },
+                update = { container ->
+                    val target = if (currentTabIndex == -1) {
+                        baseWebView
+                    } else {
+                        tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+                    }
+                    if (container.childCount == 0 || container.getChildAt(0) != target) {
+                        // Pause the old WebView if it exists
+                        val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
+                        old?.onPause()
+                        container.removeAllViews()
+                        container.addView(target)
+                        target.onResume()
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
 
             // Grey overlay only on homepage
             if (currentTabIndex == -1) {
@@ -793,8 +811,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 7/10
-
-
 
 
 
