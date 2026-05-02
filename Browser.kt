@@ -406,10 +406,8 @@ fun resolveUrl(input: String): String {
 // END OF PART 4/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v2] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -464,6 +462,9 @@ fun GreyBrowser() {
     }
     var lastActiveUrl by remember { mutableStateOf(savedLastActiveUrl) }
 
+    // Stable WebView reference for the content layer
+    var currentWebView by remember { mutableStateOf<WebView?>(null) }
+
     var showTabManager by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val pinnedDomains = remember { mutableStateListOf<String>().apply { addAll(savedPinned) } }
@@ -482,6 +483,11 @@ fun GreyBrowser() {
     var confirmAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var confirmTitle by remember { mutableStateOf("") }
     var confirmMessage by remember { mutableStateOf("") }
+
+    // ── Update currentWebView when tab changes ──────────────────────
+    LaunchedEffect(currentTabIndex) {
+        currentWebView = tabs.getOrNull(currentTabIndex)?.webView
+    }
 
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
@@ -507,8 +513,6 @@ fun GreyBrowser() {
 
     // END OF PART 5/10
 
-
-    
     
     
 // ═══════════════════════════════════════════════════════════════════
@@ -713,9 +717,8 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
-    
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED v4] ===
+// ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -745,21 +748,18 @@ fun GreyBrowser() {
     }
 
     @Composable
-    fun WebViewBox() {
-        val tab = currentTab
-        val wv = tab?.webView
-
+    fun ContentLayer() {
         Box(Modifier.fillMaxSize().background(BG)) {
-            // Always render the WebView if available (stable in composition)
-            if (wv != null) {
+            // WebView always rendered when available
+            if (currentWebView != null) {
                 AndroidView(
-                    factory = { wv },
+                    factory = { currentWebView!! },
                     modifier = Modifier.fillMaxSize()
                 )
             }
 
-            // Show "Grey" overlay on blank homepage tab
-            if (tab?.isBlankTab == true) {
+            // Homepage "Grey" overlay when on blank tab
+            if (currentTab?.isBlankTab == true) {
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -778,8 +778,9 @@ fun GreyBrowser() {
     // END OF PART 7/10
     
     
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v6] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -857,6 +858,7 @@ fun GreyBrowser() {
             homeTab.isDiscarded = false
             setupDelegates(homeTab)
             homeTab.lastUpdated = System.currentTimeMillis()
+            currentWebView = homeTab.webView
         }
     }
 
@@ -1197,14 +1199,17 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Main layout ─────────────────────────────────────────────────
-    Surface(Modifier.fillMaxSize(), color = BG) {
-        Column(Modifier.fillMaxSize().systemBarsPadding()) {
-            // ── Top Bar ──────────────────────────────────────────────
+    // ── Main layout — Layered Architecture ──────────────────────────
+    Box(Modifier.fillMaxSize().background(BG)) {
+        // LAYER 1: Full-screen content (WebView + Homepage overlay)
+        ContentLayer()
+
+        // LAYER 2: Top bar pinned to top, overlaid on content
+        Column(Modifier.fillMaxSize()) {
             Surface(
                 color = SURFACE,
                 shadowElevation = 0.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().systemBarsPadding()
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -1376,10 +1381,8 @@ fun GreyBrowser() {
                 }
             }
 
-            // ── WebView area ─────────────────────────────────────────
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                WebViewBox()
-            }
+            // Push top bar to top, let content fill behind it
+            Spacer(Modifier.weight(1f))
         }
 
         // ── Toast ────────────────────────────────────────────────────
@@ -1406,8 +1409,8 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
-
+    
+    
 
 
 // ═══════════════════════════════════════════════════════════════════
