@@ -408,7 +408,7 @@ fun resolveUrl(input: String): String {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v7] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v8] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -452,6 +452,9 @@ fun GreyBrowser() {
             loadUrl("about:blank")
         }
     }
+
+    // ── Stable WebView reference for the single AndroidView ─────────
+    var displayedWebView by remember { mutableStateOf(baseWebView) }
 
     // ── Load saved tabs ──────────────────────────────────────────────
     val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
@@ -518,8 +521,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
-
 
 
 
@@ -732,10 +733,9 @@ fun GreyBrowser() {
 
 
 
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v10] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v11] ===
+// ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
         when {
@@ -761,15 +761,26 @@ fun GreyBrowser() {
         }
     }
 
+    // ── Update displayed WebView when tab changes ───────────────────
+    LaunchedEffect(currentTabIndex) {
+        displayedWebView = if (currentTabIndex == -1) {
+            baseWebView
+        } else {
+            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+        }
+    }
+
     @Composable
     fun ContentLayer() {
         Box(Modifier.fillMaxSize().background(BG)) {
+            // ONE AndroidView — factory is stable, never destroyed
+            AndroidView(
+                factory = { displayedWebView },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Grey overlay on homepage
             if (currentTabIndex == -1) {
-                // ── Neutral ground: base WebView + Grey overlay ─────
-                AndroidView(
-                    factory = { baseWebView },
-                    modifier = Modifier.fillMaxSize()
-                )
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -781,13 +792,6 @@ fun GreyBrowser() {
                         fontWeight = FontWeight.Bold
                     )
                 }
-            } else {
-                // ── Real tab content ─────────────────────────────────
-                val wv = tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-                AndroidView(
-                    factory = { wv },
-                    modifier = Modifier.fillMaxSize()
-                )
             }
         }
     }
@@ -799,9 +803,9 @@ fun GreyBrowser() {
 
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v13] ===
-// ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v14] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
@@ -1176,14 +1180,20 @@ fun GreyBrowser() {
 
     // ── Main layout — Layered Architecture ──────────────────────────
     Box(Modifier.fillMaxSize().background(BG)) {
-        // LAYER 1: Content fills entire screen (WebView + homepage overlay)
+        // LAYER 1: Content fills screen with top padding for the bar
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(top = 48.dp)
+            ) {
                 ContentLayer()
             }
         }
 
-        // LAYER 2: Top bar pinned to top, never affected by content changes
+        // LAYER 2: Top bar pinned to top, never affected by content
         Column(Modifier.fillMaxSize()) {
             Surface(
                 color = SURFACE,
@@ -1357,7 +1367,11 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
+    
+    
+    
+    
+    
 
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
