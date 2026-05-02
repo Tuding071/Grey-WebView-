@@ -747,11 +747,9 @@ fun GreyBrowser() {
 
 
 
-
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v13] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v14] ===
+// ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
         when {
@@ -779,15 +777,24 @@ fun GreyBrowser() {
 
     @Composable
     fun ContentLayer() {
+        // Always resolve which WebView to show — never null
+        val wv = if (currentTabIndex == -1) {
+            baseWebView
+        } else {
+            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+        }
+
         Box(Modifier.fillMaxSize().background(BG)) {
+            // ONE AndroidView — always present, key forces proper swap
+            key(currentTabIndex) {
+                AndroidView(
+                    factory = { wv },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Grey overlay only on homepage
             if (currentTabIndex == -1) {
-                // ── Neutral ground: base WebView + Grey overlay ─────
-                key(baseWebView) {
-                    AndroidView(
-                        factory = { baseWebView },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -799,23 +806,11 @@ fun GreyBrowser() {
                         fontWeight = FontWeight.Bold
                     )
                 }
-            } else {
-                // ── Real tab content ─────────────────────────────────
-                val wv = tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-                key(currentTabIndex) {
-                    AndroidView(
-                        factory = { wv },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
             }
         }
     }
 
     // END OF PART 7/10
-
-
-
 
 
 
