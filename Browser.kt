@@ -799,9 +799,9 @@ fun GreyBrowser() {
 
 
 
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v12] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v13] ===
+// ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
@@ -1174,186 +1174,189 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Main layout ─────────────────────────────────────────────────
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().background(BG)
-    ) {
-        // ── Top Bar ──────────────────────────────────────────────────
-        Surface(
-            color = SURFACE,
-            shadowElevation = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Tabs button
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ showTabManager = true }) {
-                        Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // Forward button
-                val canGoForward = currentTab?.webView?.canGoForward() == true
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton(
-                        onClick = { currentTab?.webView?.goForward() },
-                        enabled = canGoForward
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            "Forward",
-                            tint = if (canGoForward) WHITE else ACCENT_DIM
-                        )
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // URL field
-                val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    singleLine = true,
-                    placeholder = {
-                        Text(
-                            if (currentTabIndex == -1) "Search or enter URL"
-                            else currentTab?.url?.take(50) ?: "",
-                            color = WHITE.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(SURFACE)
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { isUrlFocused = it.isFocused }
-                        .drawBehind {
-                            if (isLoading) {
-                                drawRect(
-                                    color = WHITE,
-                                    size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
-                                )
-                            }
-                        },
-                    textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
-                    shape = RectangleShape,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(
-                        onGo = {
-                            val input = urlInput.text
-                            if (input.isNotBlank()) {
-                                focusManager.clearFocus()
-                                val uri = resolveUrl(input)
-                                createForegroundTab(uri)
-                            }
-                        }
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
-                        cursorColor = if (isLoading) Color.Gray else WHITE
-                    ),
-                    trailingIcon = {
-                        if (isLoading) {
-                            IconButton({ currentTab?.webView?.stopLoading() }) {
-                                Icon(Icons.Default.Close, "Stop", tint = WHITE)
-                            }
-                        } else {
-                            IconButton({
-                                urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
-                                focusRequester.requestFocus()
-                            }) {
-                                Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
-                            }
-                        }
-                    }
-                )
-
-                Spacer(Modifier.width(4.dp))
-
-                // New Tab button — goes to homepage (neutral ground)
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ currentTabIndex = -1 }) {
-                        Icon(Icons.Default.Add, "New Tab", tint = WHITE)
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // Menu button
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.border(1.dp, WHITE, RectangleShape),
-                        containerColor = SURFACE,
-                        shape = RectangleShape
-                    ) {
-                        if (currentTabIndex >= 0) {
-                            DropdownMenuItem(
-                                text = { Text("Add to Bookmark", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    val url = currentTab?.url ?: ""
-                                    if (url != "about:blank" && url.isNotBlank()) {
-                                        bookmarks.removeAll { it.url == url }
-                                        bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
-                                        showToast("Added to bookmarks")
-                                    }
-                                }
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Bookmarks", color = WHITE) },
-                            onClick = { showMenu = false; showBookmarks = true }
-                        )
-                    }
-                }
+    // ── Main layout — Layered Architecture ──────────────────────────
+    Box(Modifier.fillMaxSize().background(BG)) {
+        // LAYER 1: Content fills entire screen (WebView + homepage overlay)
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                ContentLayer()
             }
         }
 
-        // ── Content area ─────────────────────────────────────────────
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            ContentLayer()
-        }
-    }
-
-    // ── Toast ────────────────────────────────────────────────────────
-    if (showToast) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.BottomCenter
-        ) {
+        // LAYER 2: Top bar pinned to top, never affected by content changes
+        Column(Modifier.fillMaxSize()) {
             Surface(
-                modifier = Modifier.padding(bottom = 80.dp),
-                color = TOAST_BG,
-                shape = RectangleShape
+                color = SURFACE,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth().systemBarsPadding()
             ) {
-                Text(
-                    toastMessage,
-                    color = TOAST_TEXT,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Tabs button
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ showTabManager = true }) {
+                            Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Forward button
+                    val canGoForward = currentTab?.webView?.canGoForward() == true
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton(
+                            onClick = { currentTab?.webView?.goForward() },
+                            enabled = canGoForward
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                "Forward",
+                                tint = if (canGoForward) WHITE else ACCENT_DIM
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // URL field
+                    val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                if (currentTabIndex == -1) "Search or enter URL"
+                                else currentTab?.url?.take(50) ?: "",
+                                color = WHITE.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(SURFACE)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { isUrlFocused = it.isFocused }
+                            .drawBehind {
+                                if (isLoading) {
+                                    drawRect(
+                                        color = WHITE,
+                                        size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
+                                    )
+                                }
+                            },
+                        textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(
+                            onGo = {
+                                val input = urlInput.text
+                                if (input.isNotBlank()) {
+                                    focusManager.clearFocus()
+                                    val uri = resolveUrl(input)
+                                    createForegroundTab(uri)
+                                }
+                            }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = if (isLoading) Color.Gray else WHITE
+                        ),
+                        trailingIcon = {
+                            if (isLoading) {
+                                IconButton({ currentTab?.webView?.stopLoading() }) {
+                                    Icon(Icons.Default.Close, "Stop", tint = WHITE)
+                                }
+                            } else {
+                                IconButton({
+                                    urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
+                                    focusRequester.requestFocus()
+                                }) {
+                                    Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // New Tab button — goes to homepage (neutral ground)
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ currentTabIndex = -1 }) {
+                            Icon(Icons.Default.Add, "New Tab", tint = WHITE)
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Menu button
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.border(1.dp, WHITE, RectangleShape),
+                            containerColor = SURFACE,
+                            shape = RectangleShape
+                        ) {
+                            if (currentTabIndex >= 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Add to Bookmark", color = WHITE) },
+                                    onClick = {
+                                        showMenu = false
+                                        val url = currentTab?.url ?: ""
+                                        if (url != "about:blank" && url.isNotBlank()) {
+                                            bookmarks.removeAll { it.url == url }
+                                            bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
+                                            showToast("Added to bookmarks")
+                                        }
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Bookmarks", color = WHITE) },
+                                onClick = { showMenu = false; showBookmarks = true }
+                            )
+                        }
+                    }
+                }
+            }
+            // Push top bar to the top
+            Spacer(Modifier.weight(1f))
+        }
+
+        // ── Toast ────────────────────────────────────────────────────
+        if (showToast) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Surface(
+                    modifier = Modifier.padding(bottom = 80.dp),
+                    color = TOAST_BG,
+                    shape = RectangleShape
+                ) {
+                    Text(
+                        toastMessage,
+                        color = TOAST_TEXT,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
             }
         }
     }
 }
 
 // END OF PART 8/10
-
 
 
 // ═══════════════════════════════════════════════════════════════════
