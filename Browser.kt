@@ -407,8 +407,9 @@ fun resolveUrl(input: String): String {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -436,28 +437,31 @@ fun GreyBrowser() {
     val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
     val tabs = remember {
         mutableStateListOf<TabState>().apply {
+            // Always start with a blank homepage tab at index 0
+            add(TabState().apply {
+                this.url = "about:blank"
+                this.title = "Home"
+                isBlankTab = true
+                isDiscarded = false
+            })
+            // Restore saved tabs after the homepage tab
             for ((url, title) in savedTabs) {
                 add(TabState().apply {
                     this.url = url; this.title = title; isBlankTab = false
                     isDiscarded = true; webView = null
                 })
             }
-            // Always have at least one blank tab as homepage
-            if (isEmpty()) {
-                add(TabState().apply {
-                    this.url = "about:blank"; this.title = "Home"
-                    isBlankTab = true; isDiscarded = false
-                })
-            }
         }
     }
 
-    // currentTabIndex = 0+ always (no more -1 homepage overlay)
-    var currentTabIndex by remember { mutableIntStateOf(
-        tabs.indexOfFirst { it.url.substringBefore("#") == savedLastActiveUrl.substringBefore("#") }
-            .let { if (it >= 0) it else 0 }
-    ) }
-    var highlightedTabIndex by remember { mutableIntStateOf(currentTabIndex) }
+    // currentTabIndex always >= 0 (no more -1 homepage overlay)
+    var currentTabIndex by remember { mutableIntStateOf(0) }
+    var highlightedTabIndex by remember {
+        mutableIntStateOf(
+            tabs.indexOfFirst { it.url.substringBefore("#") == savedLastActiveUrl.substringBefore("#") }
+                .let { if (it >= 0) it else 0 }
+        )
+    }
     var lastActiveUrl by remember { mutableStateOf(savedLastActiveUrl) }
 
     var showTabManager by remember { mutableStateOf(false) }
@@ -502,7 +506,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
 
 
     
@@ -712,7 +715,7 @@ fun GreyBrowser() {
 
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED v3] ===
+// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -722,19 +725,19 @@ fun GreyBrowser() {
             showBookmarks -> showBookmarks = false
             showMenu -> showMenu = false
             showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
-            // If on a tab and WebView can go back
+            // On a tab
             currentTabIndex >= 0 -> {
                 val tab = tabs.getOrNull(currentTabIndex)
                 if (tab?.webView?.canGoBack() == true) {
                     tab.webView?.goBack()
                 } else if (tab?.isBlankTab == true) {
-                    // On homepage blank tab with no history — exit
+                    // Already on homepage — exit
                     activity?.finish()
                 } else {
                     // Go to homepage blank tab
-                    val homeTab = tabs.firstOrNull { it.isBlankTab }
-                    if (homeTab != null) {
-                        currentTabIndex = tabs.indexOf(homeTab)
+                    val homeIdx = tabs.indexOfFirst { it.isBlankTab }
+                    if (homeIdx >= 0) {
+                        currentTabIndex = homeIdx
                     }
                 }
             }
@@ -743,36 +746,31 @@ fun GreyBrowser() {
 
     @Composable
     fun WebViewBox() {
-        val tab = tabs.getOrNull(currentTabIndex)
+        val tab = currentTab
         val wv = tab?.webView
 
-        if (wv != null) {
-            Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(BG)) {
+            // Always render the WebView if available (stable in composition)
+            if (wv != null) {
                 AndroidView(
                     factory = { wv },
                     modifier = Modifier.fillMaxSize()
                 )
-                // Show "Grey" overlay on blank homepage tab
-                if (tab.isBlankTab) {
-                    Box(
-                        Modifier.fillMaxSize().background(BG.copy(alpha = 0.7f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "Grey",
-                            color = WHITE.copy(alpha = 0.15f),
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
-        } else {
-            Box(
-                Modifier.fillMaxSize().background(BG),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = WHITE)
+
+            // Show "Grey" overlay on blank homepage tab
+            if (tab?.isBlankTab == true) {
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Grey",
+                        color = WHITE.copy(alpha = 0.15f),
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -780,9 +778,8 @@ fun GreyBrowser() {
     // END OF PART 7/10
     
     
-    
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v5] ===
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -846,22 +843,20 @@ fun GreyBrowser() {
 
     // ── Helper: go to homepage blank tab ────────────────────────────
     fun goHome() {
+        val homeIdx = tabs.indexOfFirst { it.isBlankTab }
+        if (homeIdx >= 0) {
+            currentTabIndex = homeIdx
+        }
+    }
+
+    // ── Ensure homepage tab always has a WebView ────────────────────
+    LaunchedEffect(Unit) {
         val homeTab = tabs.firstOrNull { it.isBlankTab }
-        if (homeTab != null) {
-            currentTabIndex = tabs.indexOf(homeTab)
-        } else {
-            // Create a blank homepage tab
-            val wv = createWebView("about:blank")
-            tabs.add(0, TabState().apply {
-                webView = wv
-                this.url = "about:blank"
-                this.title = "Home"
-                isBlankTab = true
-                isDiscarded = false
-                lastUpdated = System.currentTimeMillis()
-                setupDelegates(this)
-            })
-            currentTabIndex = 0
+        if (homeTab != null && homeTab.webView == null) {
+            homeTab.webView = createWebView("about:blank")
+            homeTab.isDiscarded = false
+            setupDelegates(homeTab)
+            homeTab.lastUpdated = System.currentTimeMillis()
         }
     }
 
@@ -1289,7 +1284,7 @@ fun GreyBrowser() {
                                     focusManager.clearFocus()
                                     val uri = resolveUrl(input)
                                     if (currentTab?.isBlankTab == true) {
-                                        // Navigate in the current blank tab
+                                        // Navigate in the current blank homepage tab
                                         currentTab?.webView?.loadUrl(uri)
                                         currentTab?.isBlankTab = false
                                     } else {
@@ -1411,7 +1406,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
 
 
 
