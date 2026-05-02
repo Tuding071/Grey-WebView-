@@ -406,8 +406,9 @@ fun resolveUrl(input: String): String {
 // END OF PART 4/10
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v3] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -452,7 +453,7 @@ fun GreyBrowser() {
         }
     }
 
-    // currentTabIndex always >= 0 (no more -1 homepage overlay)
+    // currentTabIndex always >= 0
     var currentTabIndex by remember { mutableIntStateOf(0) }
     var highlightedTabIndex by remember {
         mutableIntStateOf(
@@ -461,9 +462,6 @@ fun GreyBrowser() {
         )
     }
     var lastActiveUrl by remember { mutableStateOf(savedLastActiveUrl) }
-
-    // Stable WebView reference for the content layer
-    var currentWebView by remember { mutableStateOf<WebView?>(null) }
 
     var showTabManager by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -483,11 +481,6 @@ fun GreyBrowser() {
     var confirmAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var confirmTitle by remember { mutableStateOf("") }
     var confirmMessage by remember { mutableStateOf("") }
-
-    // ── Update currentWebView when tab changes ──────────────────────
-    LaunchedEffect(currentTabIndex) {
-        currentWebView = tabs.getOrNull(currentTabIndex)?.webView
-    }
 
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
@@ -513,11 +506,14 @@ fun GreyBrowser() {
 
     // END OF PART 5/10
 
-    
-    
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED] ===
-// ═══════════════════════════════════════════════════════════════════
+
+
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v2] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -580,7 +576,6 @@ fun GreyBrowser() {
 
     // ── Tab lifecycle management ────────────────────────────────────
     fun manageTabLifecycle(activeIndex: Int) {
-        // Ensure active tab has a live WebView
         val activeTab = tabs.getOrNull(activeIndex) ?: return
         if (activeTab.webView == null && activeTab.isDiscarded) {
             activeTab.webView = createWebView(activeTab.url)
@@ -589,7 +584,6 @@ fun GreyBrowser() {
             activeTab.lastUpdated = System.currentTimeMillis()
         }
 
-        // Keep only MAX_WARM_WEBVIEWS WebViews alive
         val warmTabs = tabs.filterIndexed { i, t ->
             i != activeIndex && !t.isDiscarded && !t.isBlankTab && t.webView != null
         }
@@ -605,11 +599,13 @@ fun GreyBrowser() {
     }
 
     // ── Create tabs ─────────────────────────────────────────────────
-    fun createForegroundTab(url: String) {
+    fun createForegroundTab(url: String, isBlank: Boolean = false) {
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
-            isBlankTab = false
+            this.url = url
+            this.title = if (isBlank) "Home" else url
+            isBlankTab = isBlank
             isDiscarded = false
             lastUpdated = System.currentTimeMillis()
             setupDelegates(this)
@@ -622,12 +618,18 @@ fun GreyBrowser() {
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
+            this.url = url
             isBlankTab = false
             isDiscarded = false
             lastUpdated = System.currentTimeMillis()
             setupDelegates(this)
         })
         manageTabLifecycle(currentTabIndex)
+    }
+
+    // ── Create a new homepage tab ───────────────────────────────────
+    fun newHomeTab() {
+        createForegroundTab("about:blank", isBlank = true)
     }
 
     // ── Delete with undo ────────────────────────────────────────────
@@ -676,7 +678,6 @@ fun GreyBrowser() {
                 tab.webView?.destroy()
                 tabs.removeAt(index)
 
-                // Remap remaining deletion indices
                 val updated = mutableMapOf<Int, Long>()
                 for ((oldIdx, time) in pendingDeletions) {
                     updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
@@ -685,7 +686,7 @@ fun GreyBrowser() {
                 pendingDeletions.putAll(updated)
 
                 if (tabs.isEmpty()) {
-                    currentTabIndex = -1
+                    newHomeTab()
                     selectedDomain = ""
                 } else if (currentTabIndex > index) {
                     currentTabIndex--
@@ -717,11 +718,13 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
-    
-    
+
+
+
+
     // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v6] ===
-// ═══════════════════════════════════════════════════════════════════
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v7] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
         when {
@@ -739,11 +742,8 @@ fun GreyBrowser() {
                     // Already on homepage — exit
                     activity?.finish()
                 } else {
-                    // Go to homepage blank tab
-                    val homeIdx = tabs.indexOfFirst { it.isBlankTab }
-                    if (homeIdx >= 0) {
-                        currentTabIndex = homeIdx
-                    }
+                    // Go back to homepage — create a fresh one
+                    newHomeTab()
                 }
             }
         }
@@ -751,17 +751,28 @@ fun GreyBrowser() {
 
     @Composable
     fun ContentLayer() {
+        val tab = currentTab
+        val wv = tab?.webView
+
         Box(Modifier.fillMaxSize().background(BG)) {
-            // WebView always rendered when available
-            if (currentWebView != null) {
+            // Always render something that fills the space
+            if (wv != null) {
                 AndroidView(
-                    factory = { currentWebView!! },
+                    factory = { wv },
                     modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                // WebView not ready yet — show loading, but keep the Box full-size
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = WHITE)
+                }
             }
 
             // Homepage "Grey" overlay when on blank tab
-            if (currentTab?.isBlankTab == true) {
+            if (tab?.isBlankTab == true) {
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -785,7 +796,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v8] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v9] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -847,15 +858,7 @@ fun GreyBrowser() {
         )
     }
 
-    // ── Helper: go to homepage blank tab ────────────────────────────
-    fun goHome() {
-        val homeIdx = tabs.indexOfFirst { it.isBlankTab }
-        if (homeIdx >= 0) {
-            currentTabIndex = homeIdx
-        }
-    }
-
-    // ── Ensure homepage tab always has a WebView ────────────────────
+    // ── Ensure initial homepage tab has a WebView ───────────────────
     LaunchedEffect(Unit) {
         val homeTab = tabs.firstOrNull { it.isBlankTab }
         if (homeTab != null && homeTab.webView == null) {
@@ -863,7 +866,6 @@ fun GreyBrowser() {
             homeTab.isDiscarded = false
             setupDelegates(homeTab)
             homeTab.lastUpdated = System.currentTimeMillis()
-            currentWebView = homeTab.webView
         }
     }
 
@@ -915,7 +917,7 @@ fun GreyBrowser() {
                         // ── Sidebar ──────────────────────────────────
                         val groupListState = rememberLazyListState()
 
-                        // ── Blink logic: scroll to chip, blink, scroll back to All ──
+                        // ── Blink logic ──────────────────────────────
                         LaunchedEffect(Unit) {
                             selectedDomain = ""
                             if (highlightDomain.isNotBlank()) {
@@ -989,124 +991,90 @@ fun GreyBrowser() {
                             if (idx >= 0) tabListState.scrollToItem(idx)
                         }
 
-                        if (tabs.isEmpty()) {
-                            Box(
-                                Modifier.weight(1f).fillMaxHeight(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("No open tabs", color = MUTED, fontSize = 16.sp)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(
-                                        "Tap 'New Tab' to start browsing",
-                                        color = MUTED.copy(alpha = 0.7f),
-                                        fontSize = 14.sp
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                state = tabListState,
-                                modifier = Modifier.weight(1f).fillMaxHeight()
-                            ) {
-                                if (tabsToShow.isEmpty()) {
-                                    item {
-                                        Box(
-                                            Modifier.fillMaxWidth().padding(32.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                "No tabs in this group",
-                                                color = MUTED,
-                                                fontSize = 14.sp
-                                            )
-                                        }
+                        LazyColumn(
+                            state = tabListState,
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                        ) {
+                            if (tabsToShow.isEmpty()) {
+                                item {
+                                    Box(
+                                        Modifier.fillMaxWidth().padding(32.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("No tabs in this group", color = MUTED, fontSize = 14.sp)
                                     }
-                                } else {
-                                    items(tabsToShow) { tab: TabState ->
-                                        val tabIndex = tabs.indexOf(tab)
-                                        val isHighlighted = tabIndex == highlightedTabIndex
-                                        val isPending = pendingDeletions.containsKey(tabIndex)
-                                        val tabDomain = getDomainName(tab.url)
-                                        LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
-                                        val tabFav = tabFavicons[tabDomain]
+                                }
+                            } else {
+                                items(tabsToShow) { tab: TabState ->
+                                    val tabIndex = tabs.indexOf(tab)
+                                    val isHighlighted = tabIndex == highlightedTabIndex
+                                    val isPending = pendingDeletions.containsKey(tabIndex)
+                                    val tabDomain = getDomainName(tab.url)
+                                    LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
+                                    val tabFav = tabFavicons[tabDomain]
 
-                                        Surface(
-                                            Modifier.fillMaxWidth()
-                                                .clickable(
-                                                    enabled = !isPending,
-                                                    onClick = {
-                                                        currentTabIndex = tabIndex
-                                                        showTabManager = false
-                                                    }
-                                                )
-                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                            color = when {
-                                                isPending -> DELETE_BG
-                                                isHighlighted -> WHITE
-                                                else -> Color.Transparent
-                                            }
-                                        ) {
-                                            Row(
-                                                Modifier.fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Favicon
-                                                if (tabFav != null) {
-                                                    Image(
-                                                        tabFav.asImageBitmap(),
-                                                        tabDomain,
-                                                        Modifier.size(16.dp).clip(CircleShape),
-                                                        contentScale = ContentScale.Fit
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        Modifier.size(16.dp).clip(CircleShape)
-                                                            .background(Color.DarkGray),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text(
-                                                            text = tabDomain.take(1).uppercase(),
-                                                            color = WHITE,
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
+                                    Surface(
+                                        Modifier.fillMaxWidth()
+                                            .clickable(
+                                                enabled = !isPending,
+                                                onClick = {
+                                                    currentTabIndex = tabIndex
+                                                    showTabManager = false
                                                 }
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(
-                                                    if (tab.isBlankTab) "Home"
-                                                    else if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
-                                                    else tab.title,
-                                                    color = when {
-                                                        isPending -> WHITE
-                                                        isHighlighted -> Color.Black
-                                                        else -> WHITE
-                                                    },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    fontSize = 14.sp,
-                                                    modifier = Modifier.weight(1f)
+                                            )
+                                            .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                        color = when {
+                                            isPending -> DELETE_BG
+                                            isHighlighted -> WHITE
+                                            else -> Color.Transparent
+                                        }
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (tabFav != null) {
+                                                Image(
+                                                    tabFav.asImageBitmap(),
+                                                    tabDomain,
+                                                    Modifier.size(16.dp).clip(CircleShape),
+                                                    contentScale = ContentScale.Fit
                                                 )
-                                                if (isPending) {
-                                                    IconButton({ undoDeleteTab(tabIndex) }) {
-                                                        Icon(
-                                                            Icons.Default.Undo,
-                                                            "Undo",
-                                                            tint = WHITE,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                } else {
-                                                    IconButton({ requestDeleteTab(tabIndex) }) {
-                                                        Icon(
-                                                            Icons.Default.Close,
-                                                            "Close",
-                                                            tint = if (isHighlighted) Color.Black else WHITE,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
+                                            } else {
+                                                Box(
+                                                    Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = tabDomain.take(1).uppercase(),
+                                                        color = WHITE,
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                if (tab.isBlankTab) "Home"
+                                                else if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
+                                                else tab.title,
+                                                color = when {
+                                                    isPending -> WHITE
+                                                    isHighlighted -> Color.Black
+                                                    else -> WHITE
+                                                },
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (isPending) {
+                                                IconButton({ undoDeleteTab(tabIndex) }) {
+                                                    Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                }
+                                            } else {
+                                                IconButton({ requestDeleteTab(tabIndex) }) {
+                                                    Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
                                                 }
                                             }
                                         }
@@ -1122,7 +1090,7 @@ fun GreyBrowser() {
                     ) {
                         OutlinedButton(
                             onClick = {
-                                goHome()
+                                newHomeTab()
                                 showTabManager = false
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1157,11 +1125,7 @@ fun GreyBrowser() {
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
                                 border = BorderStroke(1.dp, tint)
                             ) {
-                                Text(
-                                    if (isPinned) "Unpin Group" else "Pin Group",
-                                    fontSize = 13.sp,
-                                    color = tint
-                                )
+                                Text(if (isPinned) "Unpin Group" else "Pin Group", fontSize = 13.sp, color = tint)
                             }
                             Spacer(Modifier.width(8.dp))
                             OutlinedButton(
@@ -1178,7 +1142,7 @@ fun GreyBrowser() {
                                             }
                                             tabs.removeAll(toRemove)
                                             if (tabs.isEmpty()) {
-                                                goHome()
+                                                newHomeTab()
                                                 highlightedTabIndex = currentTabIndex
                                                 selectedDomain = ""
                                             } else {
@@ -1206,10 +1170,7 @@ fun GreyBrowser() {
 
     // ── Main layout ─────────────────────────────────────────────────
     Column(
-        Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .background(BG)
+        Modifier.fillMaxSize().systemBarsPadding().background(BG)
     ) {
         // ── Top Bar ──────────────────────────────────────────────────
         Surface(
@@ -1222,9 +1183,7 @@ fun GreyBrowser() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Tabs button
-                Box(
-                    Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)
-                ) {
+                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                     IconButton({ showTabManager = true }) {
                         Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                     }
@@ -1234,9 +1193,7 @@ fun GreyBrowser() {
 
                 // Forward button
                 val canGoForward = currentTab?.webView?.canGoForward() == true
-                Box(
-                    Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)
-                ) {
+                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                     IconButton(
                         onClick = { currentTab?.webView?.goForward() },
                         enabled = canGoForward
@@ -1259,8 +1216,7 @@ fun GreyBrowser() {
                     singleLine = true,
                     placeholder = {
                         Text(
-                            if (currentTab?.isBlankTab == true)
-                                "Search or enter URL"
+                            if (currentTab?.isBlankTab == true) "Search or enter URL"
                             else currentTab?.url?.take(50) ?: "",
                             color = WHITE.copy(alpha = 0.5f),
                             maxLines = 1,
@@ -1276,16 +1232,11 @@ fun GreyBrowser() {
                             if (isLoading) {
                                 drawRect(
                                     color = WHITE,
-                                    size = size.copy(
-                                        width = size.width * (currentTab?.progress ?: 100) / 100f
-                                    )
+                                    size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
                                 )
                             }
                         },
-                    textStyle = TextStyle(
-                        color = if (isLoading) Color.Gray else WHITE,
-                        fontSize = 14.sp
-                    ),
+                    textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
                     shape = RectangleShape,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(
@@ -1295,7 +1246,6 @@ fun GreyBrowser() {
                                 focusManager.clearFocus()
                                 val uri = resolveUrl(input)
                                 if (currentTab?.isBlankTab == true) {
-                                    // Navigate in the current blank homepage tab
                                     currentTab?.webView?.loadUrl(uri)
                                     currentTab?.isBlankTab = false
                                 } else {
@@ -1318,9 +1268,7 @@ fun GreyBrowser() {
                             }
                         } else {
                             IconButton({
-                                urlInput = urlInput.copy(
-                                    selection = TextRange(0, urlInput.text.length)
-                                )
+                                urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
                                 focusRequester.requestFocus()
                             }) {
                                 Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
@@ -1331,11 +1279,9 @@ fun GreyBrowser() {
 
                 Spacer(Modifier.width(4.dp))
 
-                // New Tab button — goes to homepage blank tab
-                Box(
-                    Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)
-                ) {
-                    IconButton({ goHome() }) {
+                // New Tab button
+                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                    IconButton({ newHomeTab() }) {
                         Icon(Icons.Default.Add, "New Tab", tint = WHITE)
                     }
                 }
@@ -1343,9 +1289,7 @@ fun GreyBrowser() {
                 Spacer(Modifier.width(4.dp))
 
                 // Menu button
-                Box(
-                    Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)
-                ) {
+                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                     IconButton({ showMenu = true }) {
                         Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
                     }
@@ -1364,12 +1308,7 @@ fun GreyBrowser() {
                                     val url = currentTab?.url ?: ""
                                     if (url != "about:blank" && url.isNotBlank()) {
                                         bookmarks.removeAll { it.url == url }
-                                        bookmarks.add(
-                                            Bookmark(
-                                                url = url,
-                                                title = currentTab?.title?.ifBlank { url } ?: url
-                                            )
-                                        )
+                                        bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
                                         showToast("Added to bookmarks")
                                     }
                                 }
@@ -1377,17 +1316,14 @@ fun GreyBrowser() {
                         }
                         DropdownMenuItem(
                             text = { Text("Bookmarks", color = WHITE) },
-                            onClick = {
-                                showMenu = false
-                                showBookmarks = true
-                            }
+                            onClick = { showMenu = false; showBookmarks = true }
                         )
                     }
                 }
             }
         }
 
-        // ── Content area (fills remaining space) ─────────────────────
+        // ── Content area ─────────────────────────────────────────────
         Box(Modifier.weight(1f).fillMaxWidth()) {
             ContentLayer()
         }
@@ -1416,9 +1352,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
 
 
 // ═══════════════════════════════════════════════════════════════════
