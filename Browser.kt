@@ -408,7 +408,7 @@ fun resolveUrl(input: String): String {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v8] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -452,9 +452,6 @@ fun GreyBrowser() {
             loadUrl("about:blank")
         }
     }
-
-    // ── Stable WebView reference for the single AndroidView ─────────
-    var displayedWebView by remember { mutableStateOf(baseWebView) }
 
     // ── Load saved tabs ──────────────────────────────────────────────
     val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
@@ -524,10 +521,9 @@ fun GreyBrowser() {
 
 
 
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v5] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v6] ===
+// ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -615,6 +611,18 @@ fun GreyBrowser() {
 
     // ── Create tabs ─────────────────────────────────────────────────
     fun createForegroundTab(url: String) {
+        // Check for duplicate — if URL already open, switch to it
+        val cleanUrl = url.substringBefore("#")
+        val existingIndex = tabs.indexOfFirst {
+            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
+        }
+        if (existingIndex >= 0) {
+            currentTabIndex = existingIndex
+            highlightedTabIndex = existingIndex
+            manageTabLifecycle(currentTabIndex)
+            return
+        }
+
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -630,6 +638,13 @@ fun GreyBrowser() {
     }
 
     fun createBackgroundTab(url: String) {
+        // Check for duplicate
+        val cleanUrl = url.substringBefore("#")
+        val existingIndex = tabs.indexOfFirst {
+            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
+        }
+        if (existingIndex >= 0) return
+
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -731,9 +746,12 @@ fun GreyBrowser() {
 
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v12] ===
-// ═══════════════════════════════════════════════════════════════════
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v13] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
         when {
@@ -759,28 +777,17 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Update displayed WebView when tab changes ───────────────────
-    LaunchedEffect(currentTabIndex) {
-        displayedWebView = if (currentTabIndex == -1) {
-            baseWebView
-        } else {
-            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-        }
-    }
-
     @Composable
     fun ContentLayer() {
         Box(Modifier.fillMaxSize().background(BG)) {
-            // ONE AndroidView — always present, never leaves composition
-            key(displayedWebView) {
-                AndroidView(
-                    factory = { displayedWebView },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // Grey overlay on homepage
             if (currentTabIndex == -1) {
+                // ── Neutral ground: base WebView + Grey overlay ─────
+                key(baseWebView) {
+                    AndroidView(
+                        factory = { baseWebView },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -790,6 +797,15 @@ fun GreyBrowser() {
                         color = WHITE.copy(alpha = 0.15f),
                         fontSize = 48.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                // ── Real tab content ─────────────────────────────────
+                val wv = tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+                key(currentTabIndex) {
+                    AndroidView(
+                        factory = { wv },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
@@ -804,7 +820,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v15] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v16] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1178,7 +1194,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Main layout — Simple Column (like the original working code) ─
+    // ── Main layout — Simple Column ─────────────────────────────────
     Column(
         Modifier.fillMaxSize().systemBarsPadding().background(BG)
     ) {
@@ -1255,7 +1271,26 @@ fun GreyBrowser() {
                             if (input.isNotBlank()) {
                                 focusManager.clearFocus()
                                 val uri = resolveUrl(input)
-                                createForegroundTab(uri)
+                                if (currentTabIndex == -1) {
+                                    // Homepage: create a new tab (dedup built in)
+                                    createForegroundTab(uri)
+                                } else {
+                                    // Real tab: check if URL already open
+                                    val cleanUri = uri.substringBefore("#")
+                                    val existingIndex = tabs.indexOfFirst {
+                                        it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                                    }
+                                    if (existingIndex >= 0 && existingIndex != currentTabIndex) {
+                                        // Switch to existing tab
+                                        currentTabIndex = existingIndex
+                                    } else if (existingIndex == currentTabIndex) {
+                                        // Already on this tab, reload
+                                        currentTab?.webView?.reload()
+                                    } else {
+                                        // Navigate in current tab
+                                        currentTab?.webView?.loadUrl(uri)
+                                    }
+                                }
                             }
                         }
                     ),
@@ -1328,7 +1363,7 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Content area (fills remaining space) ─────────────────────
+        // ── Content area (fills remaining space below top bar) ───────
         Box(Modifier.weight(1f).fillMaxWidth()) {
             ContentLayer()
         }
@@ -1357,10 +1392,8 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
-    
+
+
 
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
