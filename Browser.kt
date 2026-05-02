@@ -53,9 +53,8 @@
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -73,6 +72,11 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -144,8 +148,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
-
 
 
 
@@ -704,9 +706,8 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED] ===
+// === PART 7/10 — BackHandler, WebViewBox Composable [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -758,12 +759,10 @@ fun GreyBrowser() {
             val tab = tabs.getOrNull(currentTabIndex)
             val wv = tab?.webView
             if (wv != null) {
-                key(currentTabIndex) {
-                    AndroidView(
-                        factory = { wv },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                AndroidView(
+                    factory = { wv },
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
                 Box(
                     Modifier.fillMaxSize().background(BG),
@@ -1545,11 +1544,8 @@ fun BookmarksUI(
 
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 10/10 — Helper Composables (Chips, ContextMenuItem) ===
+// === PART 10/10 — Helper Composables (Chips) [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1602,15 +1598,28 @@ fun SidebarGroupChip(
     isPinned: Boolean
 ) {
     LaunchedEffect(domain) { onAppear() }
+
+    // ── Blink animation ──────────────────────────────────────────
+    val blinkAlpha by rememberInfiniteTransition().animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
+
+    val borderColor = when {
+        isBlinking -> WHITE.copy(alpha = blinkAlpha)
+        isSelected -> WHITE
+        else -> BORDER_SUBTLE
+    }
+
     val bg = if (isSelected) WHITE else Color.Transparent
     Surface(
         Modifier.padding(vertical = 4.dp).width(52.dp)
             .clickable { onClick() }
-            .border(
-                0.5.dp,
-                if (isSelected) WHITE else BORDER_SUBTLE,
-                RectangleShape
-            ),
+            .border(0.5.dp, borderColor, RectangleShape),
         color = bg
     ) {
         Box(Modifier.padding(6.dp)) {
@@ -1665,5 +1674,4 @@ fun SidebarGroupChip(
 }
 
 // END OF PART 10/10
-// END OF FILE - Grey Browser V4.0
-// ═══════════════════════════════════════════════════════════════════
+
