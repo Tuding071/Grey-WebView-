@@ -1356,7 +1356,8 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Toast ────────────────────────────────────────────────────────    if (showToast) {
+    // ── Toast ────────────────────────────────────────────────────────
+    if (showToast) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.BottomCenter
@@ -1378,8 +1379,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
-
 
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
