@@ -405,8 +405,10 @@ fun resolveUrl(input: String): String {
 
 // END OF PART 4/10
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v5] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -434,6 +436,14 @@ fun GreyBrowser() {
     val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
     val tabs = remember {
         mutableStateListOf<TabState>().apply {
+            // Index 0: permanent hidden homepage tab
+            add(TabState().apply {
+                this.url = "about:blank"
+                this.title = "Home"
+                isBlankTab = true
+                isDiscarded = false
+            })
+            // Restore saved tabs after the homepage tab
             for ((url, title) in savedTabs) {
                 add(TabState().apply {
                     this.url = url; this.title = title; isBlankTab = false
@@ -443,12 +453,13 @@ fun GreyBrowser() {
         }
     }
 
-    // currentTabIndex = -1 means homepage (no tab)
-    var currentTabIndex by remember { mutableIntStateOf(-1) }
+    // currentTabIndex = 0 is homepage
+    var currentTabIndex by remember { mutableIntStateOf(0) }
+    // highlightedTabIndex = -1 means no real tab yet
     var highlightedTabIndex by remember {
         mutableIntStateOf(
             tabs.indexOfFirst { it.url.substringBefore("#") == savedLastActiveUrl.substringBefore("#") }
-                .let { if (it >= 0) it else -1 }
+                .let { if (it > 0) it else -1 }  // never highlight index 0 (homepage)
         )
     }
     var lastActiveUrl by remember { mutableStateOf(savedLastActiveUrl) }
@@ -472,16 +483,17 @@ fun GreyBrowser() {
     var confirmTitle by remember { mutableStateOf("") }
     var confirmMessage by remember { mutableStateOf("") }
 
+    // ── Save tabs (exclude homepage tab at index 0) ─────────────────
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
-        saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+        saveTabsDataNow(context, tabs.drop(1), pinnedDomains, lastActiveUrl)
     }
     LaunchedEffect(tabs.map { "${it.url}|${it.title}" }.joinToString()) {
-        saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+        saveTabsDataNow(context, tabs.drop(1), pinnedDomains, lastActiveUrl)
     }
     LaunchedEffect(bookmarks.toList()) { saveBookmarks(context, bookmarks) }
 
     LaunchedEffect(currentTabIndex) {
-        if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+        if (currentTabIndex > 0 && currentTabIndex < tabs.size) {
             lastActiveUrl = tabs[currentTabIndex].url
             highlightedTabIndex = currentTabIndex
         }
@@ -502,7 +514,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v3] ===
+    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v4] ===
     // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -553,10 +565,9 @@ fun GreyBrowser() {
                 tabState.progress = 100
                 tabState.url = url
                 tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") {
-                    tabState.isBlankTab = false
+                if (url != "about:blank" && !tabState.isBlankTab) {
                     lastActiveUrl = url
-                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                    if (currentTabIndex > 0 && currentTabIndex < tabs.size) {
                         highlightedTabIndex = currentTabIndex
                     }
                 }
@@ -568,6 +579,7 @@ fun GreyBrowser() {
     fun manageTabLifecycle(activeIndex: Int) {
         if (activeIndex < 0 || activeIndex >= tabs.size) return
         val activeTab = tabs[activeIndex]
+        // Never discard the homepage tab (index 0)
         if (activeTab.webView == null && activeTab.isDiscarded) {
             activeTab.webView = createWebView(activeTab.url)
             activeTab.isDiscarded = false
@@ -575,8 +587,9 @@ fun GreyBrowser() {
             activeTab.lastUpdated = System.currentTimeMillis()
         }
 
+        // Only count real tabs (index > 0) for warm limit
         val warmTabs = tabs.filterIndexed { i, t ->
-            i != activeIndex && !t.isDiscarded && !t.isBlankTab && t.webView != null
+            i > 0 && i != activeIndex && !t.isDiscarded && t.webView != null
         }
         if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
             val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
@@ -601,6 +614,7 @@ fun GreyBrowser() {
             setupDelegates(this)
         })
         currentTabIndex = tabs.lastIndex
+        highlightedTabIndex = currentTabIndex
         manageTabLifecycle(currentTabIndex)
     }
 
@@ -619,7 +633,8 @@ fun GreyBrowser() {
 
     // ── Delete with undo ────────────────────────────────────────────
     fun requestDeleteTab(index: Int) {
-        if (index >= 0 && index < tabs.size) {
+        // Never delete the homepage tab (index 0)
+        if (index > 0 && index < tabs.size) {
             pendingDeletions[index] = System.currentTimeMillis()
         }
     }
@@ -670,18 +685,19 @@ fun GreyBrowser() {
                 pendingDeletions.clear()
                 pendingDeletions.putAll(updated)
 
-                if (tabs.isEmpty()) {
-                    currentTabIndex = -1
+                // If no real tabs left, go to homepage
+                if (tabs.size <= 1) {
+                    currentTabIndex = 0
                     selectedDomain = ""
                 } else if (currentTabIndex > index) {
                     currentTabIndex--
-                } else if (currentTabIndex == index && tabs.isNotEmpty()) {
+                } else if (currentTabIndex == index && tabs.size > 1) {
                     currentTabIndex = minOf(currentTabIndex, tabs.lastIndex)
                 }
                 if (highlightedTabIndex == index) highlightedTabIndex = -1
                 else if (highlightedTabIndex > index) highlightedTabIndex--
                 if (selectedDomain.isNotBlank()) {
-                    val dg = tabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
+                    val dg = tabs.filter { it.isBlankTab.not() }.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
                     if (!dg.containsKey(selectedDomain)) selectedDomain = ""
                 }
             }
@@ -700,6 +716,17 @@ fun GreyBrowser() {
         }
     }
 
+    // ── Ensure homepage tab always has a WebView ────────────────────
+    LaunchedEffect(Unit) {
+        val homeTab = tabs.getOrNull(0)
+        if (homeTab != null && homeTab.webView == null) {
+            homeTab.webView = createWebView("about:blank")
+            homeTab.isDiscarded = false
+            setupDelegates(homeTab)
+            homeTab.lastUpdated = System.currentTimeMillis()
+        }
+    }
+
     // END OF PART 6/10
 
 
@@ -708,7 +735,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v8] ===
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v9] ===
     // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -718,18 +745,23 @@ fun GreyBrowser() {
             showBookmarks -> showBookmarks = false
             showMenu -> showMenu = false
             showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
-            // On homepage
-            currentTabIndex == -1 -> {
-                activity?.finish()
+            // On homepage tab
+            currentTabIndex == 0 -> {
+                // If there's a highlighted real tab, go back to it
+                if (highlightedTabIndex > 0 && highlightedTabIndex < tabs.size) {
+                    currentTabIndex = highlightedTabIndex
+                } else {
+                    activity?.finish()
+                }
             }
             // On a real tab
-            currentTabIndex >= 0 -> {
+            currentTabIndex > 0 -> {
                 val tab = tabs.getOrNull(currentTabIndex)
                 if (tab?.webView?.canGoBack() == true) {
                     tab.webView?.goBack()
                 } else {
                     // Go to homepage
-                    currentTabIndex = -1
+                    currentTabIndex = 0
                 }
             }
         }
@@ -737,9 +769,20 @@ fun GreyBrowser() {
 
     @Composable
     fun ContentLayer() {
+        val tab = currentTab
+        val wv = tab?.webView
+
         Box(Modifier.fillMaxSize().background(BG)) {
-            if (currentTabIndex == -1) {
-                // ── Homepage ─────────────────────────────────────────
+            // WebView always rendered (homepage tab has a WebView with about:blank)
+            if (wv != null) {
+                AndroidView(
+                    factory = { wv },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Homepage "Grey" overlay when on homepage tab
+            if (tab?.isBlankTab == true) {
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -750,23 +793,6 @@ fun GreyBrowser() {
                         fontSize = 48.sp,
                         fontWeight = FontWeight.Bold
                     )
-                }
-            } else {
-                // ── Tab content ──────────────────────────────────────
-                val tab = tabs.getOrNull(currentTabIndex)
-                val wv = tab?.webView
-                if (wv != null) {
-                    AndroidView(
-                        factory = { wv },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = WHITE)
-                    }
                 }
             }
         }
@@ -780,13 +806,13 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v10] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v11] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
             TextFieldValue(
-                if (currentTabIndex == -1) ""
+                if (currentTab?.isBlankTab == true) ""
                 else currentTab?.url?.let { if (it == "about:blank") "" else it } ?: ""
             )
         )
@@ -797,7 +823,7 @@ fun GreyBrowser() {
     LaunchedEffect(currentTabIndex, currentTab?.url) {
         if (!isUrlFocused) {
             urlInput = TextFieldValue(
-                if (currentTabIndex == -1) ""
+                if (currentTab?.isBlankTab == true) ""
                 else currentTab?.url?.let { if (it == "about:blank") "" else it } ?: ""
             )
         }
@@ -842,9 +868,11 @@ fun GreyBrowser() {
         )
     }
 
-    // ── Tab Manager ─────────────────────────────────────────────────
+    // ── Tab Manager (excludes homepage tab at index 0) ──────────────
     if (showTabManager) {
-        val domainGroups = tabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
+        // Real tabs only (exclude index 0 homepage)
+        val realTabs = tabs.filterIndexed { i, _ -> i > 0 }
+        val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
         val sortedDomains = domainGroups.keys.sortedWith(
             compareByDescending<String> { pinnedDomains.contains(it) }
                 .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
@@ -852,7 +880,7 @@ fun GreyBrowser() {
         val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
         val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
         val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
-        val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+        val highlightDomain = if (highlightedTabIndex > 0 && highlightedTabIndex < tabs.size) {
             getDomainName(tabs[highlightedTabIndex].url)
         } else ""
 
@@ -879,9 +907,9 @@ fun GreyBrowser() {
                         }
                         Spacer(Modifier.width(4.dp))
                         Text("Tabs", color = WHITE, fontSize = 18.sp)
-                        if (tabs.isNotEmpty()) {
+                        if (realTabs.isNotEmpty()) {
                             Spacer(Modifier.width(8.dp))
-                            Text("(${tabs.size})", color = MUTED, fontSize = 14.sp)
+                            Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
                         }
                     }
 
@@ -921,7 +949,7 @@ fun GreyBrowser() {
                             item {
                                 AllGroupChip(
                                     isSelected = selectedDomain.isBlank(),
-                                    tabCount = tabs.size,
+                                    tabCount = realTabs.size,
                                     onClick = { selectedDomain = "" }
                                 )
                             }
@@ -954,17 +982,17 @@ fun GreyBrowser() {
                             modifier = Modifier.fillMaxHeight().width(1.dp)
                         )
 
-                        // ── Tab list ─────────────────────────────────
-                        val tabsToShow = if (selectedDomain.isBlank()) tabs.toList()
+                        // ── Tab list (real tabs only) ────────────────
+                        val tabsToShow = if (selectedDomain.isBlank()) realTabs
                         else domainGroups[selectedDomain] ?: emptyList()
                         val tabListState = rememberLazyListState()
-                        val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
+                        val scrollTarget = if (highlightedTabIndex > 0) tabs.getOrNull(highlightedTabIndex) else null
                         LaunchedEffect(selectedDomain) {
                             val idx = tabsToShow.indexOf(scrollTarget)
                             if (idx >= 0) tabListState.scrollToItem(idx)
                         }
 
-                        if (tabs.isEmpty()) {
+                        if (realTabs.isEmpty()) {
                             Box(
                                 Modifier.weight(1f).fillMaxHeight(),
                                 contentAlignment = Alignment.Center
@@ -1075,7 +1103,7 @@ fun GreyBrowser() {
                     ) {
                         OutlinedButton(
                             onClick = {
-                                currentTabIndex = -1
+                                currentTabIndex = 0
                                 showTabManager = false
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1125,13 +1153,13 @@ fun GreyBrowser() {
                                                 if (idx >= 0) pendingDeletions.remove(idx)
                                                 tab.webView?.destroy()
                                             }
-                                            tabs.removeAll(toRemove)
-                                            if (tabs.isEmpty()) {
-                                                currentTabIndex = -1
+                                            tabs.removeAll(toRemove.toSet())
+                                            if (tabs.size <= 1) {
+                                                currentTabIndex = 0
                                                 highlightedTabIndex = -1
                                                 selectedDomain = ""
                                             } else {
-                                                currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
+                                                currentTabIndex = currentTabIndex.coerceIn(1, tabs.lastIndex)
                                                 highlightedTabIndex = currentTabIndex
                                                 selectedDomain = ""
                                             }
@@ -1194,14 +1222,14 @@ fun GreyBrowser() {
                 Spacer(Modifier.width(4.dp))
 
                 // URL field
-                val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
+                val isLoading = currentTabIndex > 0 && (currentTab?.progress ?: 100) in 1..99
                 OutlinedTextField(
                     value = urlInput,
                     onValueChange = { urlInput = it },
                     singleLine = true,
                     placeholder = {
                         Text(
-                            if (currentTabIndex == -1) "Search or enter URL"
+                            if (currentTab?.isBlankTab == true) "Search or enter URL"
                             else currentTab?.url?.take(50) ?: "",
                             color = WHITE.copy(alpha = 0.5f),
                             maxLines = 1,
@@ -1230,7 +1258,26 @@ fun GreyBrowser() {
                             if (input.isNotBlank()) {
                                 focusManager.clearFocus()
                                 val uri = resolveUrl(input)
-                                createForegroundTab(uri)
+                                if (currentTab?.isBlankTab == true) {
+                                    // Navigate the homepage tab — it becomes a real tab
+                                    currentTab?.webView?.loadUrl(uri)
+                                    currentTab?.isBlankTab = false
+                                    highlightedTabIndex = 0
+                                    // Homepage tab is now a real tab; create a fresh homepage
+                                    tabs.add(0, TabState().apply {
+                                        this.url = "about:blank"
+                                        this.title = "Home"
+                                        isBlankTab = true
+                                        isDiscarded = false
+                                        webView = createWebView("about:blank")
+                                        setupDelegates(this)
+                                        lastUpdated = System.currentTimeMillis()
+                                    })
+                                    currentTabIndex = 1  // The old homepage is now at index 1
+                                    highlightedTabIndex = 1
+                                } else {
+                                    createForegroundTab(uri)
+                                }
                             }
                         }
                     ),
@@ -1261,7 +1308,7 @@ fun GreyBrowser() {
 
                 // New Tab button — goes to homepage
                 Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ currentTabIndex = -1 }) {
+                    IconButton({ currentTabIndex = 0 }) {
                         Icon(Icons.Default.Add, "New Tab", tint = WHITE)
                     }
                 }
@@ -1280,7 +1327,7 @@ fun GreyBrowser() {
                         containerColor = SURFACE,
                         shape = RectangleShape
                     ) {
-                        if (currentTabIndex >= 0) {
+                        if (currentTabIndex > 0 && currentTab?.isBlankTab != true) {
                             DropdownMenuItem(
                                 text = { Text("Add to Bookmark", color = WHITE) },
                                 onClick = {
@@ -1309,8 +1356,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Toast ────────────────────────────────────────────────────────
-    if (showToast) {
+    // ── Toast ────────────────────────────────────────────────────────    if (showToast) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.BottomCenter
@@ -1332,6 +1378,7 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+
 
 
 // ═══════════════════════════════════════════════════════════════════
