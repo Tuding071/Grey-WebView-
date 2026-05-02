@@ -781,8 +781,8 @@ fun GreyBrowser() {
     
     
     
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v4] ===
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1065,7 +1065,7 @@ fun GreyBrowser() {
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Text(
-                                                            domain = tabDomain,
+                                                            text = tabDomain.take(1).uppercase(),
                                                             color = WHITE,
                                                             fontSize = 8.sp,
                                                             fontWeight = FontWeight.Bold
@@ -1415,6 +1415,7 @@ fun GreyBrowser() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1703,5 +1704,4 @@ fun SidebarGroupChip(
 }
 
 // END OF PART 10/10
-
 
