@@ -510,214 +510,219 @@ fun GreyBrowser() {
 
 
 
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v3] ===
+// ═══════════════════════════════════════════════════════════════════
 
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v2] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ── WebView creation helper ──────────────────────────────────────
+fun createWebView(url: String): WebView {
+    return WebView(context).apply {
+        setBackgroundColor(android.graphics.Color.parseColor("#121212"))
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        with(settings) {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            builtInZoomControls = true
+            displayZoomControls = false
+            setSupportZoom(true)
+        }
+        loadUrl(url)
+    }
+}
 
-    // ── WebView creation helper ──────────────────────────────────────
-    fun createWebView(url: String): WebView {
-        return WebView(context).apply {
-            setBackgroundColor(android.graphics.Color.parseColor("#121212"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            with(settings) {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                loadWithOverviewMode = true
-                useWideViewPort = true
-                builtInZoomControls = true
-                displayZoomControls = false
-                setSupportZoom(true)
+// ── Attach delegates to a tab's WebView ─────────────────────────
+fun setupDelegates(tabState: TabState) {
+    val wv = tabState.webView ?: return
+    wv.webChromeClient = object : WebChromeClient() {
+        override fun onProgressChanged(view: WebView, newProgress: Int) {
+            tabState.progress = newProgress
+            tabState.lastUpdated = System.currentTimeMillis()
+        }
+        override fun onReceivedTitle(view: WebView, title: String?) {
+            if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
+                tabState.title = title
             }
-            loadUrl(url)
         }
     }
-
-    // ── Attach delegates to a tab's WebView ─────────────────────────
-    fun setupDelegates(tabState: TabState) {
-        val wv = tabState.webView ?: return
-        wv.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                tabState.progress = newProgress
-                tabState.lastUpdated = System.currentTimeMillis()
+    wv.webViewClient = object : WebViewClient() {
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            tabState.url = url
+            tabState.progress = 5
+            tabState.lastUpdated = System.currentTimeMillis()
+            if (url != "about:blank") {
+                tabState.isBlankTab = false
             }
-            override fun onReceivedTitle(view: WebView, title: String?) {
-                if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
-                    tabState.title = title
+        }
+        override fun onPageFinished(view: WebView, url: String) {
+            tabState.progress = 100
+            tabState.url = url
+            tabState.lastUpdated = System.currentTimeMillis()
+            if (url != "about:blank") {
+                tabState.isBlankTab = false
+                lastActiveUrl = url
+                if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                    highlightedTabIndex = currentTabIndex
                 }
             }
         }
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                tabState.url = url
-                tabState.progress = 5
-                tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") {
-                    tabState.isBlankTab = false
-                }
-            }
-            override fun onPageFinished(view: WebView, url: String) {
-                tabState.progress = 100
-                tabState.url = url
-                tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") {
-                    tabState.isBlankTab = false
-                    lastActiveUrl = url
-                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                        highlightedTabIndex = currentTabIndex
-                    }
-                }
-            }
-        }
+    }
+}
+
+// ── Tab lifecycle management ────────────────────────────────────
+fun manageTabLifecycle(activeIndex: Int) {
+    val activeTab = tabs.getOrNull(activeIndex) ?: return
+    if (activeTab.webView == null && activeTab.isDiscarded) {
+        activeTab.webView = createWebView(activeTab.url)
+        activeTab.isDiscarded = false
+        setupDelegates(activeTab)
+        activeTab.lastUpdated = System.currentTimeMillis()
     }
 
-    // ── Tab lifecycle management ────────────────────────────────────
-    fun manageTabLifecycle(activeIndex: Int) {
-        val activeTab = tabs.getOrNull(activeIndex) ?: return
-        if (activeTab.webView == null && activeTab.isDiscarded) {
-            activeTab.webView = createWebView(activeTab.url)
-            activeTab.isDiscarded = false
-            setupDelegates(activeTab)
-            activeTab.lastUpdated = System.currentTimeMillis()
-        }
-
-        val warmTabs = tabs.filterIndexed { i, t ->
-            i != activeIndex && !t.isDiscarded && !t.isBlankTab && t.webView != null
-        }
-        if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
-            val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
-            for (tab in toDiscard) {
-                tab.webView?.destroy()
-                tab.webView = null
-                tab.isDiscarded = true
-                tab.progress = 100
-            }
+    val warmTabs = tabs.filterIndexed { i, t ->
+        i != activeIndex && !t.isDiscarded && !t.isBlankTab && t.webView != null
+    }
+    if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
+        val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
+        for (tab in toDiscard) {
+            tab.webView?.destroy()
+            tab.webView = null
+            tab.isDiscarded = true
+            tab.progress = 100
         }
     }
+}
 
-    // ── Create tabs ─────────────────────────────────────────────────
-    fun createForegroundTab(url: String, isBlank: Boolean = false) {
-        val wv = createWebView(url)
-        tabs.add(TabState().apply {
-            webView = wv
-            this.url = url
-            this.title = if (isBlank) "Home" else url
-            isBlankTab = isBlank
-            isDiscarded = false
-            lastUpdated = System.currentTimeMillis()
-            setupDelegates(this)
-        })
-        currentTabIndex = tabs.lastIndex
-        manageTabLifecycle(currentTabIndex)
-    }
+// ── Create tabs ─────────────────────────────────────────────────
+fun createForegroundTab(url: String, isBlank: Boolean = false) {
+    val wv = createWebView(url)
+    tabs.add(TabState().apply {
+        webView = wv
+        this.url = url
+        this.title = if (isBlank) "Home" else url
+        isBlankTab = isBlank
+        isDiscarded = false
+        lastUpdated = System.currentTimeMillis()
+        setupDelegates(this)
+    })
+    currentTabIndex = tabs.lastIndex
+    manageTabLifecycle(currentTabIndex)
+}
 
-    fun createBackgroundTab(url: String) {
-        val wv = createWebView(url)
-        tabs.add(TabState().apply {
-            webView = wv
-            this.url = url
-            isBlankTab = false
-            isDiscarded = false
-            lastUpdated = System.currentTimeMillis()
-            setupDelegates(this)
-        })
-        manageTabLifecycle(currentTabIndex)
-    }
+fun createBackgroundTab(url: String) {
+    val wv = createWebView(url)
+    tabs.add(TabState().apply {
+        webView = wv
+        this.url = url
+        isBlankTab = false
+        isDiscarded = false
+        lastUpdated = System.currentTimeMillis()
+        setupDelegates(this)
+    })
+    manageTabLifecycle(currentTabIndex)
+}
 
-    // ── Create a new homepage tab ───────────────────────────────────
-    fun newHomeTab() {
+// ── Create/switch to home tab ────────────────────────────────────
+// Reuses the existing blank tab if one exists — never duplicates it
+fun newHomeTab() {
+    val existingHomeIndex = tabs.indexOfFirst { it.isBlankTab }
+    if (existingHomeIndex >= 0) {
+        // Just switch to the existing home tab
+        currentTabIndex = existingHomeIndex
+    } else {
+        // No blank tab exists, create a fresh one
         createForegroundTab("about:blank", isBlank = true)
     }
+}
 
-    // ── Delete with undo ────────────────────────────────────────────
-    fun requestDeleteTab(index: Int) {
-        if (index >= 0 && index < tabs.size) {
-            pendingDeletions[index] = System.currentTimeMillis()
+// ── Delete with undo ────────────────────────────────────────────
+fun requestDeleteTab(index: Int) {
+    if (index >= 0 && index < tabs.size) {
+        pendingDeletions[index] = System.currentTimeMillis()
+    }
+}
+
+fun undoDeleteTab(index: Int) {
+    pendingDeletions.remove(index)
+}
+
+// ── Favicon loading helpers ─────────────────────────────────────
+fun loadFavicon(domain: String) {
+    if (domain.isNotBlank() && !faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
+        faviconLoading[domain] = true
+        scope.launch {
+            faviconBitmaps[domain] = FaviconCache.getFaviconBitmap(context, domain)
+                ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+            faviconLoading[domain] = false
         }
     }
+}
 
-    fun undoDeleteTab(index: Int) {
-        pendingDeletions.remove(index)
+fun loadTabFavicon(domain: String) {
+    if (domain.isNotBlank() && !tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
+        tabFaviconLoading[domain] = true
+        scope.launch {
+            tabFavicons[domain] = FaviconCache.getFaviconBitmap(context, domain)
+                ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+            tabFaviconLoading[domain] = false
+        }
     }
+}
 
-    // ── Favicon loading helpers ─────────────────────────────────────
-    fun loadFavicon(domain: String) {
-        if (domain.isNotBlank() && !faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
-            faviconLoading[domain] = true
-            scope.launch {
-                faviconBitmaps[domain] = FaviconCache.getFaviconBitmap(context, domain)
-                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                faviconLoading[domain] = false
+// ── Process pending deletions (undo timer) ──────────────────────
+LaunchedEffect(pendingDeletions.toMap()) {
+    while (pendingDeletions.isNotEmpty()) {
+        delay(1000)
+        val now = System.currentTimeMillis()
+        val toRemove = pendingDeletions.filter { now - it.value >= UNDO_DELAY_MS }.keys.toList()
+        for (index in toRemove.sortedDescending()) {
+            pendingDeletions.remove(index)
+            val tab = tabs.getOrNull(index) ?: continue
+            tab.webView?.destroy()
+            tabs.removeAt(index)
+
+            val updated = mutableMapOf<Int, Long>()
+            for ((oldIdx, time) in pendingDeletions) {
+                updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
+            }
+            pendingDeletions.clear()
+            pendingDeletions.putAll(updated)
+
+            if (tabs.isEmpty()) {
+                newHomeTab()
+                selectedDomain = ""
+            } else if (currentTabIndex > index) {
+                currentTabIndex--
+            } else if (currentTabIndex == index && tabs.isNotEmpty()) {
+                currentTabIndex = minOf(currentTabIndex, tabs.lastIndex)
+            }
+            if (highlightedTabIndex == index) highlightedTabIndex = -1
+            else if (highlightedTabIndex > index) highlightedTabIndex--
+            if (selectedDomain.isNotBlank()) {
+                val dg = tabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
+                if (!dg.containsKey(selectedDomain)) selectedDomain = ""
             }
         }
     }
+}
 
-    fun loadTabFavicon(domain: String) {
-        if (domain.isNotBlank() && !tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
-            tabFaviconLoading[domain] = true
-            scope.launch {
-                tabFavicons[domain] = FaviconCache.getFaviconBitmap(context, domain)
-                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                tabFaviconLoading[domain] = false
-            }
+// ── Pause WebViews when Tab Manager is open ─────────────────────
+LaunchedEffect(showTabManager, currentTabIndex) {
+    if (showTabManager) {
+        tabs.forEach { it.webView?.onPause() }
+    } else {
+        if (currentTabIndex >= 0) {
+            tabs.getOrNull(currentTabIndex)?.webView?.onResume()
+            manageTabLifecycle(currentTabIndex)
         }
     }
+}
 
-    // ── Process pending deletions (undo timer) ──────────────────────
-    LaunchedEffect(pendingDeletions.toMap()) {
-        while (pendingDeletions.isNotEmpty()) {
-            delay(1000)
-            val now = System.currentTimeMillis()
-            val toRemove = pendingDeletions.filter { now - it.value >= UNDO_DELAY_MS }.keys.toList()
-            for (index in toRemove.sortedDescending()) {
-                pendingDeletions.remove(index)
-                val tab = tabs.getOrNull(index) ?: continue
-                tab.webView?.destroy()
-                tabs.removeAt(index)
-
-                val updated = mutableMapOf<Int, Long>()
-                for ((oldIdx, time) in pendingDeletions) {
-                    updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
-                }
-                pendingDeletions.clear()
-                pendingDeletions.putAll(updated)
-
-                if (tabs.isEmpty()) {
-                    newHomeTab()
-                    selectedDomain = ""
-                } else if (currentTabIndex > index) {
-                    currentTabIndex--
-                } else if (currentTabIndex == index && tabs.isNotEmpty()) {
-                    currentTabIndex = minOf(currentTabIndex, tabs.lastIndex)
-                }
-                if (highlightedTabIndex == index) highlightedTabIndex = -1
-                else if (highlightedTabIndex > index) highlightedTabIndex--
-                if (selectedDomain.isNotBlank()) {
-                    val dg = tabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
-                    if (!dg.containsKey(selectedDomain)) selectedDomain = ""
-                }
-            }
-        }
-    }
-
-    // ── Pause WebViews when Tab Manager is open ─────────────────────
-    LaunchedEffect(showTabManager, currentTabIndex) {
-        if (showTabManager) {
-            tabs.forEach { it.webView?.onPause() }
-        } else {
-            if (currentTabIndex >= 0) {
-                tabs.getOrNull(currentTabIndex)?.webView?.onResume()
-                manageTabLifecycle(currentTabIndex)
-            }
-        }
-    }
-
-    // END OF PART 6/10
-
-
+// END OF PART 6/10
 
 
 
