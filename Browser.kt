@@ -51,10 +51,8 @@
 //   Favicon size:       16dp (tab list), 20dp (bookmarks/history), 24dp (sidebar)
 // ═══════════════════════════════════════════════════════════════════
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -99,6 +97,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -148,7 +147,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -570,10 +568,9 @@ fun GreyBrowser() {
 
 
 
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v13] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v14] ===
+// ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -671,6 +668,29 @@ fun GreyBrowser() {
         }
     }
 
+    // ── Remove duplicate tab if exists, adjust indices ─────────────
+    fun removeDuplicateTab(url: String) {
+        val cleanUrl = url.substringBefore("#")
+        val oldIndex = tabs.indexOfFirst {
+            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
+        }
+        if (oldIndex >= 0) {
+            tabs[oldIndex].webView?.destroy()
+            tabs.removeAt(oldIndex)
+            // Adjust indices
+            if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
+            if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
+            // Adjust pending deletions
+            val updated = mutableMapOf<Int, Long>()
+            for ((idx, time) in pendingDeletions) {
+                if (idx > oldIndex) updated[idx - 1] = time
+                else if (idx < oldIndex) updated[idx] = time
+            }
+            pendingDeletions.clear()
+            pendingDeletions.putAll(updated)
+        }
+    }
+
     // ── Tab lifecycle management ────────────────────────────────────
     fun manageTabLifecycle(activeIndex: Int) {
         if (activeIndex < 0 || activeIndex >= tabs.size) return
@@ -698,6 +718,9 @@ fun GreyBrowser() {
 
     // ── Create tabs ─────────────────────────────────────────────────
     fun createForegroundTab(url: String) {
+        // Remove old duplicate if exists
+        removeDuplicateTab(url)
+
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -713,6 +736,9 @@ fun GreyBrowser() {
     }
 
     fun createBackgroundTab(url: String) {
+        // Remove old duplicate if exists
+        removeDuplicateTab(url)
+
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -818,7 +844,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v16] ===
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v17] ===
     // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -826,8 +852,10 @@ fun GreyBrowser() {
             // Close overlays first
             showTabManager -> showTabManager = false
             showBookmarks -> showBookmarks = false
+            showHistory -> showHistory = false
             showMenu -> showMenu = false
             showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
+            showLinkMenu -> { showLinkMenu = false; linkMenuUrl = null }
             // On homepage (neutral ground)
             currentTabIndex == -1 -> {
                 activity?.finish()
@@ -845,29 +873,47 @@ fun GreyBrowser() {
         }
     }
 
+    var isRefreshing by remember { mutableStateOf(false) }
+
     @Composable
     fun ContentLayer() {
         Box(Modifier.fillMaxSize().background(BG)) {
-            // ONE AndroidView — factory never changes, container always exists
-            AndroidView(
-                factory = { webViewContainer },
-                update = { container ->
-                    val target = if (currentTabIndex == -1) {
-                        baseWebView
-                    } else {
-                        tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+            // Pull-to-refresh wrapper
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    isRefreshing = true
+                    if (currentTabIndex >= 0) {
+                        tabs.getOrNull(currentTabIndex)?.webView?.reload()
                     }
-                    if (container.childCount == 0 || container.getChildAt(0) != target) {
-                        // Pause the old WebView if it exists
-                        val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
-                        old?.onPause()
-                        container.removeAllViews()
-                        container.addView(target)
-                        target.onResume()
+                    scope.launch {
+                        delay(1000)
+                        isRefreshing = false
                     }
                 },
                 modifier = Modifier.fillMaxSize()
-            )
+            ) {
+                // ONE AndroidView — factory never changes, container always exists
+                AndroidView(
+                    factory = { webViewContainer },
+                    update = { container ->
+                        val target = if (currentTabIndex == -1) {
+                            baseWebView
+                        } else {
+                            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+                        }
+                        if (container.childCount == 0 || container.getChildAt(0) != target) {
+                            // Pause the old WebView if it exists
+                            val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
+                            old?.onPause()
+                            container.removeAllViews()
+                            container.addView(target)
+                            target.onResume()
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             // Grey overlay only on homepage
             if (currentTabIndex == -1) {
@@ -889,11 +935,13 @@ fun GreyBrowser() {
     // END OF PART 7/10
 
 
-    
-    
+
+
+
+
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v24] ===
-// ═══════════════════════════════════════════════════════════════════
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v25] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
@@ -1392,7 +1440,25 @@ fun GreyBrowser() {
                             if (input.isNotBlank()) {
                                 focusManager.clearFocus()
                                 val uri = resolveUrl(input)
-                                createForegroundTab(uri)
+                                if (currentTabIndex == -1) {
+                                    // Homepage: create a new tab (dedup built in)
+                                    createForegroundTab(uri)
+                                } else {
+                                    // Real tab: navigate in current tab
+                                    val cleanUri = uri.substringBefore("#")
+                                    // Check if URL already open in another tab
+                                    val existingIndex = tabs.indexOfFirst {
+                                        it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                                    }
+                                    if (existingIndex >= 0 && existingIndex != currentTabIndex) {
+                                        // Delete old duplicate, create fresh tab
+                                        removeDuplicateTab(uri)
+                                        createForegroundTab(uri)
+                                    } else {
+                                        // Navigate current tab
+                                        currentTab?.webView?.loadUrl(uri)
+                                    }
+                                }
                             }
                         }
                     ),
@@ -1498,7 +1564,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
     
     
     
