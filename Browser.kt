@@ -846,9 +846,8 @@ fun GreyBrowser() {
 
 
     
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v22] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v23] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -910,9 +909,8 @@ fun GreyBrowser() {
         )
     }
 
-    // ── Link Context Menu (centered, exact dropdown style) ──────────
+    // ── Link Context Menu (centered, exact DropdownMenuItem style) ──
     if (showLinkMenu && linkMenuUrl != null) {
-        val menuTextStyle = MaterialTheme.typography.bodyLarge
         Popup(
             alignment = Alignment.Center,
             onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
@@ -923,51 +921,27 @@ fun GreyBrowser() {
                     .width(240.dp)
                     .border(1.dp, WHITE, RectangleShape),
                 color = SURFACE,
-                shape = RectangleShape
+                shape = RectangleShape,
+                tonalElevation = 0.dp
             ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 8.dp)
-                ) {
-                    // New Tab
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                createForegroundTab(linkMenuUrl!!)
-                                showLinkMenu = false
-                                linkMenuUrl = null
-                            }
-                            .padding(horizontal = 12.dp)
-                            .heightIn(min = 48.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            "New Tab",
-                            style = menuTextStyle,
-                            color = WHITE
-                        )
-                    }
-
-                    // Copy Link
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
-                                showToast("Link copied")
-                                showLinkMenu = false
-                                linkMenuUrl = null
-                            }
-                            .padding(horizontal = 12.dp)
-                            .heightIn(min = 48.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            "Copy Link",
-                            style = menuTextStyle,
-                            color = WHITE
-                        )
-                    }
+                Column {
+                    DropdownMenuItem(
+                        text = { Text("New Tab", color = WHITE) },
+                        onClick = {
+                            createForegroundTab(linkMenuUrl!!)
+                            showLinkMenu = false
+                            linkMenuUrl = null
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Copy Link", color = WHITE) },
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
+                            showToast("Link copied")
+                            showLinkMenu = false
+                            linkMenuUrl = null
+                        }
+                    )
                 }
             }
         }
@@ -1464,7 +1438,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
     
     
 
