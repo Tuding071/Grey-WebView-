@@ -536,9 +536,9 @@ fun GreyBrowser() {
 
 
 
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v8] ===
+    
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v9] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -599,11 +599,10 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Long-press to detect links ──────────────────────────────
+        // ── Long-press to detect text links only ────────────────────
         wv.setOnLongClickListener {
             val result = wv.hitTestResult
-            if (result.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
-                result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+            if (result.type == WebView.HitTestResult.SRC_ANCHOR_TYPE) {
                 linkMenuUrl = result.extra
                 showLinkMenu = true
                 true
@@ -751,7 +750,7 @@ fun GreyBrowser() {
     }
 
     // END OF PART 6/10
-
+    
     
     
 
@@ -828,8 +827,11 @@ fun GreyBrowser() {
     // END OF PART 7/10
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v18] ===
+    
+    
+    
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v19] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -891,7 +893,7 @@ fun GreyBrowser() {
         )
     }
 
-    // ── Link Context Menu (centered) ────────────────────────────────
+    // ── Link Context Menu (centered, dropdown style) ────────────────
     if (showLinkMenu && linkMenuUrl != null) {
         Popup(
             alignment = Alignment.Center,
@@ -905,39 +907,36 @@ fun GreyBrowser() {
                 color = SURFACE,
                 shape = RectangleShape
             ) {
-                Column(
-                    modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column {
                     // New Tab
-                    OutlinedButton(
-                        onClick = {
-                            createForegroundTab(linkMenuUrl!!)
-                            showLinkMenu = false
-                            linkMenuUrl = null
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                createForegroundTab(linkMenuUrl!!)
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        Text("New Tab", color = WHITE, fontSize = 14.sp)
+                        Text("New Tab", color = WHITE, fontSize = 16.sp)
                     }
 
+                    HorizontalDivider(color = Color.DarkGray, thickness = 0.5.dp)
+
                     // Copy Link
-                    OutlinedButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
-                            showToast("Link copied")
-                            showLinkMenu = false
-                            linkMenuUrl = null
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
+                                showToast("Link copied")
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        Text("Copy Link", color = WHITE, fontSize = 14.sp)
+                        Text("Copy Link", color = WHITE, fontSize = 16.sp)
                     }
                 }
             }
@@ -1435,7 +1434,9 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
+    
+    
+    
 
 
 // ═══════════════════════════════════════════════════════════════════
