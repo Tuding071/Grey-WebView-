@@ -51,8 +51,9 @@
 //   Favicon size:       16dp (tab list), 20dp (bookmarks/history), 24dp (sidebar)
 // ═══════════════════════════════════════════════════════════════════
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v2] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -97,7 +98,6 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -147,6 +147,9 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -840,10 +843,8 @@ fun GreyBrowser() {
 
 
 
-
-
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v18] ===
+// ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v19] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -872,48 +873,29 @@ fun GreyBrowser() {
         }
     }
 
-    var isRefreshing by remember { mutableStateOf(false) }
-
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun ContentLayer() {
         Box(Modifier.fillMaxSize().background(BG)) {
-            // Pull-to-refresh wrapper
-            PullToRefreshBox(
-                isRefreshing = isRefreshing,
-                onRefresh = {
-                    isRefreshing = true
-                    if (currentTabIndex >= 0) {
-                        tabs.getOrNull(currentTabIndex)?.webView?.reload()
+            // ONE AndroidView — factory never changes, container always exists
+            AndroidView(
+                factory = { webViewContainer },
+                update = { container ->
+                    val target = if (currentTabIndex == -1) {
+                        baseWebView
+                    } else {
+                        tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
                     }
-                    scope.launch {
-                        delay(1000)
-                        isRefreshing = false
+                    if (container.childCount == 0 || container.getChildAt(0) != target) {
+                        // Pause the old WebView if it exists
+                        val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
+                        old?.onPause()
+                        container.removeAllViews()
+                        container.addView(target)
+                        target.onResume()
                     }
                 },
                 modifier = Modifier.fillMaxSize()
-            ) {
-                // ONE AndroidView — factory never changes, container always exists
-                AndroidView(
-                    factory = { webViewContainer },
-                    update = { container ->
-                        val target = if (currentTabIndex == -1) {
-                            baseWebView
-                        } else {
-                            tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-                        }
-                        if (container.childCount == 0 || container.getChildAt(0) != target) {
-                            // Pause the old WebView if it exists
-                            val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
-                            old?.onPause()
-                            container.removeAllViews()
-                            container.addView(target)
-                            target.onResume()
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            )
 
             // Grey overlay only on homepage
             if (currentTabIndex == -1) {
@@ -933,13 +915,14 @@ fun GreyBrowser() {
     }
 
     // END OF PART 7/10
-    
+
+
 
 
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v25] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v26] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1509,6 +1492,13 @@ fun GreyBrowser() {
                     ) {
                         if (currentTabIndex >= 0) {
                             DropdownMenuItem(
+                                text = { Text("Refresh", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    currentTab?.webView?.reload()
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Add to Bookmark", color = WHITE) },
                                 onClick = {
                                     showMenu = false
@@ -1563,7 +1553,7 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
+
     
     
     
