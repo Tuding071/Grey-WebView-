@@ -151,10 +151,8 @@ class MainActivity : ComponentActivity() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache ===
+// === PART 2/10 — Constants, FaviconCache [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
 private const val PREFS_NAME = "browser_tabs"
@@ -162,9 +160,11 @@ private const val KEY_TABS = "saved_tabs"
 private const val KEY_PINNED = "pinned_domains"
 private const val KEY_LAST_ACTIVE_URL = "last_active_url"
 private const val KEY_BOOKMARKS = "saved_bookmarks"
+private const val KEY_HISTORY = "saved_history"
 
 const val MAX_WARM_WEBVIEWS = 3
 const val UNDO_DELAY_MS = 3000L
+const val MAX_HISTORY_ITEMS = 500
 
 // ── Theme Colours ──────────────────────────────────────────────────
 private val BG            = Color(0xFF121212)
@@ -275,7 +275,7 @@ object FaviconCache {
 }
 
 // END OF PART 2/10
-
+	
 
 
 
@@ -1902,4 +1902,3 @@ fun HistoryUI(
 }
 
 // END OF PART 10/10
-
