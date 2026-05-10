@@ -536,8 +536,9 @@ fun GreyBrowser() {
 
 
 
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v11] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v12] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -598,12 +599,13 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Track touch coordinates for JS link detection ────────────
+        // ── Track touch coordinates (scaled for page content) ────────
         var lastTouchX = 0f
         var lastTouchY = 0f
         wv.setOnTouchListener { _, event ->
-            lastTouchX = event.x
-            lastTouchY = event.y
+            val scale = if (wv.scale > 0) wv.scale else 1f
+            lastTouchX = event.x / scale
+            lastTouchY = event.y / scale
             false
         }
 
@@ -768,9 +770,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 6/10
-    
-    
-    
     
 
 
