@@ -283,10 +283,8 @@ object FaviconCache {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v2] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -310,6 +308,7 @@ class TabState {
     var lastUpdated by mutableLongStateOf(System.currentTimeMillis())
     var isBlankTab by mutableStateOf(true)
     var isDiscarded by mutableStateOf(false)
+    var parentTabIndex by mutableIntStateOf(-1)  // -1 = created from homepage
 }
 
 fun saveTabsData(context: Context) {
@@ -407,6 +406,8 @@ fun loadHistory(context: Context): List<HistoryItem> {
 }
 
 // END OF PART 3/10
+
+
 
 
 
@@ -579,7 +580,7 @@ fun GreyBrowser() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v14] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v15] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -687,10 +688,14 @@ fun GreyBrowser() {
         if (oldIndex >= 0) {
             tabs[oldIndex].webView?.destroy()
             tabs.removeAt(oldIndex)
+            // Fix parent references
+            for (t in tabs) {
+                if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
+                else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
+            }
             // Adjust indices
             if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
             if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
-            // Adjust pending deletions
             val updated = mutableMapOf<Int, Long>()
             for ((idx, time) in pendingDeletions) {
                 if (idx > oldIndex) updated[idx - 1] = time
@@ -730,7 +735,8 @@ fun GreyBrowser() {
     fun createForegroundTab(url: String) {
         // Remove old duplicate if exists
         removeDuplicateTab(url)
-
+        // Capture parent before switching
+        val parentIdx = currentTabIndex
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -738,6 +744,7 @@ fun GreyBrowser() {
             isBlankTab = false
             isDiscarded = false
             lastUpdated = System.currentTimeMillis()
+            parentTabIndex = parentIdx
             setupDelegates(this)
         })
         currentTabIndex = tabs.lastIndex
@@ -748,7 +755,7 @@ fun GreyBrowser() {
     fun createBackgroundTab(url: String) {
         // Remove old duplicate if exists
         removeDuplicateTab(url)
-
+        val parentIdx = currentTabIndex
         val wv = createWebView(url)
         tabs.add(TabState().apply {
             webView = wv
@@ -756,6 +763,7 @@ fun GreyBrowser() {
             isBlankTab = false
             isDiscarded = false
             lastUpdated = System.currentTimeMillis()
+            parentTabIndex = parentIdx
             setupDelegates(this)
         })
         manageTabLifecycle(currentTabIndex)
@@ -806,6 +814,11 @@ fun GreyBrowser() {
                 val tab = tabs.getOrNull(index) ?: continue
                 tab.webView?.destroy()
                 tabs.removeAt(index)
+                // Fix parent references
+                for (t in tabs) {
+                    if (t.parentTabIndex == index) t.parentTabIndex = -1
+                    else if (t.parentTabIndex > index) t.parentTabIndex--
+                }
 
                 val updated = mutableMapOf<Int, Long>()
                 for ((oldIdx, time) in pendingDeletions) {
@@ -848,11 +861,25 @@ fun GreyBrowser() {
 
     // END OF PART 6/10
 
-    
-    
+
+
+
+
+
     // ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v20] ===
-// ═══════════════════════════════════════════════════════════════════
+    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v21] ===
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ── Helper: close a tab immediately and fix parent references ───
+    fun closeTabAndFixParents(index: Int) {
+        if (index < 0 || index >= tabs.size) return
+        tabs[index].webView?.destroy()
+        tabs.removeAt(index)
+        for (t in tabs) {
+            if (t.parentTabIndex == index) t.parentTabIndex = -1
+            else if (t.parentTabIndex > index) t.parentTabIndex--
+        }
+    }
 
     BackHandler {
         when {
@@ -871,10 +898,35 @@ fun GreyBrowser() {
             currentTabIndex >= 0 -> {
                 val tab = tabs.getOrNull(currentTabIndex)
                 if (tab?.webView?.canGoBack() == true) {
+                    // WebView has history → go back in page
                     tab.webView?.goBack()
                 } else {
-                    // Go to homepage
-                    currentTabIndex = -1
+                    // No WebView history → close tab and go to parent
+                    val parentIdx = tab?.parentTabIndex ?: -1
+                    val closingIdx = currentTabIndex
+                    // Adjust indices
+                    if (highlightedTabIndex == closingIdx) highlightedTabIndex = -1
+                    else if (highlightedTabIndex > closingIdx) highlightedTabIndex--
+                    // Remove from pending deletions
+                    pendingDeletions.remove(closingIdx)
+                    val updated = mutableMapOf<Int, Long>()
+                    for ((idx, time) in pendingDeletions) {
+                        updated[if (idx > closingIdx) idx - 1 else idx] = time
+                    }
+                    pendingDeletions.clear()
+                    pendingDeletions.putAll(updated)
+                    // Close the tab
+                    closeTabAndFixParents(closingIdx)
+                    // Navigate to parent or homepage
+                    if (parentIdx >= 0 && parentIdx < tabs.size) {
+                        currentTabIndex = parentIdx
+                    } else {
+                        currentTabIndex = -1
+                    }
+                    if (tabs.isEmpty()) {
+                        currentTabIndex = -1
+                        selectedDomain = ""
+                    }
                 }
             }
         }
@@ -936,9 +988,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 7/10
-
-
-
 
 
 
