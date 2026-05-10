@@ -537,7 +537,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v10] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -598,7 +598,7 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Track touch coordinates for JS fallback ──────────────────
+        // ── Track touch coordinates for JS link detection ────────────
         var lastTouchX = 0f
         var lastTouchY = 0f
         wv.setOnTouchListener { _, event ->
@@ -607,33 +607,24 @@ fun GreyBrowser() {
             false
         }
 
-        // ── Long-press to detect links ──────────────────────────────
+        // ── Long-press: use JS to find the nearest link ──────────────
         wv.setOnLongClickListener {
-            val result = wv.hitTestResult
-            when (result.type) {
-                WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
-                    // Text link — extra is the URL
-                    result.extra?.let { url ->
-                        linkMenuUrl = url
-                        showLinkMenu = true
-                    }
-                    true
+            wv.evaluateJavascript(
+                "(function(){" +
+                "var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
+                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){" +
+                "el=el.parentElement;" +
+                "}" +
+                "return el?el.href:'';" +
+                "})()"
+            ) { href ->
+                val clean = href.trim('"').trim()
+                if (clean.isNotEmpty() && clean != "null" && clean != "undefined" && clean != "") {
+                    linkMenuUrl = clean
+                    showLinkMenu = true
                 }
-                WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                    // Image link — extra may be image src, use JS to get real href
-                    wv.evaluateJavascript(
-                        "(function(){var el=document.elementFromPoint($lastTouchX,$lastTouchY);while(el&&el.tagName!=='A')el=el.parentElement;return el?el.href:'';})()"
-                    ) { href ->
-                        val clean = href.trim('"').trim()
-                        if (clean.isNotEmpty() && clean != "null" && clean != "undefined" && clean != "") {
-                            linkMenuUrl = clean
-                            showLinkMenu = true
-                        }
-                    }
-                    true
-                }
-                else -> false
             }
+            true
         }
     }
 
@@ -777,6 +768,9 @@ fun GreyBrowser() {
     }
 
     // END OF PART 6/10
+    
+    
+    
     
 
 
