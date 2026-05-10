@@ -537,11 +537,9 @@ fun GreyBrowser() {
 
 
 
-
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v7] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v8] ===
+// ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -603,10 +601,10 @@ fun GreyBrowser() {
 
         // ── Long-press to detect links ──────────────────────────────
         wv.setOnLongClickListener {
-            val hitTest = it.hitTestResult
-            if (hitTest.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
-                hitTest.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
-                linkMenuUrl = hitTest.extra
+            val result = wv.hitTestResult
+            if (result.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                linkMenuUrl = result.extra
                 showLinkMenu = true
                 true
             } else false
@@ -754,7 +752,8 @@ fun GreyBrowser() {
 
     // END OF PART 6/10
 
-
+    
+    
 
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1727,4 +1726,3 @@ fun SidebarGroupChip(
 }
 
 // END OF PART 10/10
-
