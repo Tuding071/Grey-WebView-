@@ -846,8 +846,10 @@ fun GreyBrowser() {
 
 
     
+    
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v20] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v21] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -909,7 +911,7 @@ fun GreyBrowser() {
         )
     }
 
-    // ── Link Context Menu (centered, dropdown style) ────────────────
+    // ── Link Context Menu (centered, exact dropdown style) ──────────
     if (showLinkMenu && linkMenuUrl != null) {
         Popup(
             alignment = Alignment.Center,
@@ -923,7 +925,9 @@ fun GreyBrowser() {
                 color = SURFACE,
                 shape = RectangleShape
             ) {
-                Column {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp)
+                ) {
                     // New Tab
                     Box(
                         Modifier
@@ -933,7 +937,7 @@ fun GreyBrowser() {
                                 showLinkMenu = false
                                 linkMenuUrl = null
                             }
-                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                            .padding(horizontal = 12.dp)
                             .heightIn(min = 48.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -941,7 +945,8 @@ fun GreyBrowser() {
                             "New Tab",
                             color = WHITE,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = FontWeight.Normal,
+                            lineHeight = 24.sp
                         )
                     }
 
@@ -955,7 +960,7 @@ fun GreyBrowser() {
                                 showLinkMenu = false
                                 linkMenuUrl = null
                             }
-                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                            .padding(horizontal = 12.dp)
                             .heightIn(min = 48.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -963,7 +968,8 @@ fun GreyBrowser() {
                             "Copy Link",
                             color = WHITE,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = FontWeight.Normal,
+                            lineHeight = 24.sp
                         )
                     }
                 }
@@ -1462,7 +1468,12 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
+    
+    
+    
+    
+    
+    
 
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
