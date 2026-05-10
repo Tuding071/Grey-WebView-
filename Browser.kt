@@ -281,13 +281,18 @@ object FaviconCache {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
     val id: String = UUID.randomUUID().toString(),
+    val url: String,
+    val title: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class HistoryItem(
     val url: String,
     val title: String,
     val timestamp: Long = System.currentTimeMillis()
@@ -374,9 +379,30 @@ fun loadBookmarks(context: Context): List<Bookmark> {
     } catch (e: Exception) { emptyList() }
 }
 
+fun saveHistory(context: Context, history: List<HistoryItem>) {
+    val arr = JSONArray()
+    for (h in history) {
+        val obj = JSONObject()
+        obj.put("url", h.url); obj.put("title", h.title); obj.put("timestamp", h.timestamp)
+        arr.put(obj)
+    }
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_HISTORY, arr.toString()).apply()
+}
+
+fun loadHistory(context: Context): List<HistoryItem> {
+    val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_HISTORY, null) ?: return emptyList()
+    return try {
+        val arr = JSONArray(json)
+        mutableListOf<HistoryItem>().apply {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                add(HistoryItem(o.getString("url"), o.getString("title"), o.getLong("timestamp")))
+            }
+        }
+    } catch (e: Exception) { emptyList() }
+}
+
 // END OF PART 3/10
-
-
 
 
 
@@ -407,8 +433,9 @@ fun resolveUrl(input: String): String {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v10] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -422,6 +449,10 @@ fun GreyBrowser() {
     // ── Bookmarks State ──────────────────────────────────────────────
     val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
     var showBookmarks by remember { mutableStateOf(false) }
+
+    // ── History State ────────────────────────────────────────────────
+    val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
+    var showHistory by remember { mutableStateOf(false) }
 
     // ── Toast State ──────────────────────────────────────────────────
     var toastMessage by remember { mutableStateOf("") }
@@ -517,6 +548,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
     }
     LaunchedEffect(bookmarks.toList()) { saveBookmarks(context, bookmarks) }
+    LaunchedEffect(history.toList()) { saveHistory(context, history) }
 
     LaunchedEffect(currentTabIndex) {
         if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
@@ -536,10 +568,12 @@ fun GreyBrowser() {
 
 
 
-    
+
+
+
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v12] ===
-// ═══════════════════════════════════════════════════════════════════
+    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v13] ===
+    // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
     fun createWebView(url: String): WebView {
@@ -594,6 +628,13 @@ fun GreyBrowser() {
                     lastActiveUrl = url
                     if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                         highlightedTabIndex = currentTabIndex
+                    }
+                    // ── Log to history ──────────────────────────────
+                    val cleanUrl = url.substringBefore("#")
+                    history.removeAll { it.url.substringBefore("#") == cleanUrl }
+                    history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
+                    if (history.size > MAX_HISTORY_ITEMS) {
+                        history.removeAt(0)
                     }
                 }
             }
@@ -770,7 +811,10 @@ fun GreyBrowser() {
     }
 
     // END OF PART 6/10
-    
+
+
+
+
 
 
     // ═══════════════════════════════════════════════════════════════════
@@ -846,8 +890,9 @@ fun GreyBrowser() {
 
 
     
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v23] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v24] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -904,6 +949,17 @@ fun GreyBrowser() {
                 bookmarks.removeAll { it.id == id }
                 showToast("Bookmark deleted")
             },
+            faviconBitmaps = faviconBitmaps,
+            loadFavicon = { loadFavicon(it) }
+        )
+    }
+
+    // ── History UI ──────────────────────────────────────────────────
+    if (showHistory) {
+        HistoryUI(
+            history = history,
+            onDismiss = { showHistory = false },
+            onOpenUrl = { url -> createForegroundTab(url) },
             faviconBitmaps = faviconBitmaps,
             loadFavicon = { loadFavicon(it) }
         )
@@ -1404,6 +1460,10 @@ fun GreyBrowser() {
                             text = { Text("Bookmarks", color = WHITE) },
                             onClick = { showMenu = false; showBookmarks = true }
                         )
+                        DropdownMenuItem(
+                            text = { Text("History", color = WHITE) },
+                            onClick = { showMenu = false; showHistory = true }
+                        )
                     }
                 }
             }
@@ -1438,6 +1498,9 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+    
+    
+    
     
     
 
@@ -1597,8 +1660,10 @@ fun BookmarksUI(
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 10/10 — Helper Composables (Chips) [UPDATED v2] ===
+// === PART 10/10 — Helper Composables (Chips, HistoryUI) [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1728,4 +1793,113 @@ fun SidebarGroupChip(
     }
 }
 
+@Composable
+fun HistoryUI(
+    history: List<HistoryItem>,
+    onDismiss: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    faviconBitmaps: Map<String, Bitmap?>,
+    loadFavicon: (String) -> Unit
+) {
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("History", color = WHITE, fontSize = 18.sp)
+                    if (history.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${history.size})", color = MUTED, fontSize = 14.sp)
+                    }
+                }
+                if (history.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No history", color = MUTED, fontSize = 16.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        // Most recent first (history is stored most-recent-last, so we reverse)
+                        items(history.reversed()) { item ->
+                            val domain = getDomainName(item.url)
+                            LaunchedEffect(item.url) { loadFavicon(domain) }
+                            val fav = faviconBitmaps[domain]
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                color = Color.Transparent
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                        .clickable {
+                                            onOpenUrl(item.url)
+                                            onDismiss()
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (fav != null) {
+                                        Image(
+                                            fav.asImageBitmap(),
+                                            domain,
+                                            Modifier.size(20.dp).clip(CircleShape),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Box(
+                                            Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                domain.take(1).uppercase(),
+                                                color = WHITE,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            item.title.ifBlank { item.url },
+                                            color = WHITE,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            item.url,
+                                            color = MUTED.copy(alpha = 0.7f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // END OF PART 10/10
+
