@@ -406,8 +406,9 @@ fun resolveUrl(input: String): String {
 // END OF PART 4/10
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v9] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v10] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -505,6 +506,10 @@ fun GreyBrowser() {
     var confirmTitle by remember { mutableStateOf("") }
     var confirmMessage by remember { mutableStateOf("") }
 
+    // ── Link context menu state ─────────────────────────────────────
+    var showLinkMenu by remember { mutableStateOf(false) }
+    var linkMenuUrl by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
     }
@@ -534,10 +539,8 @@ fun GreyBrowser() {
 
 
 
-
-
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v5] ===
+    // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v7] ===
     // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -596,6 +599,17 @@ fun GreyBrowser() {
                     }
                 }
             }
+        }
+
+        // ── Long-press to detect links ──────────────────────────────
+        wv.setOnLongClickListener {
+            val hitTest = it.hitTestResult
+            if (hitTest.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                hitTest.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                linkMenuUrl = hitTest.extra
+                showLinkMenu = true
+                true
+            } else false
         }
     }
 
@@ -741,6 +755,8 @@ fun GreyBrowser() {
     // END OF PART 6/10
 
 
+
+
     // ═══════════════════════════════════════════════════════════════════
     // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v16] ===
     // ═══════════════════════════════════════════════════════════════════
@@ -813,11 +829,9 @@ fun GreyBrowser() {
     // END OF PART 7/10
 
 
-
-
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast [UPDATED v17] ===
-    // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v18] ===
+// ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
@@ -876,6 +890,59 @@ fun GreyBrowser() {
             faviconBitmaps = faviconBitmaps,
             loadFavicon = { loadFavicon(it) }
         )
+    }
+
+    // ── Link Context Menu (centered) ────────────────────────────────
+    if (showLinkMenu && linkMenuUrl != null) {
+        Popup(
+            alignment = Alignment.Center,
+            onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
+            properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(240.dp)
+                    .border(1.dp, WHITE, RectangleShape),
+                color = SURFACE,
+                shape = RectangleShape
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // New Tab
+                    OutlinedButton(
+                        onClick = {
+                            createForegroundTab(linkMenuUrl!!)
+                            showLinkMenu = false
+                            linkMenuUrl = null
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text("New Tab", color = WHITE, fontSize = 14.sp)
+                    }
+
+                    // Copy Link
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
+                            showToast("Link copied")
+                            showLinkMenu = false
+                            linkMenuUrl = null
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text("Copy Link", color = WHITE, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
     }
 
     // ── Tab Manager (real tabs only) ────────────────────────────────
@@ -1369,7 +1436,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
 
 
 
