@@ -841,10 +841,11 @@ fun GreyBrowser() {
 
     // END OF PART 6/10
 
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v19] ===
+    
+    
+    
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
 
     BackHandler {
@@ -911,6 +912,20 @@ fun GreyBrowser() {
                     )
                 }
             }
+
+            // Transparent overlay to dismiss keyboard when tapping WebView area
+            if (isUrlFocused) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            focusManager.clearFocus()
+                        }
+                )
+            }
         }
     }
 
@@ -922,7 +937,7 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v26] ===
+    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v27] ===
     // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -939,8 +954,9 @@ fun GreyBrowser() {
     LaunchedEffect(currentTabIndex, currentTab?.url) {
         if (!isUrlFocused) {
             urlInput = TextFieldValue(
-                if (currentTabIndex == -1) ""
-                else currentTab?.url?.let { if (it == "about:blank") "" else it } ?: ""
+                text = if (currentTabIndex == -1) ""
+                    else currentTab?.url?.let { if (it == "about:blank") "" else it } ?: "",
+                selection = TextRange(0)
             )
         }
     }
@@ -1421,6 +1437,7 @@ fun GreyBrowser() {
                             val input = urlInput.text
                             if (input.isNotBlank()) {
                                 focusManager.clearFocus()
+                                urlInput = urlInput.copy(selection = TextRange(0))
                                 val uri = resolveUrl(input)
                                 if (currentTabIndex == -1) {
                                     // Homepage: create a new tab (dedup built in)
@@ -1553,7 +1570,8 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
+    
+    
     
     
     
