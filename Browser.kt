@@ -52,8 +52,12 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
+
+
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v3] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -81,6 +85,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -147,8 +152,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
-
 
 
 
@@ -435,8 +438,9 @@ fun resolveUrl(input: String): String {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v11] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v12] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -542,6 +546,10 @@ fun GreyBrowser() {
     var showLinkMenu by remember { mutableStateOf(false) }
     var linkMenuUrl by remember { mutableStateOf<String?>(null) }
 
+    // ── URL field focus state (used by ContentLayer overlay) ────────
+    var isUrlFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
     }
@@ -566,7 +574,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
 
 
 
@@ -843,7 +850,6 @@ fun GreyBrowser() {
 
     
     
-    
     // ═══════════════════════════════════════════════════════════════════
 // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -948,8 +954,6 @@ fun GreyBrowser() {
             )
         )
     }
-    var isUrlFocused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(currentTabIndex, currentTab?.url) {
         if (!isUrlFocused) {
@@ -1570,9 +1574,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
     
     
 
