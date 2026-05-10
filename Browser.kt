@@ -847,9 +847,8 @@ fun GreyBrowser() {
 
     
     
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v21] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -913,6 +912,7 @@ fun GreyBrowser() {
 
     // ── Link Context Menu (centered, exact dropdown style) ──────────
     if (showLinkMenu && linkMenuUrl != null) {
+        val menuTextStyle = MaterialTheme.typography.bodyLarge
         Popup(
             alignment = Alignment.Center,
             onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
@@ -943,10 +943,8 @@ fun GreyBrowser() {
                     ) {
                         Text(
                             "New Tab",
-                            color = WHITE,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal,
-                            lineHeight = 24.sp
+                            style = menuTextStyle,
+                            color = WHITE
                         )
                     }
 
@@ -966,10 +964,8 @@ fun GreyBrowser() {
                     ) {
                         Text(
                             "Copy Link",
-                            color = WHITE,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal,
-                            lineHeight = 24.sp
+                            style = menuTextStyle,
+                            color = WHITE
                         )
                     }
                 }
@@ -1468,9 +1464,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
     
     
     
