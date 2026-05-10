@@ -846,10 +846,8 @@ fun GreyBrowser() {
 
 
     
-    
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v19] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -935,12 +933,17 @@ fun GreyBrowser() {
                                 showLinkMenu = false
                                 linkMenuUrl = null
                             }
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                            .heightIn(min = 48.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        Text("New Tab", color = WHITE, fontSize = 16.sp)
+                        Text(
+                            "New Tab",
+                            color = WHITE,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal
+                        )
                     }
-
-                    HorizontalDivider(color = Color.DarkGray, thickness = 0.5.dp)
 
                     // Copy Link
                     Box(
@@ -952,9 +955,16 @@ fun GreyBrowser() {
                                 showLinkMenu = false
                                 linkMenuUrl = null
                             }
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                            .heightIn(min = 48.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        Text("Copy Link", color = WHITE, fontSize = 16.sp)
+                        Text(
+                            "Copy Link",
+                            color = WHITE,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal
+                        )
                     }
                 }
             }
@@ -1452,9 +1462,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
 
 
 // ═══════════════════════════════════════════════════════════════════
