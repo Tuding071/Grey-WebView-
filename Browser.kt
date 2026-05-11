@@ -578,9 +578,9 @@ fun GreyBrowser() {
 
 
 
-
+    
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v15] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v16] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -732,13 +732,17 @@ fun GreyBrowser() {
     }
 
     // ── Create tabs ─────────────────────────────────────────────────
-    fun createForegroundTab(url: String) {
+    // insertAfterIndex = -1 means insert at top (from homepage)
+    // insertAfterIndex >= 0 means insert right below that tab (from long-press)
+    fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
         // Remove old duplicate if exists
         removeDuplicateTab(url)
+        // Calculate insertion point
+        val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
         // Capture parent before switching
-        val parentIdx = currentTabIndex
+        val parentIdx = if (insertAfterIndex >= 0) insertAfterIndex else -1
         val wv = createWebView(url)
-        tabs.add(TabState().apply {
+        tabs.add(insertIdx, TabState().apply {
             webView = wv
             this.url = url
             isBlankTab = false
@@ -747,25 +751,8 @@ fun GreyBrowser() {
             parentTabIndex = parentIdx
             setupDelegates(this)
         })
-        currentTabIndex = tabs.lastIndex
+        currentTabIndex = insertIdx
         highlightedTabIndex = currentTabIndex
-        manageTabLifecycle(currentTabIndex)
-    }
-
-    fun createBackgroundTab(url: String) {
-        // Remove old duplicate if exists
-        removeDuplicateTab(url)
-        val parentIdx = currentTabIndex
-        val wv = createWebView(url)
-        tabs.add(TabState().apply {
-            webView = wv
-            this.url = url
-            isBlankTab = false
-            isDiscarded = false
-            lastUpdated = System.currentTimeMillis()
-            parentTabIndex = parentIdx
-            setupDelegates(this)
-        })
         manageTabLifecycle(currentTabIndex)
     }
 
@@ -859,9 +846,7 @@ fun GreyBrowser() {
         }
     }
 
-    // END OF PART 6/10
-
-
+// END OF PART 6/10
 
 
 
@@ -991,8 +976,10 @@ fun GreyBrowser() {
 
 
 
+    
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v28] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v29] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1086,7 +1073,7 @@ fun GreyBrowser() {
                     DropdownMenuItem(
                         text = { Text("New Tab", color = WHITE) },
                         onClick = {
-                            createForegroundTab(linkMenuUrl!!)
+                            createForegroundTab(linkMenuUrl!!, currentTabIndex)
                             showLinkMenu = false
                             linkMenuUrl = null
                         }
@@ -1496,7 +1483,7 @@ fun GreyBrowser() {
                                 urlInput = urlInput.copy(selection = TextRange(0))
                                 val uri = resolveUrl(input)
                                 if (currentTabIndex == -1) {
-                                    // Homepage: create a new tab (dedup built in)
+                                    // Homepage: create a new tab at top
                                     createForegroundTab(uri)
                                 } else {
                                     // Real tab: navigate in current tab
@@ -1626,6 +1613,9 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+    
+    
+    
     
     
     
