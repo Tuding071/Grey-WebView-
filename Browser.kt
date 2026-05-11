@@ -54,10 +54,8 @@
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v4] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -69,6 +67,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -145,6 +144,10 @@ import java.util.UUID
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
         setContent { GreyBrowser() }
     }
     override fun onPause() { super.onPause(); saveTabsData(this) }
