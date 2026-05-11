@@ -2119,22 +2119,6 @@ fun PatternLockScreen(
         }
     }
 
-    // ── Back handler ──────────────────────────────────────────────
-    BackHandler {
-        if (currentMode == "set" && firstPattern.isNotEmpty()) {
-            selectedDots = emptyList()
-            firstPattern = ""
-            promptText = "Draw a pattern (min 4 dots)"
-        } else if (currentMode == "change" && firstPattern == "__VERIFIED__") {
-            selectedDots = emptyList()
-            firstPattern = ""
-            promptText = "Draw current pattern to verify"
-            currentMode = "change"
-        } else {
-            onDismiss()
-        }
-    }
-
     // ── Error shake animation ─────────────────────────────────────
     val shakeOffset by animateFloatAsState(
         targetValue = if (showError) 10f else 0f,
@@ -2158,145 +2142,192 @@ fun PatternLockScreen(
         }
     }
 
-    Surface(
-        Modifier.fillMaxSize().background(SURFACE),
-        color = SURFACE
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
     ) {
-        Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
         ) {
-            Spacer(Modifier.height(48.dp))
+            Column(
+                Modifier.fillMaxSize().navigationBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        { onDismiss() },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        when (currentMode) {
+                            "set" -> "Set Pattern"
+                            "change" -> "Change Pattern"
+                            "remove" -> "Remove Pattern"
+                            "verify" -> "Unlock"
+                            else -> "Pattern"
+                        },
+                        color = WHITE,
+                        fontSize = 18.sp
+                    )
+                }
 
-            // ── Grey branding ─────────────────────────────────────
-            Text(
-                "Grey",
-                color = WHITE.copy(alpha = 0.3f),
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold
-            )
+                Spacer(Modifier.height(48.dp))
 
-            Spacer(Modifier.height(48.dp))
+                // ── Grey branding ─────────────────────────────────
+                Text(
+                    "Grey",
+                    color = WHITE.copy(alpha = 0.3f),
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-            // ── Pattern grid ──────────────────────────────────────
-            Box(
-                Modifier
-                    .size(dotSpacing * 2 + dotSize)
-                    .offset { IntOffset(shakeOffset.toInt(), 0) }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                hitDot(offset, dotSpacing, dotSize, gridColumns)?.let { dot ->
-                                    if (!selectedDots.contains(dot)) {
-                                        selectedDots = selectedDots + dot
+                Spacer(Modifier.height(48.dp))
+
+                // ── Pattern grid ──────────────────────────────────
+                Box(
+                    Modifier
+                        .size(dotSpacing * 2 + dotSize)
+                        .offset { IntOffset(shakeOffset.toInt(), 0) }
+                        .pointerInput(currentMode) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    hitDot(offset, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                        if (!selectedDots.contains(dot)) {
+                                            selectedDots = selectedDots + dot
+                                        }
                                     }
-                                }
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                hitDot(change.position, dotSpacing, dotSize, gridColumns)?.let { dot ->
-                                    if (!selectedDots.contains(dot)) {
-                                        selectedDots = selectedDots + dot
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    hitDot(change.position, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                        if (!selectedDots.contains(dot)) {
+                                            selectedDots = selectedDots + dot
+                                        }
                                     }
-                                }
-                            },
-                            onDragEnd = {
-                                val patternStr = selectedDots.joinToString(",")
-                                val dotCount = selectedDots.size
+                                },
+                                onDragEnd = {
+                                    val patternStr = selectedDots.joinToString(",")
+                                    val dotCount = selectedDots.size
 
-                                // Dot 9 master key check
-                                if (dotCount == 1 && patternStr == "9") {
+                                    // Dot 9 master key check
+                                    if (dotCount == 1 && patternStr == "9") {
+                                        when (currentMode) {
+                                            "set" -> {
+                                                if (firstPattern.isNotEmpty()) {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Draw pattern to confirm (min 4 dots)"
+                                                    return@detectDragGestures
+                                                }
+                                            }
+                                            "change" -> {
+                                                if (firstPattern == "__VERIFIED__") {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Draw new pattern (min 4 dots)"
+                                                    return@detectDragGestures
+                                                } else {
+                                                    firstPattern = "__VERIFIED__"
+                                                    selectedDots = emptyList()
+                                                    promptText = "Draw new pattern (min 4 dots)"
+                                                    return@detectDragGestures
+                                                }
+                                            }
+                                            "remove" -> {
+                                                onPatternRemoved()
+                                                onDismiss()
+                                                return@detectDragGestures
+                                            }
+                                            "verify" -> {
+                                                onDismiss()
+                                                return@detectDragGestures
+                                            }
+                                        }
+                                    }
+
                                     when (currentMode) {
                                         "set" -> {
-                                            if (firstPattern.isNotEmpty()) {
-                                                // Master key doesn't skip confirmation during set
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Draw pattern to confirm (min 4 dots)"
-                                                return@detectDragGestures
-                                            }
-                                        }
-                                        "change" -> {
-                                            if (firstPattern == "__VERIFIED__") {
-                                                // Already verified, setting new pattern — master key not for this step
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Draw new pattern (min 4 dots)"
-                                                return@detectDragGestures
-                                            } else {
-                                                // Master key verifies for change
-                                                firstPattern = "__VERIFIED__"
-                                                selectedDots = emptyList()
-                                                promptText = "Draw new pattern (min 4 dots)"
-                                                return@detectDragGestures
-                                            }
-                                        }
-                                        "remove" -> {
-                                            onPatternRemoved()
-                                            onDismiss()
-                                            return@detectDragGestures
-                                        }
-                                        "verify" -> {
-                                            onDismiss()
-                                            return@detectDragGestures
-                                        }
-                                    }
-                                }
-
-                                when (currentMode) {
-                                    "set" -> {
-                                        if (dotCount < 4) {
-                                            showError = true
-                                            errorState = true
-                                            promptText = "Connect at least 4 dots"
-                                        } else if (firstPattern.isEmpty()) {
-                                            firstPattern = patternStr
-                                            selectedDots = emptyList()
-                                            promptText = "Draw again to confirm"
-                                        } else {
-                                            if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                onPatternSet(hashPattern(patternStr))
-                                                onDismiss()
-                                            } else {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Patterns don't match. Try again."
-                                                firstPattern = ""
-                                            }
-                                        }
-                                    }
-                                    "change" -> {
-                                        if (firstPattern == "__VERIFIED__") {
-                                            // Setting new pattern
                                             if (dotCount < 4) {
                                                 showError = true
                                                 errorState = true
                                                 promptText = "Connect at least 4 dots"
-                                            } else if (firstPattern == "__VERIFIED__" && selectedDots.size >= 4) {
-                                                // firstPattern holds "__VERIFIED__", need to track new pattern
-                                                if (firstPattern == "__VERIFIED__") {
+                                            } else if (firstPattern.isEmpty()) {
+                                                firstPattern = patternStr
+                                                selectedDots = emptyList()
+                                                promptText = "Draw again to confirm"
+                                            } else {
+                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                    onPatternSet(hashPattern(patternStr))
+                                                    onDismiss()
+                                                } else {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Patterns don't match. Try again."
+                                                    firstPattern = ""
+                                                }
+                                            }
+                                        }
+                                        "change" -> {
+                                            if (firstPattern == "__VERIFIED__") {
+                                                // Setting new pattern
+                                                if (dotCount < 4) {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Connect at least 4 dots"
+                                                } else if (firstPattern == "__VERIFIED__" && selectedDots.size >= 4) {
                                                     firstPattern = patternStr
                                                     selectedDots = emptyList()
                                                     promptText = "Draw again to confirm"
+                                                }
+                                            } else if (firstPattern.isNotEmpty() && firstPattern != "__VERIFIED__") {
+                                                // Confirming new pattern
+                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                    onPatternSet(hashPattern(patternStr))
+                                                    onDismiss()
                                                 } else {
-                                                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                        onPatternSet(hashPattern(patternStr))
-                                                        onDismiss()
-                                                    } else {
-                                                        showError = true
-                                                        errorState = true
-                                                        promptText = "Patterns don't match. Try again."
-                                                        firstPattern = "__VERIFIED__"
-                                                    }
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Patterns don't match. Try again."
+                                                    firstPattern = "__VERIFIED__"
+                                                }
+                                            } else {
+                                                // Verifying old pattern
+                                                val hash = hashPattern(patternStr)
+                                                if (hash == savedHash) {
+                                                    firstPattern = "__VERIFIED__"
+                                                    selectedDots = emptyList()
+                                                    promptText = "Draw new pattern (min 4 dots)"
+                                                } else {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Incorrect pattern"
                                                 }
                                             }
-                                        } else {
-                                            // Verifying old pattern
+                                        }
+                                        "remove" -> {
                                             val hash = hashPattern(patternStr)
                                             if (hash == savedHash) {
-                                                firstPattern = "__VERIFIED__"
-                                                selectedDots = emptyList()
-                                                promptText = "Draw new pattern (min 4 dots)"
+                                                onPatternRemoved()
+                                                onDismiss()
+                                            } else {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Incorrect pattern"
+                                            }
+                                        }
+                                        "verify" -> {
+                                            val hash = hashPattern(patternStr)
+                                            if (hash == savedHash) {
+                                                onDismiss()
                                             } else {
                                                 showError = true
                                                 errorState = true
@@ -2304,145 +2335,125 @@ fun PatternLockScreen(
                                             }
                                         }
                                     }
-                                    "remove" -> {
-                                        val hash = hashPattern(patternStr)
-                                        if (hash == savedHash) {
-                                            onPatternRemoved()
-                                            onDismiss()
-                                        } else {
-                                            showError = true
-                                            errorState = true
-                                            promptText = "Incorrect pattern"
-                                        }
-                                    }
-                                    "verify" -> {
-                                        val hash = hashPattern(patternStr)
-                                        if (hash == savedHash) {
-                                            onDismiss()
-                                        } else {
-                                            showError = true
-                                            errorState = true
-                                            promptText = "Incorrect pattern"
-                                        }
-                                    }
+                                },
+                                onDragCancel = {
+                                    selectedDots = emptyList()
                                 }
-                            },
-                            onDragCancel = {
-                                selectedDots = emptyList()
-                            }
-                        )
-                    }
-            ) {
-                // ── Draw lines between connected dots ─────────────
-                Canvas(Modifier.fillMaxSize()) {
-                    val spacingPx = dotSpacing.toPx()
-                    val sizePx = dotSize.toPx()
-                    val startX = spacingPx
-                    val startY = spacingPx
-
-                    if (selectedDots.size >= 2) {
-                        val path = Path()
-                        for (i in 0 until selectedDots.size - 1) {
-                            val from = selectedDots[i]
-                            val to = selectedDots[i + 1]
-                            val fromCol = (from - 1) % gridColumns
-                            val fromRow = (from - 1) / gridColumns
-                            val toCol = (to - 1) % gridColumns
-                            val toRow = (to - 1) / gridColumns
-
-                            val fromX = startX + fromCol * spacingPx + sizePx / 2
-                            val fromY = startY + fromRow * spacingPx + sizePx / 2
-                            val toX = startX + toCol * spacingPx + sizePx / 2
-                            val toY = startY + toRow * spacingPx + sizePx / 2
-
-                            path.moveTo(fromX, fromY)
-                            path.lineTo(toX, toY)
-                        }
-                        drawPath(
-                            path,
-                            color = if (errorState) DELETE_BG else WHITE,
-                            style = Stroke(
-                                width = 2.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
                             )
-                        )
-                    }
-                }
-
-                // ── Draw dots ─────────────────────────────────────
-                for (row in 0 until gridRows) {
-                    for (col in 0 until gridColumns) {
-                        val dotNum = row * gridColumns + col + 1
-                        val isSelected = selectedDots.contains(dotNum)
-                        val offsetX = dotSpacing * col
-                        val offsetY = dotSpacing * row
-
-                        Box(
-                            Modifier
-                                .offset(x = offsetX, y = offsetY)
-                                .size(dotSize)
-                                .background(
-                                    color = when {
-                                        errorState && isSelected -> DELETE_BG
-                                        isSelected -> WHITE
-                                        else -> Color.Transparent
-                                    },
-                                    shape = RectangleShape
-                                )
-                                .border(
-                                    width = if (isSelected) 0.dp else 1.dp,
-                                    color = if (errorState && !isSelected) DELETE_BG.copy(alpha = 0.5f)
-                                            else if (isSelected) Color.Transparent
-                                            else BORDER_SUBTLE,
-                                    shape = RectangleShape
-                                )
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(32.dp))
-
-            // ── Prompt text ─────────────────────────────────────────
-            Text(
-                promptText,
-                color = if (errorState) DELETE_BG else MUTED,
-                fontSize = 14.sp
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // ── Action buttons ──────────────────────────────────────
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        selectedDots = emptyList()
-                        firstPattern = ""
-                        errorState = false
-                        showError = false
-                        currentMode = mode
-                        promptText = when (mode) {
-                            "set" -> "Draw a pattern (min 4 dots)"
-                            "change" -> "Draw current pattern to verify"
-                            "remove" -> "Draw pattern to remove"
-                            "verify" -> "Draw pattern to verify"
-                            else -> ""
                         }
-                        if (mode == "set" || mode == "change") {
-                            // Stay in screen but reset
-                        } else {
-                            onDismiss()
-                        }
-                    },
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                    border = BorderStroke(1.dp, WHITE)
                 ) {
-                    Text("Cancel")
+                    // ── Draw lines between connected dots ─────────
+                    Canvas(Modifier.fillMaxSize()) {
+                        val spacingPx = dotSpacing.toPx()
+                        val sizePx = dotSize.toPx()
+                        val startX = spacingPx
+                        val startY = spacingPx
+
+                        if (selectedDots.size >= 2) {
+                            val path = Path()
+                            for (i in 0 until selectedDots.size - 1) {
+                                val from = selectedDots[i]
+                                val to = selectedDots[i + 1]
+                                val fromCol = (from - 1) % gridColumns
+                                val fromRow = (from - 1) / gridColumns
+                                val toCol = (to - 1) % gridColumns
+                                val toRow = (to - 1) / gridColumns
+
+                                val fromX = startX + fromCol * spacingPx + sizePx / 2
+                                val fromY = startY + fromRow * spacingPx + sizePx / 2
+                                val toX = startX + toCol * spacingPx + sizePx / 2
+                                val toY = startY + toRow * spacingPx + sizePx / 2
+
+                                path.moveTo(fromX, fromY)
+                                path.lineTo(toX, toY)
+                            }
+                            drawPath(
+                                path,
+                                color = if (errorState) DELETE_BG else WHITE,
+                                style = Stroke(
+                                    width = 2.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+                        }
+                    }
+
+                    // ── Draw dots ─────────────────────────────────
+                    for (row in 0 until gridRows) {
+                        for (col in 0 until gridColumns) {
+                            val dotNum = row * gridColumns + col + 1
+                            val isSelected = selectedDots.contains(dotNum)
+                            val offsetX = dotSpacing * col
+                            val offsetY = dotSpacing * row
+
+                            Box(
+                                Modifier
+                                    .offset(x = offsetX, y = offsetY)
+                                    .size(dotSize)
+                                    .background(
+                                        color = when {
+                                            errorState && isSelected -> DELETE_BG
+                                            isSelected -> WHITE
+                                            else -> Color.Transparent
+                                        },
+                                        shape = RectangleShape
+                                    )
+                                    .border(
+                                        width = if (isSelected) 0.dp else 1.dp,
+                                        color = if (errorState && !isSelected) DELETE_BG.copy(alpha = 0.5f)
+                                                else if (isSelected) Color.Transparent
+                                                else BORDER_SUBTLE,
+                                        shape = RectangleShape
+                                    )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(32.dp))
+
+                // ── Prompt text ─────────────────────────────────────
+                Text(
+                    promptText,
+                    color = if (errorState) DELETE_BG else MUTED,
+                    fontSize = 14.sp
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── Action buttons ──────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            selectedDots = emptyList()
+                            firstPattern = ""
+                            errorState = false
+                            showError = false
+                            currentMode = mode
+                            promptText = when (mode) {
+                                "set" -> "Draw a pattern (min 4 dots)"
+                                "change" -> "Draw current pattern to verify"
+                                "remove" -> "Draw pattern to remove"
+                                "verify" -> "Draw pattern to verify"
+                                else -> ""
+                            }
+                            if (mode == "verify" || mode == "remove") {
+                                onDismiss()
+                            }
+                        },
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text(
+                            if (currentMode == "verify" || currentMode == "remove") "Cancel"
+                            else "Reset"
+                        )
+                    }
                 }
             }
         }
@@ -2477,6 +2488,7 @@ private fun hitDot(
 }
 
 // END OF PART 11/11
+
 
 
 
