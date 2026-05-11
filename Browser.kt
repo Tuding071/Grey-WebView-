@@ -53,9 +53,8 @@
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v5] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -74,16 +73,14 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -110,9 +107,15 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -124,6 +127,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -139,6 +143,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -155,6 +160,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
 
 
 
@@ -979,10 +985,8 @@ fun GreyBrowser() {
 
 
 
-    
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v29] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v30] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1007,6 +1011,10 @@ fun GreyBrowser() {
         }
     }
 
+    // ── Pattern Lock management state ───────────────────────────────
+    var patternLockMode by remember { mutableStateOf("") }
+    // "" = not showing, "set" = first time, "change" = change existing, "remove" = remove
+
     // ── Confirm dialog ──────────────────────────────────────────────
     if (showConfirmDialog) {
         AlertDialog(
@@ -1028,6 +1036,28 @@ fun GreyBrowser() {
             textContentColor = WHITE,
             shape = RectangleShape,
             tonalElevation = 0.dp
+        )
+    }
+
+    // ── Pattern Lock Screen ─────────────────────────────────────────
+    if (patternLockMode.isNotEmpty()) {
+        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+        val savedHash = prefs.getString("pattern_hash", null)
+
+        PatternLockScreen(
+            mode = patternLockMode,
+            savedHash = savedHash,
+            onDismiss = { patternLockMode = "" },
+            onPatternSet = { hash ->
+                prefs.edit().putString("pattern_hash", hash).apply()
+                patternLockMode = ""
+                showToast("Pattern saved")
+            },
+            onPatternRemoved = {
+                prefs.edit().remove("pattern_hash").apply()
+                patternLockMode = ""
+                showToast("Pattern removed")
+            }
         )
     }
 
@@ -1582,6 +1612,15 @@ fun GreyBrowser() {
                             text = { Text("History", color = WHITE) },
                             onClick = { showMenu = false; showHistory = true }
                         )
+                        DropdownMenuItem(
+                            text = { Text("App Lock", color = WHITE) },
+                            onClick = {
+                                showMenu = false
+                                val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+                                val hasPattern = prefs.getString("pattern_hash", null) != null
+                                patternLockMode = if (hasPattern) "change" else "set"
+                            }
+                        )
                     }
                 }
             }
@@ -1616,7 +1655,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
     
     
     
@@ -2021,3 +2059,424 @@ fun HistoryUI(
 }
 
 // END OF PART 10/10
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 11/11 — Pattern Lock Screen Composable ===
+// ═══════════════════════════════════════════════════════════════════
+
+fun hashPattern(pattern: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    val hashBytes = digest.digest(pattern.toByteArray())
+    return hashBytes.joinToString("") { "%02x".format(it) }
+}
+
+@Composable
+fun PatternLockScreen(
+    mode: String,
+    savedHash: String?,
+    onDismiss: () -> Unit,
+    onPatternSet: (String) -> Unit,
+    onPatternRemoved: () -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+
+    // ── Grid layout ───────────────────────────────────────────────
+    val dotSpacing = 80.dp
+    val dotSize = 24.dp
+    val gridColumns = 3
+    val gridRows = 3
+
+    // ── State ─────────────────────────────────────────────────────
+    var selectedDots by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var firstPattern by remember { mutableStateOf("") }
+    var errorState by remember { mutableStateOf(false) }
+    var showError by remember { mutableStateOf(false) }
+    var promptText by remember { mutableStateOf("") }
+
+    // ── Initialize prompt based on mode ───────────────────────────
+    LaunchedEffect(mode) {
+        selectedDots = emptyList()
+        errorState = false
+        showError = false
+        firstPattern = ""
+        promptText = when (mode) {
+            "set" -> "Draw a pattern (min 4 dots)"
+            "change" -> "Draw current pattern to verify"
+            "remove" -> "Draw pattern to remove"
+            "verify" -> "Draw pattern to verify"
+            else -> ""
+        }
+    }
+
+    // ── Back handler ──────────────────────────────────────────────
+    BackHandler {
+        if (mode == "verify" || mode == "set" && firstPattern.isNotEmpty()) {
+            // Go back to first step
+            selectedDots = emptyList()
+            firstPattern = ""
+            promptText = when (mode) {
+                "set" -> "Draw a pattern (min 4 dots)"
+                "change" -> "Draw current pattern to verify"
+                else -> ""
+            }
+        } else {
+            onDismiss()
+        }
+    }
+
+    // ── Error shake animation ─────────────────────────────────────
+    val shakeOffset by animateFloatAsState(
+        targetValue = if (showError) 10f else 0f,
+        animationSpec = if (showError) {
+            repeatable(
+                iterations = 3,
+                animation = tween(50),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            tween(0)
+        }
+    )
+
+    // ── Error auto-clear ──────────────────────────────────────────
+    LaunchedEffect(showError) {
+        if (showError) {
+            delay(600)
+            showError = false
+            selectedDots = emptyList()
+        }
+    }
+
+    // ── Dismiss app if unlock fails with back press ───────────────
+    if (mode == "verify" && savedHash == null) {
+        LaunchedEffect(Unit) {
+            // No saved pattern but in verify mode — shouldn't happen
+            onDismiss()
+        }
+    }
+
+    Surface(
+        Modifier.fillMaxSize().background(SURFACE),
+        color = SURFACE
+    ) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(48.dp))
+
+            // ── Grey branding ─────────────────────────────────────
+            Text(
+                "Grey",
+                color = WHITE.copy(alpha = 0.3f),
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(48.dp))
+
+            // ── Pattern grid ──────────────────────────────────────
+            Box(
+                Modifier
+                    .size(dotSpacing * 2 + dotSize)
+                    .offset { IntOffset(shakeOffset.toInt(), 0) }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                hitDot(offset, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                    if (!selectedDots.contains(dot)) {
+                                        selectedDots = selectedDots + dot
+                                    }
+                                }
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                hitDot(change.position, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                    if (!selectedDots.contains(dot)) {
+                                        selectedDots = selectedDots + dot
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                val patternStr = selectedDots.joinToString(",")
+                                handlePatternComplete(
+                                    patternStr, selectedDots.size, mode,
+                                    savedHash, firstPattern,
+                                    { fp -> firstPattern = fp },
+                                    { p -> promptText = p },
+                                    { selectedDots = emptyList() },
+                                    { showError = true; errorState = true },
+                                    onPatternSet,
+                                    onPatternRemoved,
+                                    { patternLockMode -> /* handled externally */ }
+                                )
+                                if (mode == "verify") {
+                                    // Check if it was a successful verify
+                                    val hash = hashPattern(patternStr)
+                                    if (hash == savedHash || (selectedDots.size == 1 && selectedDots.first() == 9)) {
+                                        onDismiss()
+                                        return@detectDragGestures
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                selectedDots = emptyList()
+                            }
+                        )
+                    }
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        // Single tap detection for dot 9 master key
+                        // Already handled in onDragEnd when selectedDots has only 1 dot
+                    }
+            ) {
+                // ── Draw lines between connected dots ─────────────
+                Canvas(Modifier.fillMaxSize()) {
+                    val spacingPx = dotSpacing.toPx()
+                    val sizePx = dotSize.toPx()
+                    val startX = spacingPx
+                    val startY = spacingPx
+
+                    if (selectedDots.size >= 2) {
+                        val path = Path()
+                        for (i in 0 until selectedDots.size - 1) {
+                            val from = selectedDots[i]
+                            val to = selectedDots[i + 1]
+                            val fromCol = (from - 1) % gridColumns
+                            val fromRow = (from - 1) / gridColumns
+                            val toCol = (to - 1) % gridColumns
+                            val toRow = (to - 1) / gridColumns
+
+                            val fromX = startX + fromCol * spacingPx + sizePx / 2
+                            val fromY = startY + fromRow * spacingPx + sizePx / 2
+                            val toX = startX + toCol * spacingPx + sizePx / 2
+                            val toY = startY + toRow * spacingPx + sizePx / 2
+
+                            path.moveTo(fromX, fromY)
+                            path.lineTo(toX, toY)
+                        }
+                        drawPath(
+                            path,
+                            color = if (errorState) DELETE_BG else WHITE,
+                            style = Stroke(
+                                width = 2.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
+                }
+
+                // ── Draw dots ─────────────────────────────────────
+                for (row in 0 until gridRows) {
+                    for (col in 0 until gridColumns) {
+                        val dotNum = row * gridColumns + col + 1
+                        val isSelected = selectedDots.contains(dotNum)
+                        val offsetX = dotSpacing * col
+                        val offsetY = dotSpacing * row
+
+                        Box(
+                            Modifier
+                                .offset(x = offsetX, y = offsetY)
+                                .size(dotSize)
+                                .background(
+                                    color = when {
+                                        errorState && isSelected -> DELETE_BG
+                                        isSelected -> WHITE
+                                        else -> Color.Transparent
+                                    },
+                                    shape = RectangleShape
+                                )
+                                .border(
+                                    width = if (isSelected) 0.dp else 1.dp,
+                                    color = if (errorState && !isSelected) DELETE_BG.copy(alpha = 0.5f)
+                                            else if (isSelected) Color.Transparent
+                                            else BORDER_SUBTLE,
+                                    shape = RectangleShape
+                                )
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            // ── Prompt text ─────────────────────────────────────────
+            Text(
+                promptText,
+                color = if (errorState) DELETE_BG else MUTED,
+                fontSize = 14.sp
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Action buttons ──────────────────────────────────────
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (mode == "set" || mode == "change") {
+                    OutlinedButton(
+                        onClick = {
+                            selectedDots = emptyList()
+                            firstPattern = ""
+                            if (mode == "set") {
+                                promptText = "Draw a pattern (min 4 dots)"
+                            } else {
+                                onDismiss()
+                            }
+                        },
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+                if (mode == "verify") {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun hitDot(
+    position: Offset,
+    dotSpacing: androidx.compose.ui.unit.Dp,
+    dotSize: androidx.compose.ui.unit.Dp,
+    gridColumns: Int
+): Int? {
+    val spacingPx = dotSpacing.value * 3 // approximate
+    val sizePx = dotSize.value * 3
+    val startX = spacingPx
+    val startY = spacingPx
+
+    for (row in 0 until 3) {
+        for (col in 0 until 3) {
+            val cx = startX + col * spacingPx + sizePx / 2
+            val cy = startY + row * spacingPx + sizePx / 2
+            val dist = kotlin.math.sqrt(
+                (position.x - cx) * (position.x - cx) +
+                (position.y - cy) * (position.y - cy)
+            )
+            if (dist <= sizePx) {
+                return row * gridColumns + col + 1
+            }
+        }
+    }
+    return null
+}
+
+private fun handlePatternComplete(
+    patternStr: String,
+    dotCount: Int,
+    mode: String,
+    savedHash: String?,
+    firstPattern: String,
+    setFirstPattern: (String) -> Unit,
+    setPromptText: (String) -> Unit,
+    clearSelection: () -> Unit,
+    triggerError: () -> Unit,
+    onPatternSet: (String) -> Unit,
+    onPatternRemoved: () -> Unit,
+    dismiss: () -> Unit
+) {
+    val hash = hashPattern(patternStr)
+
+    // Dot 9 master key check (single tap on dot 9)
+    if (dotCount == 1 && patternStr == "9") {
+        when {
+            mode == "set" && firstPattern.isNotEmpty() -> {
+                // Setting pattern: master key doesn't skip confirmation
+                triggerError()
+                setPromptText("Draw pattern to confirm (min 4 dots)")
+                return
+            }
+            mode == "change" || mode == "remove" -> {
+                // Master key works for change/remove
+                if (mode == "change") {
+                    // Proceed to set new pattern
+                    // This is handled by the caller checking the result
+                } else if (mode == "remove") {
+                    onPatternRemoved()
+                    dismiss()
+                    return
+                }
+            }
+        }
+    }
+
+    when (mode) {
+        "set" -> {
+            if (dotCount < 4) {
+                triggerError()
+                setPromptText("Connect at least 4 dots")
+            } else if (firstPattern.isEmpty()) {
+                // First draw — save and ask to confirm
+                setFirstPattern(patternStr)
+                clearSelection()
+                setPromptText("Draw again to confirm")
+            } else {
+                // Second draw — compare
+                if (hash == hashPattern(firstPattern)) {
+                    onPatternSet(hash)
+                    dismiss()
+                } else {
+                    triggerError()
+                    setPromptText("Patterns don't match. Try again.")
+                    setFirstPattern("")
+                }
+            }
+        }
+        "change" -> {
+            if (dotCount < 4 && patternStr != "9") {
+                triggerError()
+                setPromptText("Draw current pattern to verify")
+            } else if (hash == savedHash || patternStr == "9") {
+                // Verified old pattern — now set new
+                setFirstPattern("__VERIFIED__")
+                clearSelection()
+                setPromptText("Draw new pattern (min 4 dots)")
+                // Mode change handled externally
+            } else {
+                triggerError()
+                setPromptText("Incorrect pattern")
+            }
+        }
+        "remove" -> {
+            if (hash == savedHash || patternStr == "9") {
+                onPatternRemoved()
+                dismiss()
+            } else {
+                triggerError()
+                setPromptText("Incorrect pattern")
+            }
+        }
+        "verify" -> {
+            if (hash == savedHash || patternStr == "9") {
+                dismiss()
+            } else if (dotCount < 4 && patternStr != "9") {
+                triggerError()
+                setPromptText("Draw pattern to verify")
+            } else {
+                triggerError()
+                setPromptText("Incorrect pattern")
+            }
+        }
+    }
+}
+
+// END OF PART 11/11
+
