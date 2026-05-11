@@ -2061,6 +2061,8 @@ fun HistoryUI(
 // END OF PART 10/10
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — Pattern Lock Screen Composable ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2094,6 +2096,7 @@ fun PatternLockScreen(
     var errorState by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var promptText by remember { mutableStateOf("") }
+    var currentMode by remember { mutableStateOf(mode) }
 
     // ── Initialize prompt based on mode ───────────────────────────
     LaunchedEffect(mode) {
@@ -2101,6 +2104,7 @@ fun PatternLockScreen(
         errorState = false
         showError = false
         firstPattern = ""
+        currentMode = mode
         promptText = when (mode) {
             "set" -> "Draw a pattern (min 4 dots)"
             "change" -> "Draw current pattern to verify"
@@ -2112,15 +2116,15 @@ fun PatternLockScreen(
 
     // ── Back handler ──────────────────────────────────────────────
     BackHandler {
-        if (mode == "verify" || mode == "set" && firstPattern.isNotEmpty()) {
-            // Go back to first step
+        if (currentMode == "set" && firstPattern.isNotEmpty()) {
             selectedDots = emptyList()
             firstPattern = ""
-            promptText = when (mode) {
-                "set" -> "Draw a pattern (min 4 dots)"
-                "change" -> "Draw current pattern to verify"
-                else -> ""
-            }
+            promptText = "Draw a pattern (min 4 dots)"
+        } else if (currentMode == "change" && firstPattern == "__VERIFIED__") {
+            selectedDots = emptyList()
+            firstPattern = ""
+            promptText = "Draw current pattern to verify"
+            currentMode = "change"
         } else {
             onDismiss()
         }
@@ -2146,14 +2150,6 @@ fun PatternLockScreen(
             delay(600)
             showError = false
             selectedDots = emptyList()
-        }
-    }
-
-    // ── Dismiss app if unlock fails with back press ───────────────
-    if (mode == "verify" && savedHash == null) {
-        LaunchedEffect(Unit) {
-            // No saved pattern but in verify mode — shouldn't happen
-            onDismiss()
         }
     }
 
@@ -2201,23 +2197,128 @@ fun PatternLockScreen(
                             },
                             onDragEnd = {
                                 val patternStr = selectedDots.joinToString(",")
-                                handlePatternComplete(
-                                    patternStr, selectedDots.size, mode,
-                                    savedHash, firstPattern,
-                                    { fp -> firstPattern = fp },
-                                    { p -> promptText = p },
-                                    { selectedDots = emptyList() },
-                                    { showError = true; errorState = true },
-                                    onPatternSet,
-                                    onPatternRemoved,
-                                    { patternLockMode -> /* handled externally */ }
-                                )
-                                if (mode == "verify") {
-                                    // Check if it was a successful verify
-                                    val hash = hashPattern(patternStr)
-                                    if (hash == savedHash || (selectedDots.size == 1 && selectedDots.first() == 9)) {
-                                        onDismiss()
-                                        return@detectDragGestures
+                                val dotCount = selectedDots.size
+
+                                // Dot 9 master key check
+                                if (dotCount == 1 && patternStr == "9") {
+                                    when (currentMode) {
+                                        "set" -> {
+                                            if (firstPattern.isNotEmpty()) {
+                                                // Master key doesn't skip confirmation during set
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Draw pattern to confirm (min 4 dots)"
+                                                return@detectDragGestures
+                                            }
+                                        }
+                                        "change" -> {
+                                            if (firstPattern == "__VERIFIED__") {
+                                                // Already verified, setting new pattern — master key not for this step
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Draw new pattern (min 4 dots)"
+                                                return@detectDragGestures
+                                            } else {
+                                                // Master key verifies for change
+                                                firstPattern = "__VERIFIED__"
+                                                selectedDots = emptyList()
+                                                promptText = "Draw new pattern (min 4 dots)"
+                                                return@detectDragGestures
+                                            }
+                                        }
+                                        "remove" -> {
+                                            onPatternRemoved()
+                                            onDismiss()
+                                            return@detectDragGestures
+                                        }
+                                        "verify" -> {
+                                            onDismiss()
+                                            return@detectDragGestures
+                                        }
+                                    }
+                                }
+
+                                when (currentMode) {
+                                    "set" -> {
+                                        if (dotCount < 4) {
+                                            showError = true
+                                            errorState = true
+                                            promptText = "Connect at least 4 dots"
+                                        } else if (firstPattern.isEmpty()) {
+                                            firstPattern = patternStr
+                                            selectedDots = emptyList()
+                                            promptText = "Draw again to confirm"
+                                        } else {
+                                            if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                onPatternSet(hashPattern(patternStr))
+                                                onDismiss()
+                                            } else {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Patterns don't match. Try again."
+                                                firstPattern = ""
+                                            }
+                                        }
+                                    }
+                                    "change" -> {
+                                        if (firstPattern == "__VERIFIED__") {
+                                            // Setting new pattern
+                                            if (dotCount < 4) {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Connect at least 4 dots"
+                                            } else if (firstPattern == "__VERIFIED__" && selectedDots.size >= 4) {
+                                                // firstPattern holds "__VERIFIED__", need to track new pattern
+                                                if (firstPattern == "__VERIFIED__") {
+                                                    firstPattern = patternStr
+                                                    selectedDots = emptyList()
+                                                    promptText = "Draw again to confirm"
+                                                } else {
+                                                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                        onPatternSet(hashPattern(patternStr))
+                                                        onDismiss()
+                                                    } else {
+                                                        showError = true
+                                                        errorState = true
+                                                        promptText = "Patterns don't match. Try again."
+                                                        firstPattern = "__VERIFIED__"
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Verifying old pattern
+                                            val hash = hashPattern(patternStr)
+                                            if (hash == savedHash) {
+                                                firstPattern = "__VERIFIED__"
+                                                selectedDots = emptyList()
+                                                promptText = "Draw new pattern (min 4 dots)"
+                                            } else {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Incorrect pattern"
+                                            }
+                                        }
+                                    }
+                                    "remove" -> {
+                                        val hash = hashPattern(patternStr)
+                                        if (hash == savedHash) {
+                                            onPatternRemoved()
+                                            onDismiss()
+                                        } else {
+                                            showError = true
+                                            errorState = true
+                                            promptText = "Incorrect pattern"
+                                        }
+                                    }
+                                    "verify" -> {
+                                        val hash = hashPattern(patternStr)
+                                        if (hash == savedHash) {
+                                            onDismiss()
+                                        } else {
+                                            showError = true
+                                            errorState = true
+                                            promptText = "Incorrect pattern"
+                                        }
                                     }
                                 }
                             },
@@ -2225,13 +2326,6 @@ fun PatternLockScreen(
                                 selectedDots = emptyList()
                             }
                         )
-                    }
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) {
-                        // Single tap detection for dot 9 master key
-                        // Already handled in onDragEnd when selectedDots has only 1 dot
                     }
             ) {
                 // ── Draw lines between connected dots ─────────────
@@ -2319,33 +2413,31 @@ fun PatternLockScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
-                if (mode == "set" || mode == "change") {
-                    OutlinedButton(
-                        onClick = {
-                            selectedDots = emptyList()
-                            firstPattern = ""
-                            if (mode == "set") {
-                                promptText = "Draw a pattern (min 4 dots)"
-                            } else {
-                                onDismiss()
-                            }
-                        },
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
-                    ) {
-                        Text("Cancel")
-                    }
-                }
-                if (mode == "verify") {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
-                    ) {
-                        Text("Cancel")
-                    }
+                OutlinedButton(
+                    onClick = {
+                        selectedDots = emptyList()
+                        firstPattern = ""
+                        errorState = false
+                        showError = false
+                        currentMode = mode
+                        promptText = when (mode) {
+                            "set" -> "Draw a pattern (min 4 dots)"
+                            "change" -> "Draw current pattern to verify"
+                            "remove" -> "Draw pattern to remove"
+                            "verify" -> "Draw pattern to verify"
+                            else -> ""
+                        }
+                        if (mode == "set" || mode == "change") {
+                            // Stay in screen but reset
+                        } else {
+                            onDismiss()
+                        }
+                    },
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text("Cancel")
                 }
             }
         }
@@ -2358,7 +2450,7 @@ private fun hitDot(
     dotSize: androidx.compose.ui.unit.Dp,
     gridColumns: Int
 ): Int? {
-    val spacingPx = dotSpacing.value * 3 // approximate
+    val spacingPx = dotSpacing.value * 3
     val sizePx = dotSize.value * 3
     val startX = spacingPx
     val startY = spacingPx
@@ -2379,104 +2471,7 @@ private fun hitDot(
     return null
 }
 
-private fun handlePatternComplete(
-    patternStr: String,
-    dotCount: Int,
-    mode: String,
-    savedHash: String?,
-    firstPattern: String,
-    setFirstPattern: (String) -> Unit,
-    setPromptText: (String) -> Unit,
-    clearSelection: () -> Unit,
-    triggerError: () -> Unit,
-    onPatternSet: (String) -> Unit,
-    onPatternRemoved: () -> Unit,
-    dismiss: () -> Unit
-) {
-    val hash = hashPattern(patternStr)
-
-    // Dot 9 master key check (single tap on dot 9)
-    if (dotCount == 1 && patternStr == "9") {
-        when {
-            mode == "set" && firstPattern.isNotEmpty() -> {
-                // Setting pattern: master key doesn't skip confirmation
-                triggerError()
-                setPromptText("Draw pattern to confirm (min 4 dots)")
-                return
-            }
-            mode == "change" || mode == "remove" -> {
-                // Master key works for change/remove
-                if (mode == "change") {
-                    // Proceed to set new pattern
-                    // This is handled by the caller checking the result
-                } else if (mode == "remove") {
-                    onPatternRemoved()
-                    dismiss()
-                    return
-                }
-            }
-        }
-    }
-
-    when (mode) {
-        "set" -> {
-            if (dotCount < 4) {
-                triggerError()
-                setPromptText("Connect at least 4 dots")
-            } else if (firstPattern.isEmpty()) {
-                // First draw — save and ask to confirm
-                setFirstPattern(patternStr)
-                clearSelection()
-                setPromptText("Draw again to confirm")
-            } else {
-                // Second draw — compare
-                if (hash == hashPattern(firstPattern)) {
-                    onPatternSet(hash)
-                    dismiss()
-                } else {
-                    triggerError()
-                    setPromptText("Patterns don't match. Try again.")
-                    setFirstPattern("")
-                }
-            }
-        }
-        "change" -> {
-            if (dotCount < 4 && patternStr != "9") {
-                triggerError()
-                setPromptText("Draw current pattern to verify")
-            } else if (hash == savedHash || patternStr == "9") {
-                // Verified old pattern — now set new
-                setFirstPattern("__VERIFIED__")
-                clearSelection()
-                setPromptText("Draw new pattern (min 4 dots)")
-                // Mode change handled externally
-            } else {
-                triggerError()
-                setPromptText("Incorrect pattern")
-            }
-        }
-        "remove" -> {
-            if (hash == savedHash || patternStr == "9") {
-                onPatternRemoved()
-                dismiss()
-            } else {
-                triggerError()
-                setPromptText("Incorrect pattern")
-            }
-        }
-        "verify" -> {
-            if (hash == savedHash || patternStr == "9") {
-                dismiss()
-            } else if (dotCount < 4 && patternStr != "9") {
-                triggerError()
-                setPromptText("Draw pattern to verify")
-            } else {
-                triggerError()
-                setPromptText("Incorrect pattern")
-            }
-        }
-    }
-}
-
 // END OF PART 11/11
+
+
 
