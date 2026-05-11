@@ -992,8 +992,8 @@ fun GreyBrowser() {
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v27] ===
-    // ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v28] ===
+// ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
         mutableStateOf(
@@ -1004,13 +1004,16 @@ fun GreyBrowser() {
         )
     }
 
-    LaunchedEffect(currentTabIndex, currentTab?.url) {
-        if (!isUrlFocused) {
-            urlInput = TextFieldValue(
-                text = if (currentTabIndex == -1) ""
-                    else currentTab?.url?.let { if (it == "about:blank") "" else it } ?: "",
-                selection = TextRange(0)
-            )
+    // ── URL sync — SideEffect runs on every recomposition ──────────
+    SideEffect {
+        if (!isUrlFocused && currentTabIndex >= 0) {
+            val tabUrl = currentTab?.url ?: ""
+            if (tabUrl != "about:blank" && tabUrl != urlInput.text) {
+                urlInput = TextFieldValue(tabUrl, selection = TextRange(0))
+            }
+        }
+        if (!isUrlFocused && currentTabIndex == -1 && urlInput.text.isNotEmpty()) {
+            urlInput = TextFieldValue("", selection = TextRange(0))
         }
     }
 
@@ -1623,6 +1626,7 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+    
     
     
 
