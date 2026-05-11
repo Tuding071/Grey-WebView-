@@ -985,8 +985,9 @@ fun GreyBrowser() {
 
 
 
+    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v30] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v31] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1015,620 +1016,624 @@ fun GreyBrowser() {
     var patternLockMode by remember { mutableStateOf("") }
     // "" = not showing, "set" = first time, "change" = change existing, "remove" = remove
 
-    // ── Confirm dialog ──────────────────────────────────────────────
-    if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false; confirmAction = null },
-            title = { Text(confirmTitle, color = WHITE, fontSize = 18.sp) },
-            text = { Text(confirmMessage, color = MUTED, fontSize = 14.sp) },
-            confirmButton = {
-                TextButton({
-                    val a = confirmAction; showConfirmDialog = false; confirmAction = null; a?.invoke()
-                }) { Text("Confirm", color = WHITE) }
-            },
-            dismissButton = {
-                TextButton({ showConfirmDialog = false; confirmAction = null }) {
-                    Text("Cancel", color = WHITE)
-                }
-            },
-            containerColor = SURFACE,
-            titleContentColor = WHITE,
-            textContentColor = WHITE,
-            shape = RectangleShape,
-            tonalElevation = 0.dp
-        )
-    }
+    // ── Everything wrapped in a Box so overlays layer correctly ─────
+    Box(Modifier.fillMaxSize()) {
 
-    // ── Pattern Lock Screen ─────────────────────────────────────────
-    if (patternLockMode.isNotEmpty()) {
-        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
-        val savedHash = prefs.getString("pattern_hash", null)
-
-        PatternLockScreen(
-            mode = patternLockMode,
-            savedHash = savedHash,
-            onDismiss = { patternLockMode = "" },
-            onPatternSet = { hash ->
-                prefs.edit().putString("pattern_hash", hash).apply()
-                patternLockMode = ""
-                showToast("Pattern saved")
-            },
-            onPatternRemoved = {
-                prefs.edit().remove("pattern_hash").apply()
-                patternLockMode = ""
-                showToast("Pattern removed")
-            }
-        )
-    }
-
-    // ── Bookmarks UI ────────────────────────────────────────────────
-    if (showBookmarks) {
-        BookmarksUI(
-            bookmarks = bookmarks,
-            onDismiss = { showBookmarks = false },
-            onOpenUrl = { url -> createForegroundTab(url) },
-            onDelete = { id ->
-                bookmarks.removeAll { it.id == id }
-                showToast("Bookmark deleted")
-            },
-            faviconBitmaps = faviconBitmaps,
-            loadFavicon = { loadFavicon(it) }
-        )
-    }
-
-    // ── History UI ──────────────────────────────────────────────────
-    if (showHistory) {
-        HistoryUI(
-            history = history,
-            onDismiss = { showHistory = false },
-            onOpenUrl = { url -> createForegroundTab(url) },
-            faviconBitmaps = faviconBitmaps,
-            loadFavicon = { loadFavicon(it) }
-        )
-    }
-
-    // ── Link Context Menu (centered, exact DropdownMenuItem style) ──
-    if (showLinkMenu && linkMenuUrl != null) {
-        Popup(
-            alignment = Alignment.Center,
-            onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
-            properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .width(240.dp)
-                    .border(1.dp, WHITE, RectangleShape),
-                color = SURFACE,
+        // ── Confirm dialog ──────────────────────────────────────────
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false; confirmAction = null },
+                title = { Text(confirmTitle, color = WHITE, fontSize = 18.sp) },
+                text = { Text(confirmMessage, color = MUTED, fontSize = 14.sp) },
+                confirmButton = {
+                    TextButton({
+                        val a = confirmAction; showConfirmDialog = false; confirmAction = null; a?.invoke()
+                    }) { Text("Confirm", color = WHITE) }
+                },
+                dismissButton = {
+                    TextButton({ showConfirmDialog = false; confirmAction = null }) {
+                        Text("Cancel", color = WHITE)
+                    }
+                },
+                containerColor = SURFACE,
+                titleContentColor = WHITE,
+                textContentColor = WHITE,
                 shape = RectangleShape,
                 tonalElevation = 0.dp
-            ) {
-                Column {
-                    DropdownMenuItem(
-                        text = { Text("New Tab", color = WHITE) },
-                        onClick = {
-                            createForegroundTab(linkMenuUrl!!, currentTabIndex)
-                            showLinkMenu = false
-                            linkMenuUrl = null
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Copy Link", color = WHITE) },
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
-                            showToast("Link copied")
-                            showLinkMenu = false
-                            linkMenuUrl = null
-                        }
-                    )
-                }
-            }
+            )
         }
-    }
 
-    // ── Tab Manager (real tabs only) ────────────────────────────────
-    if (showTabManager) {
-        val realTabs = tabs.toList()
-        val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
-        val sortedDomains = domainGroups.keys.sortedWith(
-            compareByDescending<String> { pinnedDomains.contains(it) }
-                .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
-        )
-        val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
-        val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
-        val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
-        val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
-            getDomainName(tabs[highlightedTabIndex].url)
-        } else ""
+        // ── Pattern Lock Screen ─────────────────────────────────────
+        if (patternLockMode.isNotEmpty()) {
+            val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+            val savedHash = prefs.getString("pattern_hash", null)
 
-        Popup(
-            alignment = Alignment.TopStart,
-            onDismissRequest = { showTabManager = false },
-            properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
-        ) {
-            Surface(
-                Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-                color = SURFACE
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    // ── Header ───────────────────────────────────────
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            { showTabManager = false },
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.Close, "Close", tint = WHITE)
-                        }
-                        Spacer(Modifier.width(4.dp))
-                        Text("Tabs", color = WHITE, fontSize = 18.sp)
-                        if (realTabs.isNotEmpty()) {
-                            Spacer(Modifier.width(8.dp))
-                            Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
-                        }
-                    }
-
-                    // ── Body: Sidebar + Tab list ─────────────────────
-                    Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                        // ── Sidebar ──────────────────────────────────
-                        val groupListState = rememberLazyListState()
-
-                        // ── Blink logic ──────────────────────────────
-                        LaunchedEffect(Unit) {
-                            selectedDomain = ""
-                            if (highlightDomain.isNotBlank()) {
-                                val blinkIdx = allSidebarItems.indexOf(highlightDomain)
-                                if (blinkIdx >= 0) {
-                                    groupListState.scrollToItem(blinkIdx)
-                                    blinkTargetDomain.value = highlightDomain
-                                    showBlink = true
-                                    delay(1200)
-                                    showBlink = false
-                                    blinkTargetDomain.value = ""
-                                    groupListState.scrollToItem(0)
-                                }
-                            }
-                        }
-
-                        LaunchedEffect(allSidebarItems, selectedDomain) {
-                            val idx = if (selectedDomain.isBlank()) 0
-                            else allSidebarItems.indexOf(selectedDomain)
-                            if (idx >= 0) groupListState.scrollToItem(idx)
-                        }
-
-                        LazyColumn(
-                            state = groupListState,
-                            modifier = Modifier.width(56.dp).fillMaxHeight().padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            item {
-                                AllGroupChip(
-                                    isSelected = selectedDomain.isBlank(),
-                                    tabCount = realTabs.size,
-                                    onClick = { selectedDomain = "" }
-                                )
-                            }
-                            items(pinnedSorted) { domain: String ->
-                                SidebarGroupChip(
-                                    domain, domain == selectedDomain,
-                                    domainGroups[domain]?.size ?: 0,
-                                    { selectedDomain = domain },
-                                    faviconBitmaps[domain],
-                                    { loadFavicon(domain) },
-                                    showBlink && blinkTargetDomain.value == domain,
-                                    true
-                                )
-                            }
-                            items(unpinnedSorted) { domain: String ->
-                                SidebarGroupChip(
-                                    domain, domain == selectedDomain,
-                                    domainGroups[domain]?.size ?: 0,
-                                    { selectedDomain = domain },
-                                    faviconBitmaps[domain],
-                                    { loadFavicon(domain) },
-                                    showBlink && blinkTargetDomain.value == domain,
-                                    false
-                                )
-                            }
-                        }
-
-                        VerticalDivider(
-                            color = Color.DarkGray,
-                            modifier = Modifier.fillMaxHeight().width(1.dp)
-                        )
-
-                        // ── Tab list ─────────────────────────────────
-                        val tabsToShow = if (selectedDomain.isBlank()) realTabs
-                        else domainGroups[selectedDomain] ?: emptyList()
-                        val tabListState = rememberLazyListState()
-                        val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
-                        LaunchedEffect(selectedDomain) {
-                            val idx = tabsToShow.indexOf(scrollTarget)
-                            if (idx >= 0) tabListState.scrollToItem(idx)
-                        }
-
-                        if (realTabs.isEmpty()) {
-                            Box(
-                                Modifier.weight(1f).fillMaxHeight(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("No open tabs", color = MUTED, fontSize = 16.sp)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Tap the + button to browse", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                state = tabListState,
-                                modifier = Modifier.weight(1f).fillMaxHeight()
-                            ) {
-                                if (tabsToShow.isEmpty()) {
-                                    item {
-                                        Box(
-                                            Modifier.fillMaxWidth().padding(32.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("No tabs in this group", color = MUTED, fontSize = 14.sp)
-                                        }
-                                    }
-                                } else {
-                                    items(tabsToShow) { tab: TabState ->
-                                        val tabIndex = tabs.indexOf(tab)
-                                        val isHighlighted = tabIndex == highlightedTabIndex
-                                        val isPending = pendingDeletions.containsKey(tabIndex)
-                                        val tabDomain = getDomainName(tab.url)
-                                        LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
-                                        val tabFav = tabFavicons[tabDomain]
-
-                                        Surface(
-                                            Modifier.fillMaxWidth()
-                                                .clickable(
-                                                    enabled = !isPending,
-                                                    onClick = {
-                                                        currentTabIndex = tabIndex
-                                                        showTabManager = false
-                                                    }
-                                                )
-                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                            color = when {
-                                                isPending -> DELETE_BG
-                                                isHighlighted -> WHITE
-                                                else -> Color.Transparent
-                                            }
-                                        ) {
-                                            Row(
-                                                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                if (tabFav != null) {
-                                                    Image(
-                                                        tabFav.asImageBitmap(),
-                                                        tabDomain,
-                                                        Modifier.size(16.dp).clip(CircleShape),
-                                                        contentScale = ContentScale.Fit
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text(
-                                                            text = tabDomain.take(1).uppercase(),
-                                                            color = WHITE,
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
-                                                }
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(
-                                                    if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
-                                                    else tab.title,
-                                                    color = when {
-                                                        isPending -> WHITE
-                                                        isHighlighted -> Color.Black
-                                                        else -> WHITE
-                                                    },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    fontSize = 14.sp,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                if (isPending) {
-                                                    IconButton({ undoDeleteTab(tabIndex) }) {
-                                                        Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                    }
-                                                } else {
-                                                    IconButton({ requestDeleteTab(tabIndex) }) {
-                                                        Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── Footer ───────────────────────────────────────
-                    Column(
-                        Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding()
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                currentTabIndex = -1
-                                showTabManager = false
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
-                        ) {
-                            Icon(Icons.Default.Add, null, tint = WHITE)
-                            Spacer(Modifier.width(8.dp))
-                            Text("New Tab", color = WHITE)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth()) {
-                            val hasSelection = selectedDomain.isNotBlank()
-                            val isPinned = pinnedDomains.contains(selectedDomain)
-                            val tint = if (hasSelection) WHITE else ACCENT_DIM
-
-                            OutlinedButton(
-                                onClick = {
-                                    if (hasSelection) {
-                                        confirmTitle = if (isPinned) "Unpin Group?" else "Pin Group?"
-                                        confirmMessage = "Are you sure?"
-                                        confirmAction = {
-                                            if (isPinned) pinnedDomains.remove(selectedDomain)
-                                            else pinnedDomains.add(selectedDomain)
-                                        }
-                                        showConfirmDialog = true
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RectangleShape,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
-                                border = BorderStroke(1.dp, tint)
-                            ) {
-                                Text(if (isPinned) "Unpin Group" else "Pin Group", fontSize = 13.sp, color = tint)
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    if (hasSelection) {
-                                        confirmTitle = "Delete Group?"
-                                        confirmMessage = "All tabs in this group will be lost."
-                                        confirmAction = {
-                                            val toRemove = (domainGroups[selectedDomain] ?: emptyList()).toList()
-                                            toRemove.forEach { tab ->
-                                                val idx = tabs.indexOf(tab)
-                                                if (idx >= 0) pendingDeletions.remove(idx)
-                                                tab.webView?.destroy()
-                                            }
-                                            tabs.removeAll(toRemove.toSet())
-                                            if (tabs.isEmpty()) {
-                                                currentTabIndex = -1
-                                                highlightedTabIndex = -1
-                                                selectedDomain = ""
-                                            } else {
-                                                currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
-                                                highlightedTabIndex = currentTabIndex
-                                                selectedDomain = ""
-                                            }
-                                        }
-                                        showConfirmDialog = true
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RectangleShape,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
-                                border = BorderStroke(1.dp, tint)
-                            ) {
-                                Text("Delete Group", fontSize = 13.sp, color = tint)
-                            }
-                        }
-                    }
+            PatternLockScreen(
+                mode = patternLockMode,
+                savedHash = savedHash,
+                onDismiss = { patternLockMode = "" },
+                onPatternSet = { hash ->
+                    prefs.edit().putString("pattern_hash", hash).apply()
+                    patternLockMode = ""
+                    showToast("Pattern saved")
+                },
+                onPatternRemoved = {
+                    prefs.edit().remove("pattern_hash").apply()
+                    patternLockMode = ""
+                    showToast("Pattern removed")
                 }
-            }
+            )
         }
-    }
 
-    // ── Main layout — Simple Column ─────────────────────────────────
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().background(BG)
-    ) {
-        // ── Top Bar ──────────────────────────────────────────────────
-        Surface(
-            color = SURFACE,
-            shadowElevation = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // ── Bookmarks UI ────────────────────────────────────────────
+        if (showBookmarks) {
+            BookmarksUI(
+                bookmarks = bookmarks,
+                onDismiss = { showBookmarks = false },
+                onOpenUrl = { url -> createForegroundTab(url) },
+                onDelete = { id ->
+                    bookmarks.removeAll { it.id == id }
+                    showToast("Bookmark deleted")
+                },
+                faviconBitmaps = faviconBitmaps,
+                loadFavicon = { loadFavicon(it) }
+            )
+        }
+
+        // ── History UI ──────────────────────────────────────────────
+        if (showHistory) {
+            HistoryUI(
+                history = history,
+                onDismiss = { showHistory = false },
+                onOpenUrl = { url -> createForegroundTab(url) },
+                faviconBitmaps = faviconBitmaps,
+                loadFavicon = { loadFavicon(it) }
+            )
+        }
+
+        // ── Link Context Menu (centered, exact DropdownMenuItem style) ──
+        if (showLinkMenu && linkMenuUrl != null) {
+            Popup(
+                alignment = Alignment.Center,
+                onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
+                properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)
             ) {
-                // Tabs button
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ showTabManager = true }) {
-                        Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // Forward button
-                val canGoForward = currentTab?.webView?.canGoForward() == true
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton(
-                        onClick = { currentTab?.webView?.goForward() },
-                        enabled = canGoForward
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            "Forward",
-                            tint = if (canGoForward) WHITE else ACCENT_DIM
-                        )
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // URL field
-                val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    singleLine = true,
-                    placeholder = {
-                        Text(
-                            if (currentTabIndex == -1) "Search or enter URL"
-                            else currentTab?.url?.take(50) ?: "",
-                            color = WHITE.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
+                Surface(
                     modifier = Modifier
-                        .weight(1f)
-                        .background(SURFACE)
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { isUrlFocused = it.isFocused }
-                        .drawBehind {
-                            if (isLoading) {
-                                drawRect(
-                                    color = WHITE,
-                                    size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
-                                )
-                            }
-                        },
-                    textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
+                        .width(240.dp)
+                        .border(1.dp, WHITE, RectangleShape),
+                    color = SURFACE,
                     shape = RectangleShape,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(
-                        onGo = {
-                            val input = urlInput.text
-                            if (input.isNotBlank()) {
-                                focusManager.clearFocus()
-                                urlInput = urlInput.copy(selection = TextRange(0))
-                                val uri = resolveUrl(input)
-                                if (currentTabIndex == -1) {
-                                    // Homepage: create a new tab at top
-                                    createForegroundTab(uri)
-                                } else {
-                                    // Real tab: navigate in current tab
-                                    val cleanUri = uri.substringBefore("#")
-                                    // Check if URL already open in another tab
-                                    val existingIndex = tabs.indexOfFirst {
-                                        it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                    tonalElevation = 0.dp
+                ) {
+                    Column {
+                        DropdownMenuItem(
+                            text = { Text("New Tab", color = WHITE) },
+                            onClick = {
+                                createForegroundTab(linkMenuUrl!!, currentTabIndex)
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Copy Link", color = WHITE) },
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
+                                showToast("Link copied")
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Tab Manager (real tabs only) ────────────────────────────
+        if (showTabManager) {
+            val realTabs = tabs.toList()
+            val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
+            val sortedDomains = domainGroups.keys.sortedWith(
+                compareByDescending<String> { pinnedDomains.contains(it) }
+                    .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
+            )
+            val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
+            val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
+            val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
+            val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                getDomainName(tabs[highlightedTabIndex].url)
+            } else ""
+
+            Popup(
+                alignment = Alignment.TopStart,
+                onDismissRequest = { showTabManager = false },
+                properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+            ) {
+                Surface(
+                    Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+                    color = SURFACE
+                ) {
+                    Column(Modifier.fillMaxSize()) {
+                        // ── Header ───────────────────────────────────
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                { showTabManager = false },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.Default.Close, "Close", tint = WHITE)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text("Tabs", color = WHITE, fontSize = 18.sp)
+                            if (realTabs.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
+                            }
+                        }
+
+                        // ── Body: Sidebar + Tab list ─────────────────
+                        Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
+                            // ── Sidebar ──────────────────────────────
+                            val groupListState = rememberLazyListState()
+
+                            // ── Blink logic ──────────────────────────
+                            LaunchedEffect(Unit) {
+                                selectedDomain = ""
+                                if (highlightDomain.isNotBlank()) {
+                                    val blinkIdx = allSidebarItems.indexOf(highlightDomain)
+                                    if (blinkIdx >= 0) {
+                                        groupListState.scrollToItem(blinkIdx)
+                                        blinkTargetDomain.value = highlightDomain
+                                        showBlink = true
+                                        delay(1200)
+                                        showBlink = false
+                                        blinkTargetDomain.value = ""
+                                        groupListState.scrollToItem(0)
                                     }
-                                    if (existingIndex >= 0 && existingIndex != currentTabIndex) {
-                                        // Delete old duplicate, create fresh tab
-                                        removeDuplicateTab(uri)
+                                }
+                            }
+
+                            LaunchedEffect(allSidebarItems, selectedDomain) {
+                                val idx = if (selectedDomain.isBlank()) 0
+                                else allSidebarItems.indexOf(selectedDomain)
+                                if (idx >= 0) groupListState.scrollToItem(idx)
+                            }
+
+                            LazyColumn(
+                                state = groupListState,
+                                modifier = Modifier.width(56.dp).fillMaxHeight().padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                item {
+                                    AllGroupChip(
+                                        isSelected = selectedDomain.isBlank(),
+                                        tabCount = realTabs.size,
+                                        onClick = { selectedDomain = "" }
+                                    )
+                                }
+                                items(pinnedSorted) { domain: String ->
+                                    SidebarGroupChip(
+                                        domain, domain == selectedDomain,
+                                        domainGroups[domain]?.size ?: 0,
+                                        { selectedDomain = domain },
+                                        faviconBitmaps[domain],
+                                        { loadFavicon(domain) },
+                                        showBlink && blinkTargetDomain.value == domain,
+                                        true
+                                    )
+                                }
+                                items(unpinnedSorted) { domain: String ->
+                                    SidebarGroupChip(
+                                        domain, domain == selectedDomain,
+                                        domainGroups[domain]?.size ?: 0,
+                                        { selectedDomain = domain },
+                                        faviconBitmaps[domain],
+                                        { loadFavicon(domain) },
+                                        showBlink && blinkTargetDomain.value == domain,
+                                        false
+                                    )
+                                }
+                            }
+
+                            VerticalDivider(
+                                color = Color.DarkGray,
+                                modifier = Modifier.fillMaxHeight().width(1.dp)
+                            )
+
+                            // ── Tab list ─────────────────────────────
+                            val tabsToShow = if (selectedDomain.isBlank()) realTabs
+                            else domainGroups[selectedDomain] ?: emptyList()
+                            val tabListState = rememberLazyListState()
+                            val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
+                            LaunchedEffect(selectedDomain) {
+                                val idx = tabsToShow.indexOf(scrollTarget)
+                                if (idx >= 0) tabListState.scrollToItem(idx)
+                            }
+
+                            if (realTabs.isEmpty()) {
+                                Box(
+                                    Modifier.weight(1f).fillMaxHeight(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("No open tabs", color = MUTED, fontSize = 16.sp)
+                                        Spacer(Modifier.height(8.dp))
+                                        Text("Tap the + button to browse", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                                    }
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = tabListState,
+                                    modifier = Modifier.weight(1f).fillMaxHeight()
+                                ) {
+                                    if (tabsToShow.isEmpty()) {
+                                        item {
+                                            Box(
+                                                Modifier.fillMaxWidth().padding(32.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("No tabs in this group", color = MUTED, fontSize = 14.sp)
+                                            }
+                                        }
+                                    } else {
+                                        items(tabsToShow) { tab: TabState ->
+                                            val tabIndex = tabs.indexOf(tab)
+                                            val isHighlighted = tabIndex == highlightedTabIndex
+                                            val isPending = pendingDeletions.containsKey(tabIndex)
+                                            val tabDomain = getDomainName(tab.url)
+                                            LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
+                                            val tabFav = tabFavicons[tabDomain]
+
+                                            Surface(
+                                                Modifier.fillMaxWidth()
+                                                    .clickable(
+                                                        enabled = !isPending,
+                                                        onClick = {
+                                                            currentTabIndex = tabIndex
+                                                            showTabManager = false
+                                                        }
+                                                    )
+                                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                                color = when {
+                                                    isPending -> DELETE_BG
+                                                    isHighlighted -> WHITE
+                                                    else -> Color.Transparent
+                                                }
+                                            ) {
+                                                Row(
+                                                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    if (tabFav != null) {
+                                                        Image(
+                                                            tabFav.asImageBitmap(),
+                                                            tabDomain,
+                                                            Modifier.size(16.dp).clip(CircleShape),
+                                                            contentScale = ContentScale.Fit
+                                                        )
+                                                    } else {
+                                                        Box(
+                                                            Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = tabDomain.take(1).uppercase(),
+                                                                color = WHITE,
+                                                                fontSize = 8.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(
+                                                        if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
+                                                        else tab.title,
+                                                        color = when {
+                                                            isPending -> WHITE
+                                                            isHighlighted -> Color.Black
+                                                            else -> WHITE
+                                                        },
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        fontSize = 14.sp,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    if (isPending) {
+                                                        IconButton({ undoDeleteTab(tabIndex) }) {
+                                                            Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                        }
+                                                    } else {
+                                                        IconButton({ requestDeleteTab(tabIndex) }) {
+                                                            Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Footer ───────────────────────────────────
+                        Column(
+                            Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding()
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    currentTabIndex = -1
+                                    showTabManager = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                                border = BorderStroke(1.dp, WHITE)
+                            ) {
+                                Icon(Icons.Default.Add, null, tint = WHITE)
+                                Spacer(Modifier.width(8.dp))
+                                Text("New Tab", color = WHITE)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth()) {
+                                val hasSelection = selectedDomain.isNotBlank()
+                                val isPinned = pinnedDomains.contains(selectedDomain)
+                                val tint = if (hasSelection) WHITE else ACCENT_DIM
+
+                                OutlinedButton(
+                                    onClick = {
+                                        if (hasSelection) {
+                                            confirmTitle = if (isPinned) "Unpin Group?" else "Pin Group?"
+                                            confirmMessage = "Are you sure?"
+                                            confirmAction = {
+                                                if (isPinned) pinnedDomains.remove(selectedDomain)
+                                                else pinnedDomains.add(selectedDomain)
+                                            }
+                                            showConfirmDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RectangleShape,
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                    border = BorderStroke(1.dp, tint)
+                                ) {
+                                    Text(if (isPinned) "Unpin Group" else "Pin Group", fontSize = 13.sp, color = tint)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        if (hasSelection) {
+                                            confirmTitle = "Delete Group?"
+                                            confirmMessage = "All tabs in this group will be lost."
+                                            confirmAction = {
+                                                val toRemove = (domainGroups[selectedDomain] ?: emptyList()).toList()
+                                                toRemove.forEach { tab ->
+                                                    val idx = tabs.indexOf(tab)
+                                                    if (idx >= 0) pendingDeletions.remove(idx)
+                                                    tab.webView?.destroy()
+                                                }
+                                                tabs.removeAll(toRemove.toSet())
+                                                if (tabs.isEmpty()) {
+                                                    currentTabIndex = -1
+                                                    highlightedTabIndex = -1
+                                                    selectedDomain = ""
+                                                } else {
+                                                    currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
+                                                    highlightedTabIndex = currentTabIndex
+                                                    selectedDomain = ""
+                                                }
+                                            }
+                                            showConfirmDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RectangleShape,
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                    border = BorderStroke(1.dp, tint)
+                                ) {
+                                    Text("Delete Group", fontSize = 13.sp, color = tint)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Main layout — Simple Column ─────────────────────────────
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().background(BG)
+        ) {
+            // ── Top Bar ──────────────────────────────────────────────
+            Surface(
+                color = SURFACE,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Tabs button
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ showTabManager = true }) {
+                            Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Forward button
+                    val canGoForward = currentTab?.webView?.canGoForward() == true
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton(
+                            onClick = { currentTab?.webView?.goForward() },
+                            enabled = canGoForward
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                "Forward",
+                                tint = if (canGoForward) WHITE else ACCENT_DIM
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // URL field
+                    val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                if (currentTabIndex == -1) "Search or enter URL"
+                                else currentTab?.url?.take(50) ?: "",
+                                color = WHITE.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(SURFACE)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { isUrlFocused = it.isFocused }
+                            .drawBehind {
+                                if (isLoading) {
+                                    drawRect(
+                                        color = WHITE,
+                                        size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
+                                    )
+                                }
+                            },
+                        textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(
+                            onGo = {
+                                val input = urlInput.text
+                                if (input.isNotBlank()) {
+                                    focusManager.clearFocus()
+                                    urlInput = urlInput.copy(selection = TextRange(0))
+                                    val uri = resolveUrl(input)
+                                    if (currentTabIndex == -1) {
+                                        // Homepage: create a new tab at top
                                         createForegroundTab(uri)
                                     } else {
-                                        // Navigate current tab
-                                        currentTab?.webView?.loadUrl(uri)
+                                        // Real tab: navigate in current tab
+                                        val cleanUri = uri.substringBefore("#")
+                                        // Check if URL already open in another tab
+                                        val existingIndex = tabs.indexOfFirst {
+                                            it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                                        }
+                                        if (existingIndex >= 0 && existingIndex != currentTabIndex) {
+                                            // Delete old duplicate, create fresh tab
+                                            removeDuplicateTab(uri)
+                                            createForegroundTab(uri)
+                                        } else {
+                                            // Navigate current tab
+                                            currentTab?.webView?.loadUrl(uri)
+                                        }
                                     }
                                 }
                             }
-                        }
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
-                        cursorColor = if (isLoading) Color.Gray else WHITE
-                    ),
-                    trailingIcon = {
-                        if (isLoading) {
-                            IconButton({ currentTab?.webView?.stopLoading() }) {
-                                Icon(Icons.Default.Close, "Stop", tint = WHITE)
-                            }
-                        } else {
-                            IconButton({
-                                urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
-                                focusRequester.requestFocus()
-                            }) {
-                                Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
-                            }
-                        }
-                    }
-                )
-
-                Spacer(Modifier.width(4.dp))
-
-                // New Tab button — goes to homepage (neutral ground)
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ currentTabIndex = -1 }) {
-                        Icon(Icons.Default.Add, "New Tab", tint = WHITE)
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                // Menu button
-                Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                    IconButton({ showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.border(1.dp, WHITE, RectangleShape),
-                        containerColor = SURFACE,
-                        shape = RectangleShape
-                    ) {
-                        if (currentTabIndex >= 0) {
-                            DropdownMenuItem(
-                                text = { Text("Refresh", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    currentTab?.webView?.reload()
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = if (isLoading) Color.Gray else WHITE
+                        ),
+                        trailingIcon = {
+                            if (isLoading) {
+                                IconButton({ currentTab?.webView?.stopLoading() }) {
+                                    Icon(Icons.Default.Close, "Stop", tint = WHITE)
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Add to Bookmark", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    val url = currentTab?.url ?: ""
-                                    if (url != "about:blank" && url.isNotBlank()) {
-                                        bookmarks.removeAll { it.url == url }
-                                        bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
-                                        showToast("Added to bookmarks")
+                            } else {
+                                IconButton({
+                                    urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
+                                    focusRequester.requestFocus()
+                                }) {
+                                    Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // New Tab button — goes to homepage (neutral ground)
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ currentTabIndex = -1 }) {
+                            Icon(Icons.Default.Add, "New Tab", tint = WHITE)
+                        }
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Menu button
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.border(1.dp, WHITE, RectangleShape),
+                            containerColor = SURFACE,
+                            shape = RectangleShape
+                        ) {
+                            if (currentTabIndex >= 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Refresh", color = WHITE) },
+                                    onClick = {
+                                        showMenu = false
+                                        currentTab?.webView?.reload()
                                     }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Add to Bookmark", color = WHITE) },
+                                    onClick = {
+                                        showMenu = false
+                                        val url = currentTab?.url ?: ""
+                                        if (url != "about:blank" && url.isNotBlank()) {
+                                            bookmarks.removeAll { it.url == url }
+                                            bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
+                                            showToast("Added to bookmarks")
+                                        }
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Bookmarks", color = WHITE) },
+                                onClick = { showMenu = false; showBookmarks = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("History", color = WHITE) },
+                                onClick = { showMenu = false; showHistory = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("App Lock", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+                                    val hasPattern = prefs.getString("pattern_hash", null) != null
+                                    patternLockMode = if (hasPattern) "change" else "set"
                                 }
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text("Bookmarks", color = WHITE) },
-                            onClick = { showMenu = false; showBookmarks = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("History", color = WHITE) },
-                            onClick = { showMenu = false; showHistory = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("App Lock", color = WHITE) },
-                            onClick = {
-                                showMenu = false
-                                val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
-                                val hasPattern = prefs.getString("pattern_hash", null) != null
-                                patternLockMode = if (hasPattern) "change" else "set"
-                            }
-                        )
                     }
                 }
             }
-        }
 
-        // ── Content area (fills remaining space below top bar) ───────
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            ContentLayer()
+            // ── Content area (fills remaining space below top bar) ───
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                ContentLayer()
+            }
         }
     }
 
