@@ -2135,6 +2135,7 @@ fun HistoryUI(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2339,10 +2340,10 @@ fun PatternDrawScreen(
         val dotCount = selectedDots.size
         val hash = hashPattern(patternStr)
 
-        // Dot 9 master key (tiny drag from dot 9 only)
+        // Dot 9 master key (tiny drag from dot 9)
         if (dotCount == 1 && patternStr == "9") {
             when (mode) {
-                "unlock", "change_verify" -> {
+                "unlock", "change_verify", "toggle_off" -> {
                     onPatternVerified()
                     return
                 }
@@ -2578,3 +2579,6 @@ fun PatternDrawScreen(
 }
 
 // END OF PART 11/11
+
+
+
