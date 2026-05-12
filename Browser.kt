@@ -462,8 +462,10 @@ fun loadScripts(context: Context): List<Script> {
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions ===
+// === PART 4/10 — Utility Functions [UPDATED v2] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -483,7 +485,72 @@ fun resolveUrl(input: String): String {
     return "https://www.google.com/search?q=${Uri.encode(input)}"
 }
 
+// ── Script Header Parser ─────────────────────────────────────────────
+fun parseScriptHeader(code: String): Map<String, String> {
+    val meta = mutableMapOf<String, String>()
+    val headerRegex = Regex("""/\*\s*==UserScript==\s*(.*?)\s*==/UserScript==\s*\*/""", RegexOption.DOT_MATCHES_ALL)
+    val headerMatch = headerRegex.find(code) ?: return meta
+
+    val header = headerMatch.groupValues[1]
+    val fieldRegex = Regex("""@(\w+)\s+(.+)""")
+    for (line in header.lines()) {
+        val fieldMatch = fieldRegex.find(line.trim()) ?: continue
+        val key = fieldMatch.groupValues[1]
+        val value = fieldMatch.groupValues[2].trim()
+        if (key in listOf("match", "exclude")) {
+            // Append to existing list
+            val existing = meta[key] ?: ""
+            meta[key] = if (existing.isEmpty()) value else "$existing||$value"
+        } else {
+            meta[key] = value
+        }
+    }
+    return meta
+}
+
+fun getScriptBody(code: String): String {
+    val headerRegex = Regex("""/\*\s*==UserScript==\s*.*?\s*==/UserScript==\s*\*/\s*""", RegexOption.DOT_MATCHES_ALL)
+    return headerRegex.replaceFirst(code, "")
+}
+
+fun urlMatchesPattern(url: String, pattern: String): Boolean {
+    if (pattern == "*" || pattern == "*://*/*") return true
+    // Convert wildcard pattern to regex
+    var regexStr = Regex.escape(pattern)
+    regexStr = regexStr.replace("\\*", ".*")
+    // Don't escape :// in protocol
+    regexStr = regexStr.replace("""\.\*://\.\*""", ".*://.*")
+    regexStr = regexStr.replace("""\.\*://""", ".*://")
+    return try {
+        Regex(regexStr, RegexOption.IGNORE_CASE).containsMatchIn(url)
+    } catch (e: Exception) {
+        // Fallback: simple contains check
+        url.contains(pattern.replace("*", ""))
+    }
+}
+
+fun shouldInjectScript(script: Script, url: String): Boolean {
+    if (!script.enabled) return false
+    val meta = parseScriptHeader(script.code)
+    val matchPatterns = meta["match"]?.split("||") ?: listOf("*://*/*")
+    val excludePatterns = meta["exclude"]?.split("||") ?: emptyList()
+
+    // Check exclude first
+    for (pattern in excludePatterns) {
+        if (urlMatchesPattern(url, pattern)) return false
+    }
+    // Check match
+    for (pattern in matchPatterns) {
+        if (urlMatchesPattern(url, pattern)) return true
+    }
+    return false
+}
+
 // END OF PART 4/10
+
+
+
+
 
 
 
@@ -635,8 +702,8 @@ fun GreyBrowser() {
     
     
     
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v18] ===
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v19] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -682,6 +749,17 @@ fun GreyBrowser() {
                 if (url != "about:blank") {
                     tabState.isBlankTab = false
                 }
+                // ── Inject document-start scripts ──────────────────
+                for (script in scripts) {
+                    if (!shouldInjectScript(script, url)) continue
+                    val meta = parseScriptHeader(script.code)
+                    val runAt = meta["run-at"] ?: "document-end"
+                    if (runAt == "document-start") {
+                        val body = getScriptBody(script.code)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
+                    }
+                }
             }
             override fun onPageFinished(view: WebView, url: String) {
                 tabState.progress = 100
@@ -701,10 +779,15 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
-                // ── Inject enabled user scripts ────────────────────
+                // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
-                    if (script.enabled) {
-                        wv.evaluateJavascript(script.code, null)
+                    if (!shouldInjectScript(script, url)) continue
+                    val meta = parseScriptHeader(script.code)
+                    val runAt = meta["run-at"] ?: "document-end"
+                    if (runAt == "document-end" || runAt == "document-idle") {
+                        val body = getScriptBody(script.code)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
                     }
                 }
             }
@@ -909,7 +992,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
 
 
 
@@ -2693,7 +2775,7 @@ fun PatternDrawScreen(
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 12/12 — Scripts Manager + Script Editor Composables ===
+// === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -2707,6 +2789,7 @@ fun ScriptsManagerScreen(
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var scriptToDelete by remember { mutableStateOf<String?>(null) }
+    var showGuide by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm && scriptToDelete != null) {
         AlertDialog(
@@ -2734,6 +2817,10 @@ fun ScriptsManagerScreen(
         )
     }
 
+    if (showGuide) {
+        ScriptGuideScreen(onDismiss = { showGuide = false })
+    }
+
     Popup(
         alignment = Alignment.TopStart,
         onDismissRequest = onDismiss,
@@ -2753,14 +2840,21 @@ fun ScriptsManagerScreen(
                         Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
                     Spacer(Modifier.width(4.dp))
-                    Text("Scripts", color = WHITE, fontSize = 18.sp)
+                    Text("Scripts", color = WHITE, fontSize = 18.sp, modifier = Modifier.weight(1f))
                     if (scripts.isNotEmpty()) {
-                        Spacer(Modifier.width(8.dp))
                         Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
                     }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { showGuide = true },
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text("?", fontSize = 14.sp, color = WHITE)
+                    }
                 }
-
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
                 // ── Script List ────────────────────────────────────
                 if (scripts.isEmpty()) {
@@ -2785,7 +2879,6 @@ fun ScriptsManagerScreen(
                                         .clickable { onEditScript(script) },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Enable/Disable toggle
                                     Switch(
                                         checked = script.enabled,
                                         onCheckedChange = { onToggleScript(script.id) },
@@ -2885,7 +2978,6 @@ fun ScriptEditorScreen(
                 Column(
                     Modifier.fillMaxWidth().padding(16.dp)
                 ) {
-                    // Title field
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
@@ -2907,7 +2999,6 @@ fun ScriptEditorScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // Code field
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
@@ -2928,7 +3019,6 @@ fun ScriptEditorScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Buttons
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2960,4 +3050,113 @@ fun ScriptEditorScreen(
     }
 }
 
+@Composable
+fun ScriptGuideScreen(onDismiss: () -> Unit) {
+    val clipboardManager = LocalClipboardManager.current
+
+    val guideText = """
+WebView Script Guide
+
+Scripts run in page context via Android WebView.
+Full DOM access and standard JS APIs available.
+
+Available:
+• DOM manipulation (querySelector, etc.)
+• XHR/fetch interception
+• Media element detection (video, audio, source)
+• URL.createObjectURL hooking
+• navigator.clipboard.writeText
+• window.open for new tabs
+• @match / @exclude URL patterns
+• @run-at document-start / document-end
+• @name for script identification
+• try/catch error wrapping
+
+Not available:
+• GM_getValue / GM_setValue (no storage bridge)
+• GM_xmlhttpRequest (no CORS bypass)
+• GM_download (no download manager)
+• Cross-origin iframe access
+• Browser tab management
+• Native Android integration
+
+Scripts use userscript header format:
+/* ==UserScript==
+@name My Script
+@match *://*.example.com/*
+@run-at document-end
+==/UserScript== */
+
+Errors are silently caught. Use console.log
+for debugging via remote DevTools.
+""".trimIndent()
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Script Guide", color = WHITE, fontSize = 18.sp)
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Guide content ──────────────────────────────────
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().padding(16.dp)
+                ) {
+                    item {
+                        Text(
+                            guideText,
+                            color = WHITE.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+
+                // ── Copy button ────────────────────────────────────
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(guideText))
+                            },
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Copy Guide", color = WHITE)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // END OF PART 12/12
+
+
+
+
