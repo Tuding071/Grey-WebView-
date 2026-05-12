@@ -55,7 +55,7 @@
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v7] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v8] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -82,6 +82,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -120,6 +121,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
@@ -161,9 +163,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
-
-
 
 
 
@@ -2137,6 +2136,8 @@ fun HistoryUI(
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2278,8 +2279,9 @@ fun PatternDrawScreen(
     var promptText by remember { mutableStateOf("") }
     var step by remember { mutableStateOf(0) }
 
-    val spacingPx = with(density) { dotSpacing.toPx() }
-    val sizePx = with(density) { dotSize.toPx() }
+    // Pre-compute pixel values once
+    val spacingPx = remember { with(density) { dotSpacing.toPx() } }
+    val sizePx = remember { with(density) { dotSize.toPx() } }
 
     // ── Initialize prompt ─────────────────────────────────────────
     LaunchedEffect(mode) {
@@ -2317,7 +2319,7 @@ fun PatternDrawScreen(
         }
     }
 
-    // ── Helper: check if a position hits a dot ────────────────────
+    // ── Helper: check if a pixel position hits a dot ──────────────
     fun hitDotAt(px: Float, py: Float): Int? {
         val startX = spacingPx
         val startY = spacingPx
@@ -2545,7 +2547,7 @@ fun PatternDrawScreen(
 
                             Box(
                                 Modifier
-                                    .offset { IntOffset((spacingPx * col).toInt(), (spacingPx * row).toInt()) }
+                                    .offset(x = dotSpacing * col, y = dotSpacing * row)
                                     .size(dotSize)
                                     .background(
                                         color = when {
@@ -2610,3 +2612,8 @@ fun PatternDrawScreen(
 }
 
 // END OF PART 11/11
+
+
+
+
+
