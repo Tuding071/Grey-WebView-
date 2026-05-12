@@ -2774,6 +2774,7 @@ fun PatternDrawScreen(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2840,11 +2841,12 @@ fun ScriptsManagerScreen(
                         Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
                     Spacer(Modifier.width(4.dp))
-                    Text("Scripts", color = WHITE, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                    Text("Scripts", color = WHITE, fontSize = 18.sp)
                     if (scripts.isNotEmpty()) {
+                        Spacer(Modifier.width(4.dp))
                         Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.weight(1f))
                     OutlinedButton(
                         onClick = { showGuide = true },
                         shape = RectangleShape,
@@ -2945,6 +2947,7 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
+    val scrollState = rememberScrollState()
 
     Popup(
         alignment = Alignment.TopStart,
@@ -2955,7 +2958,9 @@ fun ScriptEditorScreen(
             Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
             color = SURFACE
         ) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+            Column(
+                Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(scrollState)
+            ) {
                 // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
@@ -3005,7 +3010,9 @@ fun ScriptEditorScreen(
                         placeholder = {
                             Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 400.dp),
                         textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -3156,7 +3163,3 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
-
-
-
