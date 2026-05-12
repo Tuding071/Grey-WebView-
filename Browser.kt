@@ -2136,6 +2136,7 @@ fun HistoryUI(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2222,7 +2223,7 @@ fun AppLockSettingsScreen(
                                 if (hasPattern) {
                                     onChangePattern()
                                 } else {
-                                    onToggleChange(true) // triggers set flow
+                                    onToggleChange(true)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -2268,6 +2269,7 @@ fun PatternDrawScreen(
     val dotSize = 24.dp
     val gridColumns = 3
     val gridRows = 3
+    val density = LocalDensity.current
 
     val selectedDots = remember { mutableStateListOf<Int>() }
     var firstPattern by remember { mutableStateOf("") }
@@ -2275,7 +2277,9 @@ fun PatternDrawScreen(
     var showError by remember { mutableStateOf(false) }
     var promptText by remember { mutableStateOf("") }
     var step by remember { mutableStateOf(0) }
-    // step 0 = initial, step 1 = confirm/verified
+
+    val spacingPx = with(density) { dotSpacing.toPx() }
+    val sizePx = with(density) { dotSize.toPx() }
 
     // ── Initialize prompt ─────────────────────────────────────────
     LaunchedEffect(mode) {
@@ -2310,6 +2314,116 @@ fun PatternDrawScreen(
             delay(600)
             showError = false
             selectedDots.clear()
+        }
+    }
+
+    // ── Helper: check if a position hits a dot ────────────────────
+    fun hitDotAt(px: Float, py: Float): Int? {
+        val startX = spacingPx
+        val startY = spacingPx
+        val hitRadius = spacingPx * 0.6f
+
+        for (row in 0 until gridRows) {
+            for (col in 0 until gridColumns) {
+                val cx = startX + col * spacingPx + sizePx / 2
+                val cy = startY + row * spacingPx + sizePx / 2
+                val dist = kotlin.math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy))
+                if (dist <= hitRadius) {
+                    return row * gridColumns + col + 1
+                }
+            }
+        }
+        return null
+    }
+
+    // ── Helper: handle pattern completion ─────────────────────────
+    fun handleComplete() {
+        val patternStr = selectedDots.joinToString(",")
+        val dotCount = selectedDots.size
+        val hash = hashPattern(patternStr)
+
+        // Dot 9 master key (only for unlock and change_verify)
+        if (dotCount == 1 && patternStr == "9") {
+            when (mode) {
+                "unlock", "change_verify" -> {
+                    onPatternVerified()
+                    return
+                }
+            }
+        }
+
+        when (mode) {
+            "unlock" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
+            "set" -> {
+                if (dotCount < 4) {
+                    showError = true
+                    errorState = true
+                    promptText = "Connect at least 4 dots"
+                } else if (step == 0) {
+                    firstPattern = patternStr
+                    step = 1
+                    selectedDots.clear()
+                    promptText = "Do it again to confirm"
+                } else {
+                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                        onPatternSet(hash)
+                    } else {
+                        showError = true
+                        errorState = true
+                        promptText = "Patterns don't match. Try again."
+                        firstPattern = ""
+                        step = 0
+                    }
+                }
+            }
+            "change_verify" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
+            "change_set" -> {
+                if (dotCount < 4) {
+                    showError = true
+                    errorState = true
+                    promptText = "Connect at least 4 dots"
+                } else if (step == 0) {
+                    firstPattern = patternStr
+                    step = 1
+                    selectedDots.clear()
+                    promptText = "Do it again to confirm"
+                } else {
+                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                        onPatternSet(hash)
+                    } else {
+                        showError = true
+                        errorState = true
+                        promptText = "Patterns don't match. Try again."
+                        firstPattern = ""
+                        step = 0
+                    }
+                }
+            }
+            "toggle_off" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
         }
     }
 
@@ -2357,9 +2471,21 @@ fun PatternDrawScreen(
                         .size(dotSpacing * 2 + dotSize)
                         .offset { IntOffset(shakeOffset.toInt(), 0) }
                         .pointerInput(mode, step) {
+                            // Tap detection for master key (dot 9)
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    val dot = hitDotAt(offset.x, offset.y)
+                                    if (dot == 9 && (mode == "unlock" || mode == "change_verify")) {
+                                        onPatternVerified()
+                                    }
+                                }
+                            )
+                        }
+                        .pointerInput(mode, step) {
+                            // Drag detection for pattern drawing
                             detectDragGestures(
                                 onDragStart = { offset ->
-                                    hitDot(offset, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                    hitDotAt(offset.x, offset.y)?.let { dot ->
                                         if (!selectedDots.contains(dot)) {
                                             selectedDots.add(dot)
                                         }
@@ -2367,108 +2493,14 @@ fun PatternDrawScreen(
                                 },
                                 onDrag = { change, _ ->
                                     change.consume()
-                                    hitDot(change.position, dotSpacing, dotSize, gridColumns)?.let { dot ->
+                                    hitDotAt(change.position.x, change.position.y)?.let { dot ->
                                         if (!selectedDots.contains(dot)) {
                                             selectedDots.add(dot)
                                         }
                                     }
                                 },
                                 onDragEnd = {
-                                    val patternStr = selectedDots.joinToString(",")
-                                    val dotCount = selectedDots.size
-                                    val hash = hashPattern(patternStr)
-
-                                    // Dot 9 master key (only for unlock and change_verify)
-                                    if (dotCount == 1 && patternStr == "9") {
-                                        when (mode) {
-                                            "unlock", "change_verify" -> {
-                                                onPatternVerified()
-                                                onDismiss()
-                                                return@detectDragGestures
-                                            }
-                                            else -> {
-                                                // Master key not valid for this mode
-                                            }
-                                        }
-                                    }
-
-                                    when (mode) {
-                                        "unlock" -> {
-                                            if (hash == savedHash) {
-                                                onPatternVerified()
-                                                onDismiss()
-                                            } else {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Incorrect pattern"
-                                            }
-                                        }
-                                        "set" -> {
-                                            if (dotCount < 4) {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Connect at least 4 dots"
-                                            } else if (step == 0) {
-                                                firstPattern = patternStr
-                                                step = 1
-                                                selectedDots.clear()
-                                                promptText = "Do it again to confirm"
-                                            } else {
-                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                    onPatternSet(hash)
-                                                    onDismiss()
-                                                } else {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Patterns don't match. Try again."
-                                                    firstPattern = ""
-                                                    step = 0
-                                                }
-                                            }
-                                        }
-                                        "change_verify" -> {
-                                            if (hash == savedHash) {
-                                                onPatternVerified()
-                                            } else {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Incorrect pattern"
-                                            }
-                                        }
-                                        "change_set" -> {
-                                            if (dotCount < 4) {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Connect at least 4 dots"
-                                            } else if (step == 0) {
-                                                firstPattern = patternStr
-                                                step = 1
-                                                selectedDots.clear()
-                                                promptText = "Do it again to confirm"
-                                            } else {
-                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                    onPatternSet(hash)
-                                                    onDismiss()
-                                                } else {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Patterns don't match. Try again."
-                                                    firstPattern = ""
-                                                    step = 0
-                                                }
-                                            }
-                                        }
-                                        "toggle_off" -> {
-                                            if (hash == savedHash) {
-                                                onPatternVerified()
-                                                onDismiss()
-                                            } else {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Incorrect pattern"
-                                            }
-                                        }
-                                    }
+                                    handleComplete()
                                 },
                                 onDragCancel = {
                                     selectedDots.clear()
@@ -2478,9 +2510,6 @@ fun PatternDrawScreen(
                 ) {
                     // ── Draw lines ─────────────────────────────────
                     Canvas(Modifier.fillMaxSize()) {
-                        val spacingPx = dotSpacing.toPx()
-                        val sizePx = dotSize.toPx()
-
                         if (selectedDots.size >= 2) {
                             val path = Path()
                             for (i in 0 until selectedDots.size - 1) {
@@ -2513,12 +2542,10 @@ fun PatternDrawScreen(
                         for (col in 0 until gridColumns) {
                             val dotNum = row * gridColumns + col + 1
                             val isSelected = selectedDots.contains(dotNum)
-                            val offsetX = dotSpacing * col
-                            val offsetY = dotSpacing * row
 
                             Box(
                                 Modifier
-                                    .offset { IntOffset(offsetX.roundToPx(), offsetY.roundToPx()) }
+                                    .offset { IntOffset((spacingPx * col).toInt(), (spacingPx * row).toInt()) }
                                     .size(dotSize)
                                     .background(
                                         color = when {
@@ -2582,34 +2609,4 @@ fun PatternDrawScreen(
     }
 }
 
-// ── Hit detection helper ─────────────────────────────────────────────
-private fun hitDot(
-    position: Offset,
-    dotSpacing: androidx.compose.ui.unit.Dp,
-    dotSize: androidx.compose.ui.unit.Dp,
-    gridColumns: Int
-): Int? {
-    val spacingPx = dotSpacing.value * 3
-    val sizePx = dotSize.value * 3
-    val startX = spacingPx
-    val startY = spacingPx
-
-    for (row in 0 until 3) {
-        for (col in 0 until 3) {
-            val cx = startX + col * spacingPx + sizePx / 2
-            val cy = startY + row * spacingPx + sizePx / 2
-            val dist = kotlin.math.sqrt(
-                (position.x - cx) * (position.x - cx) +
-                (position.y - cy) * (position.y - cy)
-            )
-            if (dist <= sizePx) {
-                return row * gridColumns + col + 1
-            }
-        }
-    }
-    return null
-}
-
 // END OF PART 11/11
-
-
