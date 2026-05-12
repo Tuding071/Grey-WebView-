@@ -2136,8 +2136,6 @@ fun HistoryUI(
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2510,7 +2508,7 @@ fun PatternDrawScreen(
                             )
                         }
                 ) {
-                    // ── Draw lines ─────────────────────────────────
+                    // ── Draw lines between connected dots ─────────
                     Canvas(Modifier.fillMaxSize()) {
                         if (selectedDots.size >= 2) {
                             val path = Path()
@@ -2539,31 +2537,14 @@ fun PatternDrawScreen(
                         }
                     }
 
-                    // ── Draw dots ─────────────────────────────────
+                    // ── Draw dots (all solid white, always) ───────
                     for (row in 0 until gridRows) {
                         for (col in 0 until gridColumns) {
-                            val dotNum = row * gridColumns + col + 1
-                            val isSelected = selectedDots.contains(dotNum)
-
                             Box(
                                 Modifier
                                     .offset(x = dotSpacing * col, y = dotSpacing * row)
                                     .size(dotSize)
-                                    .background(
-                                        color = when {
-                                            errorState && isSelected -> DELETE_BG
-                                            isSelected -> WHITE
-                                            else -> Color.Transparent
-                                        },
-                                        shape = RectangleShape
-                                    )
-                                    .border(
-                                        width = if (isSelected) 0.dp else 1.dp,
-                                        color = if (errorState && !isSelected) DELETE_BG.copy(alpha = 0.5f)
-                                                else if (isSelected) Color.Transparent
-                                                else BORDER_SUBTLE,
-                                        shape = RectangleShape
-                                    )
+                                    .background(WHITE, RectangleShape)
                             )
                         }
                     }
@@ -2612,7 +2593,6 @@ fun PatternDrawScreen(
 }
 
 // END OF PART 11/11
-
 
 
 
