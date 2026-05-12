@@ -53,8 +53,9 @@
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v6] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -160,6 +161,8 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
+
 
 
 
@@ -987,7 +990,7 @@ fun GreyBrowser() {
 
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v31] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v32] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1012,12 +1015,38 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Pattern Lock management state ───────────────────────────────
-    var patternLockMode by remember { mutableStateOf("") }
-    // "" = not showing, "set" = first time, "change" = change existing, "remove" = remove
+    // ── Pattern Lock state ──────────────────────────────────────────
+    var showAppLockSettings by remember { mutableStateOf(false) }
+    var patternDrawMode by remember { mutableStateOf("") }
+    // "" = hidden, "unlock" = app launch unlock, "set" = setting new, "change_verify" = verify old to change,
+    // "change_set" = setting replacement, "remove" = verify to remove, "toggle_off" = verify to disable
+
+    // ── Launch check: if lock enabled, show unlock screen ───────────
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+        val lockEnabled = prefs.getBoolean("lock_enabled", false)
+        val hasPattern = prefs.getString("pattern_hash", null) != null
+        if (lockEnabled && hasPattern) {
+            patternDrawMode = "unlock"
+        }
+    }
 
     // ── Everything wrapped in a Box so overlays layer correctly ─────
     Box(Modifier.fillMaxSize()) {
+
+        // ── Pattern Unlock Screen (app launch) ──────────────────────
+        if (patternDrawMode == "unlock") {
+            val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+            val savedHash = prefs.getString("pattern_hash", null)
+            PatternDrawScreen(
+                mode = "unlock",
+                savedHash = savedHash,
+                onDismiss = { activity?.finish() },
+                onPatternVerified = { patternDrawMode = "" },
+                onPatternSet = {},
+                onPatternRemoved = {}
+            )
+        }
 
         // ── Confirm dialog ──────────────────────────────────────────
         if (showConfirmDialog) {
@@ -1043,25 +1072,68 @@ fun GreyBrowser() {
             )
         }
 
-        // ── Pattern Lock Screen ─────────────────────────────────────
-        if (patternLockMode.isNotEmpty()) {
+        // ── App Lock Settings Screen ────────────────────────────────
+        if (showAppLockSettings) {
+            val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+            val lockEnabled = prefs.getBoolean("lock_enabled", false)
+            val hasPattern = prefs.getString("pattern_hash", null) != null
+
+            AppLockSettingsScreen(
+                lockEnabled = lockEnabled,
+                hasPattern = hasPattern,
+                onDismiss = { showAppLockSettings = false },
+                onToggleChange = { newValue ->
+                    if (newValue) {
+                        // OFF → ON
+                        if (!hasPattern) {
+                            // No pattern yet — go set one
+                            showAppLockSettings = false
+                            patternDrawMode = "set"
+                        } else {
+                            // Pattern exists, just enable
+                            prefs.edit().putBoolean("lock_enabled", true).apply()
+                        }
+                    } else {
+                        // ON → OFF — verify pattern first
+                        showAppLockSettings = false
+                        patternDrawMode = "toggle_off"
+                    }
+                },
+                onChangePattern = {
+                    showAppLockSettings = false
+                    patternDrawMode = "change_verify"
+                }
+            )
+        }
+
+        // ── Pattern Draw Screen (set / change / toggle_off) ─────────
+        if (patternDrawMode in listOf("set", "change_verify", "change_set", "toggle_off")) {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val savedHash = prefs.getString("pattern_hash", null)
 
-            PatternLockScreen(
-                mode = patternLockMode,
+            PatternDrawScreen(
+                mode = patternDrawMode,
                 savedHash = savedHash,
-                onDismiss = { patternLockMode = "" },
+                onDismiss = {
+                    patternDrawMode = ""
+                },
+                onPatternVerified = {
+                    when (patternDrawMode) {
+                        "change_verify" -> patternDrawMode = "change_set"
+                        "toggle_off" -> {
+                            prefs.edit().putBoolean("lock_enabled", false).apply()
+                            patternDrawMode = ""
+                            showToast("App lock disabled")
+                        }
+                    }
+                },
                 onPatternSet = { hash ->
                     prefs.edit().putString("pattern_hash", hash).apply()
-                    patternLockMode = ""
+                    prefs.edit().putBoolean("lock_enabled", true).apply()
+                    patternDrawMode = ""
                     showToast("Pattern saved")
                 },
-                onPatternRemoved = {
-                    prefs.edit().remove("pattern_hash").apply()
-                    patternLockMode = ""
-                    showToast("Pattern removed")
-                }
+                onPatternRemoved = {}
             )
         }
 
@@ -1620,9 +1692,7 @@ fun GreyBrowser() {
                                 text = { Text("App Lock", color = WHITE) },
                                 onClick = {
                                     showMenu = false
-                                    val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
-                                    val hasPattern = prefs.getString("pattern_hash", null) != null
-                                    patternLockMode = if (hasPattern) "change" else "set"
+                                    showAppLockSettings = true
                                 }
                             )
                         }
@@ -1660,9 +1730,8 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
+
+
     
     
 
@@ -2067,9 +2136,8 @@ fun HistoryUI(
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 11/11 — Pattern Lock Screen Composable ===
+// === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun hashPattern(pattern: String): String {
@@ -2078,43 +2146,150 @@ fun hashPattern(pattern: String): String {
     return hashBytes.joinToString("") { "%02x".format(it) }
 }
 
+// ── App Lock Settings Screen ─────────────────────────────────────────
 @Composable
-fun PatternLockScreen(
+fun AppLockSettingsScreen(
+    lockEnabled: Boolean,
+    hasPattern: Boolean,
+    onDismiss: () -> Unit,
+    onToggleChange: (Boolean) -> Unit,
+    onChangePattern: () -> Unit
+) {
+    var toggleChecked by remember { mutableStateOf(lockEnabled) }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("App Lock", color = WHITE, fontSize = 18.sp)
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Enable/Disable Toggle ──────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        if (toggleChecked) "Enabled" else "Disabled",
+                        color = WHITE,
+                        fontSize = 14.sp
+                    )
+                    Switch(
+                        checked = toggleChecked,
+                        onCheckedChange = { newVal ->
+                            toggleChecked = newVal
+                            onToggleChange(newVal)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = WHITE,
+                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                            uncheckedTrackColor = Color(0xFF444444)
+                        )
+                    )
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── Set / Change Pattern Button ────────────────────
+                if (toggleChecked) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (hasPattern) {
+                                    onChangePattern()
+                                } else {
+                                    onToggleChange(true) // triggers set flow
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text(
+                                if (hasPattern) "Change Pattern" else "Set Pattern",
+                                color = WHITE,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Enable app lock to set a pattern",
+                            color = MUTED,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Pattern Draw Screen (shared by unlock, set, change, toggle_off) ──
+@Composable
+fun PatternDrawScreen(
     mode: String,
     savedHash: String?,
     onDismiss: () -> Unit,
+    onPatternVerified: () -> Unit,
     onPatternSet: (String) -> Unit,
     onPatternRemoved: () -> Unit
 ) {
-    val context = LocalContext.current
-    val activity = context as? ComponentActivity
-
-    // ── Grid layout ───────────────────────────────────────────────
     val dotSpacing = 80.dp
     val dotSize = 24.dp
     val gridColumns = 3
     val gridRows = 3
 
-    // ── State ─────────────────────────────────────────────────────
-    var selectedDots by remember { mutableStateOf<List<Int>>(emptyList()) }
+    val selectedDots = remember { mutableStateListOf<Int>() }
     var firstPattern by remember { mutableStateOf("") }
     var errorState by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var promptText by remember { mutableStateOf("") }
-    var currentMode by remember { mutableStateOf(mode) }
+    var step by remember { mutableStateOf(0) }
+    // step 0 = initial, step 1 = confirm/verified
 
-    // ── Initialize prompt based on mode ───────────────────────────
+    // ── Initialize prompt ─────────────────────────────────────────
     LaunchedEffect(mode) {
-        selectedDots = emptyList()
+        selectedDots.clear()
         errorState = false
         showError = false
         firstPattern = ""
-        currentMode = mode
+        step = 0
         promptText = when (mode) {
-            "set" -> "Draw a pattern (min 4 dots)"
-            "change" -> "Draw current pattern to verify"
-            "remove" -> "Draw pattern to remove"
-            "verify" -> "Draw pattern to verify"
+            "unlock" -> "Draw pattern to unlock"
+            "set" -> "Connect at least 4 dots to make pattern"
+            "change_verify" -> "Draw the last pattern to change"
+            "change_set" -> "Connect at least 4 dots to make new pattern"
+            "toggle_off" -> "Draw pattern to disable lock"
             else -> ""
         }
     }
@@ -2123,11 +2298,7 @@ fun PatternLockScreen(
     val shakeOffset by animateFloatAsState(
         targetValue = if (showError) 10f else 0f,
         animationSpec = if (showError) {
-            repeatable(
-                iterations = 3,
-                animation = tween(50),
-                repeatMode = RepeatMode.Reverse
-            )
+            repeatable(iterations = 3, animation = tween(50), repeatMode = RepeatMode.Reverse)
         } else {
             tween(0)
         }
@@ -2138,7 +2309,7 @@ fun PatternLockScreen(
         if (showError) {
             delay(600)
             showError = false
-            selectedDots = emptyList()
+            selectedDots.clear()
         }
     }
 
@@ -2160,19 +2331,17 @@ fun PatternLockScreen(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        { onDismiss() },
-                        modifier = Modifier.size(48.dp)
-                    ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        when (currentMode) {
+                        when (mode) {
+                            "unlock" -> "Unlock"
                             "set" -> "Set Pattern"
-                            "change" -> "Change Pattern"
-                            "remove" -> "Remove Pattern"
-                            "verify" -> "Unlock"
+                            "change_verify" -> "Change Pattern"
+                            "change_set" -> "Set New Pattern"
+                            "toggle_off" -> "Disable Lock"
                             else -> "Pattern"
                         },
                         color = WHITE,
@@ -2180,29 +2349,19 @@ fun PatternLockScreen(
                     )
                 }
 
-                Spacer(Modifier.height(48.dp))
+                Spacer(Modifier.weight(0.3f))
 
-                // ── Grey branding ─────────────────────────────────
-                Text(
-                    "Grey",
-                    color = WHITE.copy(alpha = 0.3f),
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(Modifier.height(48.dp))
-
-                // ── Pattern grid ──────────────────────────────────
+                // ── Pattern grid (centered) ────────────────────────
                 Box(
                     Modifier
                         .size(dotSpacing * 2 + dotSize)
                         .offset { IntOffset(shakeOffset.toInt(), 0) }
-                        .pointerInput(currentMode) {
+                        .pointerInput(mode, step) {
                             detectDragGestures(
                                 onDragStart = { offset ->
                                     hitDot(offset, dotSpacing, dotSize, gridColumns)?.let { dot ->
                                         if (!selectedDots.contains(dot)) {
-                                            selectedDots = selectedDots + dot
+                                            selectedDots.add(dot)
                                         }
                                     }
                                 },
@@ -2210,113 +2369,33 @@ fun PatternLockScreen(
                                     change.consume()
                                     hitDot(change.position, dotSpacing, dotSize, gridColumns)?.let { dot ->
                                         if (!selectedDots.contains(dot)) {
-                                            selectedDots = selectedDots + dot
+                                            selectedDots.add(dot)
                                         }
                                     }
                                 },
                                 onDragEnd = {
                                     val patternStr = selectedDots.joinToString(",")
                                     val dotCount = selectedDots.size
+                                    val hash = hashPattern(patternStr)
 
-                                    // Dot 9 master key check
+                                    // Dot 9 master key (only for unlock and change_verify)
                                     if (dotCount == 1 && patternStr == "9") {
-                                        when (currentMode) {
-                                            "set" -> {
-                                                if (firstPattern.isNotEmpty()) {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Draw pattern to confirm (min 4 dots)"
-                                                    return@detectDragGestures
-                                                }
-                                            }
-                                            "change" -> {
-                                                if (firstPattern == "__VERIFIED__") {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Draw new pattern (min 4 dots)"
-                                                    return@detectDragGestures
-                                                } else {
-                                                    firstPattern = "__VERIFIED__"
-                                                    selectedDots = emptyList()
-                                                    promptText = "Draw new pattern (min 4 dots)"
-                                                    return@detectDragGestures
-                                                }
-                                            }
-                                            "remove" -> {
-                                                onPatternRemoved()
+                                        when (mode) {
+                                            "unlock", "change_verify" -> {
+                                                onPatternVerified()
                                                 onDismiss()
                                                 return@detectDragGestures
                                             }
-                                            "verify" -> {
-                                                onDismiss()
-                                                return@detectDragGestures
+                                            else -> {
+                                                // Master key not valid for this mode
                                             }
                                         }
                                     }
 
-                                    when (currentMode) {
-                                        "set" -> {
-                                            if (dotCount < 4) {
-                                                showError = true
-                                                errorState = true
-                                                promptText = "Connect at least 4 dots"
-                                            } else if (firstPattern.isEmpty()) {
-                                                firstPattern = patternStr
-                                                selectedDots = emptyList()
-                                                promptText = "Draw again to confirm"
-                                            } else {
-                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                    onPatternSet(hashPattern(patternStr))
-                                                    onDismiss()
-                                                } else {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Patterns don't match. Try again."
-                                                    firstPattern = ""
-                                                }
-                                            }
-                                        }
-                                        "change" -> {
-                                            if (firstPattern == "__VERIFIED__") {
-                                                // Setting new pattern
-                                                if (dotCount < 4) {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Connect at least 4 dots"
-                                                } else if (firstPattern == "__VERIFIED__" && selectedDots.size >= 4) {
-                                                    firstPattern = patternStr
-                                                    selectedDots = emptyList()
-                                                    promptText = "Draw again to confirm"
-                                                }
-                                            } else if (firstPattern.isNotEmpty() && firstPattern != "__VERIFIED__") {
-                                                // Confirming new pattern
-                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
-                                                    onPatternSet(hashPattern(patternStr))
-                                                    onDismiss()
-                                                } else {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Patterns don't match. Try again."
-                                                    firstPattern = "__VERIFIED__"
-                                                }
-                                            } else {
-                                                // Verifying old pattern
-                                                val hash = hashPattern(patternStr)
-                                                if (hash == savedHash) {
-                                                    firstPattern = "__VERIFIED__"
-                                                    selectedDots = emptyList()
-                                                    promptText = "Draw new pattern (min 4 dots)"
-                                                } else {
-                                                    showError = true
-                                                    errorState = true
-                                                    promptText = "Incorrect pattern"
-                                                }
-                                            }
-                                        }
-                                        "remove" -> {
-                                            val hash = hashPattern(patternStr)
+                                    when (mode) {
+                                        "unlock" -> {
                                             if (hash == savedHash) {
-                                                onPatternRemoved()
+                                                onPatternVerified()
                                                 onDismiss()
                                             } else {
                                                 showError = true
@@ -2324,9 +2403,64 @@ fun PatternLockScreen(
                                                 promptText = "Incorrect pattern"
                                             }
                                         }
-                                        "verify" -> {
-                                            val hash = hashPattern(patternStr)
+                                        "set" -> {
+                                            if (dotCount < 4) {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Connect at least 4 dots"
+                                            } else if (step == 0) {
+                                                firstPattern = patternStr
+                                                step = 1
+                                                selectedDots.clear()
+                                                promptText = "Do it again to confirm"
+                                            } else {
+                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                    onPatternSet(hash)
+                                                    onDismiss()
+                                                } else {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Patterns don't match. Try again."
+                                                    firstPattern = ""
+                                                    step = 0
+                                                }
+                                            }
+                                        }
+                                        "change_verify" -> {
                                             if (hash == savedHash) {
+                                                onPatternVerified()
+                                            } else {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Incorrect pattern"
+                                            }
+                                        }
+                                        "change_set" -> {
+                                            if (dotCount < 4) {
+                                                showError = true
+                                                errorState = true
+                                                promptText = "Connect at least 4 dots"
+                                            } else if (step == 0) {
+                                                firstPattern = patternStr
+                                                step = 1
+                                                selectedDots.clear()
+                                                promptText = "Do it again to confirm"
+                                            } else {
+                                                if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                                                    onPatternSet(hash)
+                                                    onDismiss()
+                                                } else {
+                                                    showError = true
+                                                    errorState = true
+                                                    promptText = "Patterns don't match. Try again."
+                                                    firstPattern = ""
+                                                    step = 0
+                                                }
+                                            }
+                                        }
+                                        "toggle_off" -> {
+                                            if (hash == savedHash) {
+                                                onPatternVerified()
                                                 onDismiss()
                                             } else {
                                                 showError = true
@@ -2337,17 +2471,15 @@ fun PatternLockScreen(
                                     }
                                 },
                                 onDragCancel = {
-                                    selectedDots = emptyList()
+                                    selectedDots.clear()
                                 }
                             )
                         }
                 ) {
-                    // ── Draw lines between connected dots ─────────
+                    // ── Draw lines ─────────────────────────────────
                     Canvas(Modifier.fillMaxSize()) {
                         val spacingPx = dotSpacing.toPx()
                         val sizePx = dotSize.toPx()
-                        val startX = spacingPx
-                        val startY = spacingPx
 
                         if (selectedDots.size >= 2) {
                             val path = Path()
@@ -2359,22 +2491,19 @@ fun PatternLockScreen(
                                 val toCol = (to - 1) % gridColumns
                                 val toRow = (to - 1) / gridColumns
 
-                                val fromX = startX + fromCol * spacingPx + sizePx / 2
-                                val fromY = startY + fromRow * spacingPx + sizePx / 2
-                                val toX = startX + toCol * spacingPx + sizePx / 2
-                                val toY = startY + toRow * spacingPx + sizePx / 2
-
-                                path.moveTo(fromX, fromY)
-                                path.lineTo(toX, toY)
+                                path.moveTo(
+                                    spacingPx + fromCol * spacingPx + sizePx / 2,
+                                    spacingPx + fromRow * spacingPx + sizePx / 2
+                                )
+                                path.lineTo(
+                                    spacingPx + toCol * spacingPx + sizePx / 2,
+                                    spacingPx + toRow * spacingPx + sizePx / 2
+                                )
                             }
                             drawPath(
                                 path,
                                 color = if (errorState) DELETE_BG else WHITE,
-                                style = Stroke(
-                                    width = 2.dp.toPx(),
-                                    cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round
-                                )
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                         }
                     }
@@ -2389,7 +2518,7 @@ fun PatternLockScreen(
 
                             Box(
                                 Modifier
-                                    .offset(x = offsetX, y = offsetY)
+                                    .offset { IntOffset(offsetX.roundToPx(), offsetY.roundToPx()) }
                                     .size(dotSize)
                                     .background(
                                         color = when {
@@ -2422,44 +2551,38 @@ fun PatternLockScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ── Action buttons ──────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-                    horizontalArrangement = Arrangement.Center
-                ) {
+                // ── Reset button ────────────────────────────────────
+                if (mode != "unlock") {
                     OutlinedButton(
                         onClick = {
-                            selectedDots = emptyList()
+                            selectedDots.clear()
                             firstPattern = ""
                             errorState = false
                             showError = false
-                            currentMode = mode
+                            step = 0
                             promptText = when (mode) {
-                                "set" -> "Draw a pattern (min 4 dots)"
-                                "change" -> "Draw current pattern to verify"
-                                "remove" -> "Draw pattern to remove"
-                                "verify" -> "Draw pattern to verify"
+                                "set" -> "Connect at least 4 dots to make pattern"
+                                "change_verify" -> "Draw the last pattern to change"
+                                "change_set" -> "Connect at least 4 dots to make new pattern"
+                                "toggle_off" -> "Draw pattern to disable lock"
                                 else -> ""
-                            }
-                            if (mode == "verify" || mode == "remove") {
-                                onDismiss()
                             }
                         },
                         shape = RectangleShape,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
                         border = BorderStroke(1.dp, WHITE)
                     ) {
-                        Text(
-                            if (currentMode == "verify" || currentMode == "remove") "Cancel"
-                            else "Reset"
-                        )
+                        Text("Reset")
                     }
                 }
+
+                Spacer(Modifier.weight(0.3f))
             }
         }
     }
 }
 
+// ── Hit detection helper ─────────────────────────────────────────────
 private fun hitDot(
     position: Offset,
     dotSpacing: androidx.compose.ui.unit.Dp,
@@ -2488,7 +2611,5 @@ private fun hitDot(
 }
 
 // END OF PART 11/11
-
-
 
 
