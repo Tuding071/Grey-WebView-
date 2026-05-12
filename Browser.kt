@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache [UPDATED v2] ===
+// === PART 2/10 — Constants, FaviconCache [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 private const val PREFS_NAME = "browser_tabs"
@@ -176,6 +176,7 @@ private const val KEY_PINNED = "pinned_domains"
 private const val KEY_LAST_ACTIVE_URL = "last_active_url"
 private const val KEY_BOOKMARKS = "saved_bookmarks"
 private const val KEY_HISTORY = "saved_history"
+private const val KEY_SCRIPTS = "saved_scripts"
 
 const val MAX_WARM_WEBVIEWS = 3
 const val UNDO_DELAY_MS = 3000L
@@ -292,10 +293,8 @@ object FaviconCache {
 // END OF PART 2/10
 	
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v3] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -308,6 +307,13 @@ data class Bookmark(
 data class HistoryItem(
     val url: String,
     val title: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class Script(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val code: String,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -416,9 +422,31 @@ fun loadHistory(context: Context): List<HistoryItem> {
     } catch (e: Exception) { emptyList() }
 }
 
+fun saveScripts(context: Context, scripts: List<Script>) {
+    val arr = JSONArray()
+    for (s in scripts) {
+        val obj = JSONObject()
+        obj.put("id", s.id); obj.put("title", s.title)
+        obj.put("code", s.code); obj.put("timestamp", s.timestamp)
+        arr.put(obj)
+    }
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_SCRIPTS, arr.toString()).apply()
+}
+
+fun loadScripts(context: Context): List<Script> {
+    val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_SCRIPTS, null) ?: return emptyList()
+    return try {
+        val arr = JSONArray(json)
+        mutableListOf<Script>().apply {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                add(Script(o.getString("id"), o.getString("title"), o.getString("code"), o.getLong("timestamp")))
+            }
+        }
+    } catch (e: Exception) { emptyList() }
+}
+
 // END OF PART 3/10
-
-
 
 
 
@@ -450,9 +478,8 @@ fun resolveUrl(input: String): String {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v12] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v13] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -470,6 +497,12 @@ fun GreyBrowser() {
     // ── History State ────────────────────────────────────────────────
     val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
     var showHistory by remember { mutableStateOf(false) }
+
+    // ── Scripts State ────────────────────────────────────────────────
+    val scripts = remember { mutableStateListOf<Script>().apply { addAll(loadScripts(context)) } }
+    var showScripts by remember { mutableStateOf(false) }
+    var showScriptEditor by remember { mutableStateOf(false) }
+    var editingScript by remember { mutableStateOf<Script?>(null) }
 
     // ── Toast State ──────────────────────────────────────────────────
     var toastMessage by remember { mutableStateOf("") }
@@ -570,6 +603,7 @@ fun GreyBrowser() {
     }
     LaunchedEffect(bookmarks.toList()) { saveBookmarks(context, bookmarks) }
     LaunchedEffect(history.toList()) { saveHistory(context, history) }
+    LaunchedEffect(scripts.toList()) { saveScripts(context, scripts) }
 
     LaunchedEffect(currentTabIndex) {
         if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
@@ -587,11 +621,9 @@ fun GreyBrowser() {
 
     // END OF PART 5/10
 
-
-
     
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v16] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v17] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -655,6 +687,10 @@ fun GreyBrowser() {
                     if (history.size > MAX_HISTORY_ITEMS) {
                         history.removeAt(0)
                     }
+                }
+                // ── Inject user scripts ────────────────────────────
+                for (script in scripts) {
+                    wv.evaluateJavascript(script.code, null)
                 }
             }
         }
@@ -862,6 +898,11 @@ fun GreyBrowser() {
 
 
 
+
+
+
+
+
     // ═══════════════════════════════════════════════════════════════════
     // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v21] ===
     // ═══════════════════════════════════════════════════════════════════
@@ -986,10 +1027,9 @@ fun GreyBrowser() {
     // END OF PART 7/10
 
 
-
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v32] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v33] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1083,17 +1123,13 @@ fun GreyBrowser() {
                 onDismiss = { showAppLockSettings = false },
                 onToggleChange = { newValue ->
                     if (newValue) {
-                        // OFF → ON
                         if (!hasPattern) {
-                            // No pattern yet — go set one
                             showAppLockSettings = false
                             patternDrawMode = "set"
                         } else {
-                            // Pattern exists, just enable
                             prefs.edit().putBoolean("lock_enabled", true).apply()
                         }
                     } else {
-                        // ON → OFF — verify pattern first
                         showAppLockSettings = false
                         patternDrawMode = "toggle_off"
                     }
@@ -1133,6 +1169,50 @@ fun GreyBrowser() {
                     showToast("Pattern saved")
                 },
                 onPatternRemoved = {}
+            )
+        }
+
+        // ── Scripts Manager ─────────────────────────────────────────
+        if (showScripts) {
+            ScriptsManagerScreen(
+                scripts = scripts,
+                onDismiss = { showScripts = false },
+                onAddScript = {
+                    editingScript = null
+                    showScriptEditor = true
+                },
+                onEditScript = { script ->
+                    editingScript = script
+                    showScriptEditor = true
+                },
+                onDeleteScript = { id ->
+                    scripts.removeAll { it.id == id }
+                    showToast("Script deleted")
+                }
+            )
+        }
+
+        // ── Script Editor ───────────────────────────────────────────
+        if (showScriptEditor) {
+            ScriptEditorScreen(
+                script = editingScript,
+                onDismiss = { showScriptEditor = false },
+                onSave = { title, code ->
+                    if (editingScript != null) {
+                        val index = scripts.indexOfFirst { it.id == editingScript!!.id }
+                        if (index >= 0) {
+                            scripts[index] = scripts[index].copy(
+                                title = title,
+                                code = code,
+                                timestamp = System.currentTimeMillis()
+                            )
+                        }
+                    } else {
+                        scripts.add(Script(title = title, code = code))
+                    }
+                    showScriptEditor = false
+                    showToast(if (editingScript != null) "Script updated" else "Script added")
+                }
             )
         }
 
@@ -1591,21 +1671,16 @@ fun GreyBrowser() {
                                     urlInput = urlInput.copy(selection = TextRange(0))
                                     val uri = resolveUrl(input)
                                     if (currentTabIndex == -1) {
-                                        // Homepage: create a new tab at top
                                         createForegroundTab(uri)
                                     } else {
-                                        // Real tab: navigate in current tab
                                         val cleanUri = uri.substringBefore("#")
-                                        // Check if URL already open in another tab
                                         val existingIndex = tabs.indexOfFirst {
                                             it.url.substringBefore("#") == cleanUri && !it.isBlankTab
                                         }
                                         if (existingIndex >= 0 && existingIndex != currentTabIndex) {
-                                            // Delete old duplicate, create fresh tab
                                             removeDuplicateTab(uri)
                                             createForegroundTab(uri)
                                         } else {
-                                            // Navigate current tab
                                             currentTab?.webView?.loadUrl(uri)
                                         }
                                     }
@@ -1688,6 +1763,13 @@ fun GreyBrowser() {
                                 onClick = { showMenu = false; showHistory = true }
                             )
                             DropdownMenuItem(
+                                text = { Text("Scripts", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    showScripts = true
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("App Lock", color = WHITE) },
                                 onClick = {
                                     showMenu = false
@@ -1729,8 +1811,8 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-
-
+    
+    
     
     
 
@@ -2580,5 +2662,264 @@ fun PatternDrawScreen(
 
 // END OF PART 11/11
 
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 12/12 — Scripts Manager + Script Editor Composables ===
+// ═══════════════════════════════════════════════════════════════════
+
+@Composable
+fun ScriptsManagerScreen(
+    scripts: List<Script>,
+    onDismiss: () -> Unit,
+    onAddScript: () -> Unit,
+    onEditScript: (Script) -> Unit,
+    onDeleteScript: (String) -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var scriptToDelete by remember { mutableStateOf<String?>(null) }
+
+    if (showDeleteConfirm && scriptToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false; scriptToDelete = null },
+            title = { Text("Delete Script?", color = WHITE, fontSize = 18.sp) },
+            text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
+            confirmButton = {
+                TextButton({
+                    onDeleteScript(scriptToDelete!!)
+                    showDeleteConfirm = false
+                    scriptToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    scriptToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Scripts", color = WHITE, fontSize = 18.sp)
+                    if (scripts.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
+                    }
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Script List ────────────────────────────────────
+                if (scripts.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No scripts", color = MUTED, fontSize = 16.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        items(scripts) { script ->
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                color = Color.Transparent
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                        .clickable { onEditScript(script) },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        script.title.ifBlank { "Untitled" },
+                                        color = WHITE,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton({
+                                        scriptToDelete = script.id
+                                        showDeleteConfirm = true
+                                    }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            "Delete",
+                                            tint = WHITE.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Footer ─────────────────────────────────────────
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    OutlinedButton(
+                        onClick = onAddScript,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Script", color = WHITE)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ScriptEditorScreen(
+    script: Script?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var title by remember { mutableStateOf(script?.title ?: "") }
+    var code by remember { mutableStateOf(script?.code ?: "") }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (script != null) "Edit Script" else "Add Script",
+                        color = WHITE,
+                        fontSize = 18.sp
+                    )
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Fields ─────────────────────────────────────────
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp)
+                ) {
+                    // Title field
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text("Script name", color = WHITE.copy(alpha = 0.5f))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = WHITE
+                        )
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Code field
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        placeholder = {
+                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
+                        },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = WHITE
+                        )
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Buttons
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Cancel", color = WHITE)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (title.isNotBlank()) {
+                                    onSave(title, code)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Save", color = WHITE)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// END OF PART 12/12
 
 
