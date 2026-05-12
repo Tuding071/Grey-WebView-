@@ -2135,8 +2135,6 @@ fun HistoryUI(
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2341,7 +2339,7 @@ fun PatternDrawScreen(
         val dotCount = selectedDots.size
         val hash = hashPattern(patternStr)
 
-        // Dot 9 master key (only for unlock and change_verify)
+        // Dot 9 master key (tiny drag from dot 9 only)
         if (dotCount == 1 && patternStr == "9") {
             when (mode) {
                 "unlock", "change_verify" -> {
@@ -2470,48 +2468,29 @@ fun PatternDrawScreen(
                         .size(dotSpacing * 2 + dotSize)
                         .offset { IntOffset(shakeOffset.toInt(), 0) }
                         .pointerInput(mode, step) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                val downDot = hitDotAt(down.position.x, down.position.y)
-
-                                // Check if it's a tap on dot 9 (master key)
-                                val up = waitForUpOrCancellation()
-                                if (up != null && downDot == 9 &&
-                                    (mode == "unlock" || mode == "change_verify")
-                                ) {
-                                    // Tap on dot 9 — master key
-                                    onPatternVerified()
-                                    return@awaitEachGesture
-                                }
-
-                                // If it's a drag, draw the pattern
-                                if (up != null) {
-                                    // Pointer went down and up at same position — it's a tap
-                                    if (downDot != null && downDot != 9) {
-                                        // Single tap on a non-9 dot — add it (for pattern drawing)
-                                        selectedDots.clear()
-                                        selectedDots.add(downDot)
-                                        handleComplete()
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    hitDotAt(offset.x, offset.y)?.let { dot ->
+                                        if (!selectedDots.contains(dot)) {
+                                            selectedDots.add(dot)
+                                        }
                                     }
-                                    return@awaitEachGesture
-                                }
-
-                                // Drag gesture — start pattern
-                                selectedDots.clear()
-                                if (downDot != null) {
-                                    selectedDots.add(downDot)
-                                }
-
-                                drag(down.id) { change ->
+                                },
+                                onDrag = { change, _ ->
                                     change.consume()
                                     hitDotAt(change.position.x, change.position.y)?.let { dot ->
                                         if (!selectedDots.contains(dot)) {
                                             selectedDots.add(dot)
                                         }
                                     }
+                                },
+                                onDragEnd = {
+                                    handleComplete()
+                                },
+                                onDragCancel = {
+                                    selectedDots.clear()
                                 }
-                                handleComplete()
-                            }
+                            )
                         }
                 ) {
                     // ── Draw lines between connected dots ─────────
@@ -2599,4 +2578,3 @@ fun PatternDrawScreen(
 }
 
 // END OF PART 11/11
-
