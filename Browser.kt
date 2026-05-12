@@ -293,8 +293,10 @@ object FaviconCache {
 // END OF PART 2/10
 	
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v4] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -314,6 +316,7 @@ data class Script(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val code: String,
+    val enabled: Boolean = true,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -427,7 +430,8 @@ fun saveScripts(context: Context, scripts: List<Script>) {
     for (s in scripts) {
         val obj = JSONObject()
         obj.put("id", s.id); obj.put("title", s.title)
-        obj.put("code", s.code); obj.put("timestamp", s.timestamp)
+        obj.put("code", s.code); obj.put("enabled", s.enabled)
+        obj.put("timestamp", s.timestamp)
         arr.put(obj)
     }
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_SCRIPTS, arr.toString()).apply()
@@ -440,7 +444,13 @@ fun loadScripts(context: Context): List<Script> {
         mutableListOf<Script>().apply {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                add(Script(o.getString("id"), o.getString("title"), o.getString("code"), o.getLong("timestamp")))
+                add(Script(
+                    o.getString("id"),
+                    o.getString("title"),
+                    o.getString("code"),
+                    o.optBoolean("enabled", true),
+                    o.getLong("timestamp")
+                ))
             }
         }
     } catch (e: Exception) { emptyList() }
@@ -622,8 +632,11 @@ fun GreyBrowser() {
     // END OF PART 5/10
 
     
+    
+    
+    
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v17] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v18] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -688,9 +701,11 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
-                // ── Inject user scripts ────────────────────────────
+                // ── Inject enabled user scripts ────────────────────
                 for (script in scripts) {
-                    wv.evaluateJavascript(script.code, null)
+                    if (script.enabled) {
+                        wv.evaluateJavascript(script.code, null)
+                    }
                 }
             }
         }
@@ -900,9 +915,6 @@ fun GreyBrowser() {
 
 
 
-
-
-
     // ═══════════════════════════════════════════════════════════════════
     // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v21] ===
     // ═══════════════════════════════════════════════════════════════════
@@ -1025,11 +1037,12 @@ fun GreyBrowser() {
     }
 
     // END OF PART 7/10
-
-
+    
+    
+    
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v33] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v34] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1188,6 +1201,12 @@ fun GreyBrowser() {
                 onDeleteScript = { id ->
                     scripts.removeAll { it.id == id }
                     showToast("Script deleted")
+                },
+                onToggleScript = { id ->
+                    val index = scripts.indexOfFirst { it.id == id }
+                    if (index >= 0) {
+                        scripts[index] = scripts[index].copy(enabled = !scripts[index].enabled)
+                    }
                 }
             )
         }
@@ -1198,17 +1217,27 @@ fun GreyBrowser() {
                 script = editingScript,
                 onDismiss = { showScriptEditor = false },
                 onSave = { title, code ->
+                    var finalTitle = title
+                    // Auto-name from script header if title is blank
+                    if (finalTitle.isBlank()) {
+                        val nameMatch = Regex("""@name\s+(.+)""").find(code)
+                        finalTitle = nameMatch?.groupValues?.get(1)?.trim() ?: ""
+                    }
+                    if (finalTitle.isBlank()) {
+                        showToast("Enter a script name")
+                        return@ScriptEditorScreen
+                    }
                     if (editingScript != null) {
                         val index = scripts.indexOfFirst { it.id == editingScript!!.id }
                         if (index >= 0) {
                             scripts[index] = scripts[index].copy(
-                                title = title,
+                                title = finalTitle,
                                 code = code,
                                 timestamp = System.currentTimeMillis()
                             )
                         }
                     } else {
-                        scripts.add(Script(title = title, code = code))
+                        scripts.add(Script(title = finalTitle, code = code))
                     }
                     showScriptEditor = false
                     showToast(if (editingScript != null) "Script updated" else "Script added")
@@ -1811,7 +1840,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
     
     
     
@@ -2663,6 +2691,7 @@ fun PatternDrawScreen(
 // END OF PART 11/11
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor Composables ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2673,7 +2702,8 @@ fun ScriptsManagerScreen(
     onDismiss: () -> Unit,
     onAddScript: () -> Unit,
     onEditScript: (Script) -> Unit,
-    onDeleteScript: (String) -> Unit
+    onDeleteScript: (String) -> Unit,
+    onToggleScript: (String) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var scriptToDelete by remember { mutableStateOf<String?>(null) }
@@ -2751,13 +2781,25 @@ fun ScriptsManagerScreen(
                                 color = Color.Transparent
                             ) {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(12.dp)
+                                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
                                         .clickable { onEditScript(script) },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Enable/Disable toggle
+                                    Switch(
+                                        checked = script.enabled,
+                                        onCheckedChange = { onToggleScript(script.id) },
+                                        modifier = Modifier.padding(end = 4.dp),
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = WHITE,
+                                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                            uncheckedTrackColor = Color(0xFF444444)
+                                        )
+                                    )
                                     Text(
                                         script.title.ifBlank { "Untitled" },
-                                        color = WHITE,
+                                        color = if (script.enabled) WHITE else MUTED,
                                         fontSize = 14.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -2902,9 +2944,7 @@ fun ScriptEditorScreen(
                         }
                         OutlinedButton(
                             onClick = {
-                                if (title.isNotBlank()) {
-                                    onSave(title, code)
-                                }
+                                onSave(title, code)
                             },
                             modifier = Modifier.weight(1f),
                             shape = RectangleShape,
@@ -2921,5 +2961,3 @@ fun ScriptEditorScreen(
 }
 
 // END OF PART 12/12
-
-
