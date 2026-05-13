@@ -3171,117 +3171,106 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    Popup(
-        alignment = Alignment.TopStart,
+    // AlertDialog — same style as Filter Import, but larger for code editing
+    AlertDialog(
         onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
-    ) {
-        Surface(
-            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-            color = SURFACE
-        ) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // ── Header ─────────────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, "Close", tint = WHITE)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (script != null) "Edit Script" else "Add Script",
-                        color = WHITE,
-                        fontSize = 18.sp
-                    )
-                }
-
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
-
-                // ── Fields ─────────────────────────────────────────
-                Column(
-                    Modifier.fillMaxWidth().weight(1f)
-                ) {
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        singleLine = true,
-                        placeholder = {
-                            Text("Script name", color = WHITE.copy(alpha = 0.5f))
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        placeholder = {
-                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        textStyle = TextStyle(
-                            color = WHITE,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp
-                        ),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
-                    )
-                }
-
-                // ── Buttons ────────────────────────────────────────
-                Surface(
-                    Modifier.fillMaxWidth().navigationBarsPadding(),
-                    color = SURFACE
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
-                        ) {
-                            Text("Cancel", color = WHITE)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                onSave(title, code)
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
-                        ) {
-                            Text("Save", color = WHITE)
-                        }
-                    }
+        title = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (script != null) "Edit Script" else "Add Script",
+                    color = WHITE,
+                    fontSize = 18.sp
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp))
                 }
             }
-        }
-    }
+        },
+        text = {
+            Column {
+                // Title field
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // Code label
+                Text("Code", color = MUTED, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+
+                // Code field — fixed height, internally scrollable
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    placeholder = { Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 350.dp),
+                    textStyle = TextStyle(
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text("Cancel", color = WHITE)
+                }
+                OutlinedButton(
+                    onClick = { onSave(title, code) },
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text("Save", color = WHITE)
+                }
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
+    )
 }
 
 @Composable
@@ -3335,7 +3324,6 @@ for debugging via remote DevTools.
             color = SURFACE
         ) {
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3349,7 +3337,6 @@ for debugging via remote DevTools.
 
                 Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
-                // ── Guide content ──────────────────────────────────
                 LazyColumn(
                     Modifier.weight(1f).fillMaxWidth().padding(16.dp)
                 ) {
@@ -3363,7 +3350,6 @@ for debugging via remote DevTools.
                     }
                 }
 
-                // ── Copy button ────────────────────────────────────
                 Surface(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
@@ -3390,6 +3376,7 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
+
 
 
 
