@@ -52,8 +52,11 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v10] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -126,6 +129,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -166,6 +170,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
 
 
 
@@ -2779,8 +2784,9 @@ fun PatternDrawScreen(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 12/12 — Scripts Manager + Script Editor + Code Editor + Script Guide ===
+// === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -2951,15 +2957,6 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
-    var showCodeEditor by remember { mutableStateOf(false) }
-
-    if (showCodeEditor) {
-        ScriptCodeEditorScreen(
-            code = code,
-            onCodeChange = { code = it },
-            onDismiss = { showCodeEditor = false }
-        )
-    }
 
     Popup(
         alignment = Alignment.TopStart,
@@ -2991,9 +2988,8 @@ fun ScriptEditorScreen(
 
                 // ── Fields ─────────────────────────────────────────
                 Column(
-                    Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 12.dp)
+                    Modifier.fillMaxWidth().weight(1f)
                 ) {
-                    // Title field (single line, like URL field — works perfectly)
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
@@ -3001,8 +2997,12 @@ fun ScriptEditorScreen(
                         placeholder = {
                             Text("Script name", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        textStyle = TextStyle(
+                            color = WHITE,
+                            fontSize = 14.sp,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false)
+                        ),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -3013,39 +3013,31 @@ fun ScriptEditorScreen(
                         )
                     )
 
-                    Spacer(Modifier.height(16.dp))
-
-                    // Code preview (read-only, tappable to open full editor)
-                    Text(
-                        "Code",
-                        color = MUTED,
-                        fontSize = 12.sp
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Box(
-                        Modifier
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        placeholder = {
+                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
+                        },
+                        modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 100.dp, max = 160.dp)
-                            .border(1.dp, WHITE.copy(alpha = 0.5f), RectangleShape)
-                            .clickable { showCodeEditor = true }
-                            .padding(12.dp)
-                    ) {
-                        if (code.isEmpty()) {
-                            Text(
-                                "Tap to edit code...",
-                                color = WHITE.copy(alpha = 0.3f),
-                                fontSize = 14.sp
-                            )
-                        } else {
-                            Text(
-                                code.take(500) + if (code.length > 500) "..." else "",
-                                color = WHITE.copy(alpha = 0.6f),
-                                fontSize = 13.sp,
-                                maxLines = 6,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        textStyle = TextStyle(
+                            color = WHITE,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false)
+                        ),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = WHITE
+                        )
+                    )
                 }
 
                 // ── Buttons ────────────────────────────────────────
@@ -3077,93 +3069,6 @@ fun ScriptEditorScreen(
                         ) {
                             Text("Save", color = WHITE)
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ScriptCodeEditorScreen(
-    code: String,
-    onCodeChange: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var localCode by remember { mutableStateOf(code) }
-
-    Popup(
-        alignment = Alignment.TopStart,
-        onDismissRequest = {
-            onCodeChange(localCode)
-            onDismiss()
-        },
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
-    ) {
-        Surface(
-            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-            color = SURFACE
-        ) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // ── Header ─────────────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({
-                        onCodeChange(localCode)
-                        onDismiss()
-                    }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, "Close", tint = WHITE)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text("Edit Code", color = WHITE, fontSize = 18.sp)
-                }
-
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
-
-                // ── Full screen code editor ────────────────────────
-                OutlinedTextField(
-                    value = localCode,
-                    onValueChange = { localCode = it },
-                    placeholder = {
-                        Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    textStyle = TextStyle(
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp
-                    ),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
-                        cursorColor = WHITE
-                    )
-                )
-
-                // ── Done button ────────────────────────────────────
-                Surface(
-                    Modifier.fillMaxWidth().navigationBarsPadding(),
-                    color = SURFACE
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            onCodeChange(localCode)
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
-                    ) {
-                        Text("Done", color = WHITE)
                     }
                 }
             }
@@ -3277,6 +3182,5 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
 
 
