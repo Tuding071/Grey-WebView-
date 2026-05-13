@@ -52,11 +52,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v11] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v10] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -129,7 +126,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -170,7 +166,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
 
 
 
@@ -1130,9 +1125,8 @@ fun GreyBrowser() {
     
     
     
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v34] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v35] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1301,7 +1295,7 @@ fun GreyBrowser() {
             )
         }
 
-        // ── Script Editor ───────────────────────────────────────────
+        // ── Script Editor (no Popup — renders directly in main Box) ─
         if (showScriptEditor) {
             ScriptEditorScreen(
                 script = editingScript,
@@ -1907,7 +1901,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Toast ────────────────────────────────────────────────────────
+    // ── Toast ────────────────────────────────────────────────────
     if (showToast) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1930,6 +1924,11 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
+    
+    
+    
+    
+    
     
     
     
@@ -2955,12 +2954,19 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    // No Popup wrapper — renders directly in parent Box for correct cursor handle positioning
+    // No Popup — renders directly in main Box for proper keyboard handling and cursor alignment
     Surface(
-        Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-        color = SURFACE
+        Modifier
+            .fillMaxSize()
+            .background(SURFACE)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) {
+                // Tap outside to dismiss keyboard
+            }
     ) {
-        Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             // ── Header ─────────────────────────────────────────
             Row(
                 Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
@@ -3035,7 +3041,7 @@ fun ScriptEditorScreen(
 
             // ── Buttons ────────────────────────────────────────
             Surface(
-                Modifier.fillMaxWidth().navigationBarsPadding(),
+                Modifier.fillMaxWidth(),
                 color = SURFACE
             ) {
                 Row(
