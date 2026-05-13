@@ -530,8 +530,9 @@ fun loadFilters(context: Context): List<Filter> {
 // END OF PART 3/10
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v3] ===
+// === PART 4/10 — Utility Functions [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -623,7 +624,47 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     return Pair(networkRules, cosmeticRules)
 }
 
+// ── Ad Block Rule Matching ───────────────────────────────────────────
+fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
+    val trimmed = rule.trim()
+    if (trimmed.isEmpty()) return false
+
+    // Host-anchored rule: ||domain.com^
+    if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
+        val domain = trimmed.removePrefix("||").removeSuffix("^")
+        val cleanDomain = domain.substringBefore('$')
+        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
+        return false
+    }
+
+    // Host-anchored without ^: ||domain.com
+    if (trimmed.startsWith("||")) {
+        val domain = trimmed.removePrefix("||")
+        val cleanDomain = domain.substringBefore('$')
+        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
+        return false
+    }
+
+    // Exact match: |url|
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        val exact = trimmed.removePrefix("|").removeSuffix("|")
+        return url == exact
+    }
+
+    // Contains match for /path/ patterns
+    if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
+        return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
+    }
+
+    // Simple contains
+    if (url.contains(trimmed)) return true
+
+    return false
+}
+
 // END OF PART 4/10
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3681,4 +3722,3 @@ fun FilterImportDialog(
 }
 
 // END OF PART 13/13
-
