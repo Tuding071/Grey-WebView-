@@ -2786,6 +2786,8 @@ fun PatternDrawScreen(
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2958,7 +2960,22 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
-    val context = LocalContext.current
+    var editorWebView by remember { mutableStateOf<WebView?>(null) }
+
+    // Sync code from external changes to the WebView
+    LaunchedEffect(code) {
+        editorWebView?.let { wv ->
+            val escaped = code
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+            wv.evaluateJavascript(
+                "var ed=document.getElementById('editor');if(ed.value!=='$escaped'){ed.value='$escaped';}",
+                null
+            )
+        }
+    }
 
     // No Popup — renders directly in main Box for proper keyboard handling and cursor alignment
     Surface(
@@ -3038,11 +3055,7 @@ fun ScriptEditorScreen(
                             }
                         },
                         update = { webView ->
-                            // Sync code if edited externally
-                            webView.evaluateJavascript(
-                                "if(document.getElementById('editor').value !== \`${code.replace("`", "\\`").replace("$", "\\$")}\`) { document.getElementById('editor').value = \`${code.replace("`", "\\`").replace("$", "\\$")}\`; }",
-                                null
-                            )
+                            editorWebView = webView
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -3096,8 +3109,9 @@ class EditorBridge(private val onCodeChange: (String) -> Unit) {
 fun createEditorHtml(initialCode: String): String {
     val escapedCode = initialCode
         .replace("\\", "\\\\")
-        .replace("`", "\\`")
-        .replace("$", "\\$")
+        .replace("'", "\\'")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
     return """
 <!DOCTYPE html>
 <html>
@@ -3125,7 +3139,7 @@ textarea:focus { outline: none; }
 <textarea id="editor" placeholder="JavaScript code..." spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
 <script>
 const editor = document.getElementById('editor');
-editor.value = `$escapedCode`;
+editor.value = '$escapedCode';
 editor.addEventListener('input', function() {
     Android.onCodeChange(editor.value);
 });
@@ -3241,5 +3255,7 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
+
+
 
 
