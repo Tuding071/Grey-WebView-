@@ -52,8 +52,10 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v10] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v12] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -71,6 +73,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -126,6 +129,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -3677,5 +3681,4 @@ fun FilterImportDialog(
 }
 
 // END OF PART 13/13
-
 
