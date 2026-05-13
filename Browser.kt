@@ -2782,9 +2782,6 @@ fun PatternDrawScreen(
 
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2958,117 +2955,112 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    Popup(
-        alignment = Alignment.TopStart,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    // No Popup wrapper — renders directly in parent Box for correct cursor handle positioning
+    Surface(
+        Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+        color = SURFACE
     ) {
-        Surface(
-            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-            color = SURFACE
-        ) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // ── Header ─────────────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, "Close", tint = WHITE)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (script != null) "Edit Script" else "Add Script",
+        Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+            // ── Header ─────────────────────────────────────────
+            Row(
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = WHITE)
+                }
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    if (script != null) "Edit Script" else "Add Script",
+                    color = WHITE,
+                    fontSize = 18.sp
+                )
+            }
+
+            Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+            // ── Fields ─────────────────────────────────────────
+            Column(
+                Modifier.fillMaxWidth().weight(1f)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = {
+                        Text("Script name", color = WHITE.copy(alpha = 0.5f))
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    textStyle = TextStyle(
                         color = WHITE,
-                        fontSize = 18.sp
+                        fontSize = 14.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
                     )
-                }
+                )
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    placeholder = {
+                        Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    textStyle = TextStyle(
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+            }
 
-                // ── Fields ─────────────────────────────────────────
-                Column(
-                    Modifier.fillMaxWidth().weight(1f)
+            // ── Buttons ────────────────────────────────────────
+            Surface(
+                Modifier.fillMaxWidth().navigationBarsPadding(),
+                color = SURFACE
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        singleLine = true,
-                        placeholder = {
-                            Text("Script name", color = WHITE.copy(alpha = 0.5f))
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        textStyle = TextStyle(
-                            color = WHITE,
-                            fontSize = 14.sp,
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)
-                        ),
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
                         shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        placeholder = {
-                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        textStyle = TextStyle(
-                            color = WHITE,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp,
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)
-                        ),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
-                    )
-                }
-
-                // ── Buttons ────────────────────────────────────────
-                Surface(
-                    Modifier.fillMaxWidth().navigationBarsPadding(),
-                    color = SURFACE
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
                     ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
-                        ) {
-                            Text("Cancel", color = WHITE)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                onSave(title, code)
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
-                        ) {
-                            Text("Save", color = WHITE)
-                        }
+                        Text("Cancel", color = WHITE)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            onSave(title, code)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Text("Save", color = WHITE)
                     }
                 }
             }
@@ -3182,5 +3174,4 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
 
