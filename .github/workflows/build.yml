@@ -1,4 +1,4 @@
-adjustResizestResize: Build Grey Browser
+name: Build Grey Browser
 
 on:
   workflow_dispatch:
@@ -225,35 +225,25 @@ jobs:
           from PIL import Image, ImageDraw
           import os
 
-          # Grey browser icon:
-          # - Dark grey background
-          # - Sharp rectangular browser frame (thick white, no rounded corners)
-          # - Thick white solid toolbar bar at top
-          # - Two small white square nav dots inside toolbar (sharp, no rounding)
-
           def make_icon(size):
-              BG    = (18, 18, 18, 255)   # near-black grey
+              BG    = (18, 18, 18, 255)
               WHITE = (255, 255, 255, 255)
 
               img = Image.new('RGBA', (size, size), BG)
               d   = ImageDraw.Draw(img)
 
-              pad = max(4, size // 9)          # outer margin
-              sw  = max(3, size // 11)         # thick stroke — the main accent weight
+              pad = max(4, size // 9)
+              sw  = max(3, size // 11)
 
-              # ── Outer browser window frame (sharp rectangle) ──────────────
               d.rectangle([pad, pad, size - pad, size - pad],
                           outline=WHITE, width=sw)
 
-              # ── Solid toolbar bar (fills top section of the frame) ────────
               bar_h = size // 4
-              bar_y1 = pad + sw                # just inside top border
+              bar_y1 = pad + sw
               bar_y2 = pad + bar_h
               d.rectangle([pad + sw, bar_y1, size - pad - sw, bar_y2],
                           fill=WHITE)
 
-              # ── Two small square nav buttons inside toolbar ───────────────
-              # Colored grey (cut out of the white bar) for contrast
               dot = max(2, size // 20)
               dot_y1 = bar_y1 + (bar_h - sw) // 2 - dot // 2
               dot_y2 = dot_y1 + dot
