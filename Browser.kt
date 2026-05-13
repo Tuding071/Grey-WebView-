@@ -2777,10 +2777,6 @@ fun PatternDrawScreen(
 // END OF PART 11/11
 
 
-
-
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -3007,23 +3003,38 @@ fun ScriptEditorScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        placeholder = {
-                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
-                        },
-                        modifier = Modifier.fillMaxWidth().height(300.dp),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
+                    // Code field — BasicTextField for proper selection handles
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .border(1.dp, WHITE, RectangleShape)
+                            .padding(12.dp)
+                    ) {
+                        BasicTextField(
+                            value = code,
+                            onValueChange = { code = it },
+                            textStyle = TextStyle(
+                                color = WHITE,
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            cursorBrush = SolidColor(WHITE),
+                            modifier = Modifier.fillMaxSize(),
+                            decorationBox = { innerTextField ->
+                                if (code.isEmpty()) {
+                                    Text(
+                                        "JavaScript code...",
+                                        color = WHITE.copy(alpha = 0.5f),
+                                        fontSize = 14.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                innerTextField()
+                            }
                         )
-                    )
+                    }
                 }
 
                 // ── Buttons ────────────────────────────────────────
@@ -3168,6 +3179,5 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
 
 
