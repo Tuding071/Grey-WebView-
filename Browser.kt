@@ -2997,7 +2997,6 @@ fun PatternDrawScreen(
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -3171,7 +3170,7 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    // Near full-screen AlertDialog — fixed cursor handle bug + large code field
+    // Full-width AlertDialog — no horizontal margins, no text wrapping, edge to edge
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -3193,8 +3192,8 @@ fun ScriptEditorScreen(
         text = {
             Box(
                 Modifier
-                    .fillMaxWidth(0.95f)
-                    .fillMaxHeight(0.85f)
+                    .fillMaxWidth(1f)
+                    .fillMaxHeight(0.95f)
             ) {
                 Column(Modifier.fillMaxSize()) {
                     // Title field (single line, fixed height)
@@ -3221,7 +3220,7 @@ fun ScriptEditorScreen(
                     Text("Code", color = MUTED, fontSize = 12.sp)
                     Spacer(Modifier.height(4.dp))
 
-                    // Code field — takes all remaining space, internally scrollable
+                    // Code field — full remaining space, no text wrapping
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
@@ -3233,6 +3232,9 @@ fun ScriptEditorScreen(
                             color = WHITE,
                             fontSize = 14.sp,
                             lineHeight = 18.sp
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Default
                         ),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -3382,7 +3384,6 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
 
 
 
