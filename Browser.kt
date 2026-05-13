@@ -2779,6 +2779,8 @@ fun PatternDrawScreen(
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2951,7 +2953,6 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
-    val scrollState = rememberScrollState()
 
     Popup(
         alignment = Alignment.TopStart,
@@ -2962,9 +2963,7 @@ fun ScriptEditorScreen(
             Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
             color = SURFACE
         ) {
-            Column(
-                Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(scrollState)
-            ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
                 // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
@@ -2985,7 +2984,7 @@ fun ScriptEditorScreen(
 
                 // ── Fields ─────────────────────────────────────────
                 Column(
-                    Modifier.fillMaxWidth().padding(16.dp)
+                    Modifier.fillMaxWidth().weight(1f).padding(16.dp)
                 ) {
                     OutlinedTextField(
                         value = title,
@@ -3014,9 +3013,7 @@ fun ScriptEditorScreen(
                         placeholder = {
                             Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 200.dp, max = 400.dp),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                         textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -3027,11 +3024,15 @@ fun ScriptEditorScreen(
                             cursorColor = WHITE
                         )
                     )
+                }
 
-                    Spacer(Modifier.height(16.dp))
-
+                // ── Buttons ────────────────────────────────────────
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
                     Row(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
@@ -3167,3 +3168,6 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
+
+
+
