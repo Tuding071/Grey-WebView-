@@ -52,8 +52,10 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v10] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -126,6 +128,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -166,6 +169,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
 
 
 
@@ -3180,4 +3184,3 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
