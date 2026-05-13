@@ -3013,7 +3013,7 @@ fun ScriptEditorScreen(
                         placeholder = {
                             Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
                         textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
