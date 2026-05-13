@@ -2785,6 +2785,7 @@ fun PatternDrawScreen(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2957,18 +2958,13 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
+    val context = LocalContext.current
 
     // No Popup — renders directly in main Box for proper keyboard handling and cursor alignment
     Surface(
         Modifier
             .fillMaxSize()
             .background(SURFACE)
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) {
-                // Tap outside to dismiss keyboard
-            }
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             // ── Header ─────────────────────────────────────────
@@ -3016,31 +3012,41 @@ fun ScriptEditorScreen(
                     )
                 )
 
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    placeholder = {
-                        Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
-                    },
-                    modifier = Modifier
+                // ── Embedded WebView code editor ──────────────
+                Box(
+                    Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    textStyle = TextStyle(
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = false)
-                    ),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
-                        cursorColor = WHITE
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .border(1.dp, WHITE, RectangleShape)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
+                                settings.javaScriptEnabled = true
+                                addJavascriptInterface(EditorBridge { newCode ->
+                                    code = newCode
+                                }, "Android")
+                                loadDataWithBaseURL(
+                                    null,
+                                    createEditorHtml(code),
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                            }
+                        },
+                        update = { webView ->
+                            // Sync code if edited externally
+                            webView.evaluateJavascript(
+                                "if(document.getElementById('editor').value !== \`${code.replace("`", "\\`").replace("$", "\\$")}\`) { document.getElementById('editor').value = \`${code.replace("`", "\\`").replace("$", "\\$")}\`; }",
+                                null
+                            )
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
-                )
+                }
             }
 
             // ── Buttons ────────────────────────────────────────
@@ -3076,6 +3082,57 @@ fun ScriptEditorScreen(
             }
         }
     }
+}
+
+// ── JavaScript bridge for the embedded editor ────────────────────────
+class EditorBridge(private val onCodeChange: (String) -> Unit) {
+    @android.webkit.JavascriptInterface
+    fun onCodeChange(newCode: String) {
+        onCodeChange(newCode)
+    }
+}
+
+// ── HTML template for the embedded editor ────────────────────────────
+fun createEditorHtml(initialCode: String): String {
+    val escapedCode = initialCode
+        .replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("$", "\\$")
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; background: #1E1E1E; }
+textarea {
+    width: 100%; height: 100%;
+    background: #1E1E1E;
+    color: #FFFFFF;
+    border: none; outline: none; resize: none;
+    font-family: monospace; font-size: 14px;
+    line-height: 1.5; padding: 12px;
+    -webkit-text-fill-color: #FFFFFF;
+    caret-color: #FFFFFF;
+}
+textarea::placeholder { color: rgba(255,255,255,0.5); }
+textarea:focus { outline: none; }
+</style>
+</head>
+<body>
+<textarea id="editor" placeholder="JavaScript code..." spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+<script>
+const editor = document.getElementById('editor');
+editor.value = `$escapedCode`;
+editor.addEventListener('input', function() {
+    Android.onCodeChange(editor.value);
+});
+</script>
+</body>
+</html>
+""".trimIndent()
 }
 
 @Composable
@@ -3184,3 +3241,5 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
+
+
