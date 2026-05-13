@@ -52,10 +52,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v11] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v10] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -128,7 +126,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -174,7 +171,7 @@ class MainActivity : ComponentActivity() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache [UPDATED v3] ===
+// === PART 2/10 — Constants, FaviconCache [UPDATED v4] ===
 // ═══════════════════════════════════════════════════════════════════
 
 private const val PREFS_NAME = "browser_tabs"
@@ -184,6 +181,8 @@ private const val KEY_LAST_ACTIVE_URL = "last_active_url"
 private const val KEY_BOOKMARKS = "saved_bookmarks"
 private const val KEY_HISTORY = "saved_history"
 private const val KEY_SCRIPTS = "saved_scripts"
+private const val KEY_FILTERS = "saved_filters"
+private const val KEY_FILTERS_ENABLED = "filters_enabled"
 
 const val MAX_WARM_WEBVIEWS = 3
 const val UNDO_DELAY_MS = 3000L
@@ -298,12 +297,10 @@ object FaviconCache {
 }
 
 // END OF PART 2/10
-	
-
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v5] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -324,6 +321,18 @@ data class Script(
     val title: String,
     val code: String,
     val enabled: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class Filter(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val rawText: String,
+    val networkRules: List<String>,
+    val cosmeticRules: List<String>,
+    val enabled: Boolean = true,
+    val networkRuleCount: Int,
+    val cosmeticRuleCount: Int,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -463,16 +472,62 @@ fun loadScripts(context: Context): List<Script> {
     } catch (e: Exception) { emptyList() }
 }
 
+fun saveFilters(context: Context, filters: List<Filter>) {
+    val arr = JSONArray()
+    for (f in filters) {
+        val obj = JSONObject()
+        obj.put("id", f.id)
+        obj.put("name", f.name)
+        obj.put("rawText", f.rawText)
+        obj.put("networkRuleCount", f.networkRuleCount)
+        obj.put("cosmeticRuleCount", f.cosmeticRuleCount)
+        obj.put("enabled", f.enabled)
+        obj.put("timestamp", f.timestamp)
+        val networkArr = JSONArray()
+        for (r in f.networkRules) networkArr.put(r)
+        obj.put("networkRules", networkArr)
+        val cosmeticArr = JSONArray()
+        for (r in f.cosmeticRules) cosmeticArr.put(r)
+        obj.put("cosmeticRules", cosmeticArr)
+        arr.put(obj)
+    }
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FILTERS, arr.toString()).apply()
+}
+
+fun loadFilters(context: Context): List<Filter> {
+    val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_FILTERS, null) ?: return emptyList()
+    return try {
+        val arr = JSONArray(json)
+        mutableListOf<Filter>().apply {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val networkArr = o.getJSONArray("networkRules")
+                val networkList = mutableListOf<String>()
+                for (j in 0 until networkArr.length()) networkList.add(networkArr.getString(j))
+                val cosmeticArr = o.getJSONArray("cosmeticRules")
+                val cosmeticList = mutableListOf<String>()
+                for (j in 0 until cosmeticArr.length()) cosmeticList.add(cosmeticArr.getString(j))
+                add(Filter(
+                    o.getString("id"),
+                    o.getString("name"),
+                    o.getString("rawText"),
+                    networkList,
+                    cosmeticList,
+                    o.optBoolean("enabled", true),
+                    o.getInt("networkRuleCount"),
+                    o.getInt("cosmeticRuleCount"),
+                    o.getLong("timestamp")
+                ))
+            }
+        }
+    } catch (e: Exception) { emptyList() }
+}
+
 // END OF PART 3/10
 
 
-
-
-
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v2] ===
+// === PART 4/10 — Utility Functions [UPDATED v3] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -505,7 +560,6 @@ fun parseScriptHeader(code: String): Map<String, String> {
         val key = fieldMatch.groupValues[1]
         val value = fieldMatch.groupValues[2].trim()
         if (key in listOf("match", "exclude")) {
-            // Append to existing list
             val existing = meta[key] ?: ""
             meta[key] = if (existing.isEmpty()) value else "$existing||$value"
         } else {
@@ -522,16 +576,13 @@ fun getScriptBody(code: String): String {
 
 fun urlMatchesPattern(url: String, pattern: String): Boolean {
     if (pattern == "*" || pattern == "*://*/*") return true
-    // Convert wildcard pattern to regex
     var regexStr = Regex.escape(pattern)
     regexStr = regexStr.replace("\\*", ".*")
-    // Don't escape :// in protocol
     regexStr = regexStr.replace("""\.\*://\.\*""", ".*://.*")
     regexStr = regexStr.replace("""\.\*://""", ".*://")
     return try {
         Regex(regexStr, RegexOption.IGNORE_CASE).containsMatchIn(url)
     } catch (e: Exception) {
-        // Fallback: simple contains check
         url.contains(pattern.replace("*", ""))
     }
 }
@@ -542,28 +593,37 @@ fun shouldInjectScript(script: Script, url: String): Boolean {
     val matchPatterns = meta["match"]?.split("||") ?: listOf("*://*/*")
     val excludePatterns = meta["exclude"]?.split("||") ?: emptyList()
 
-    // Check exclude first
     for (pattern in excludePatterns) {
         if (urlMatchesPattern(url, pattern)) return false
     }
-    // Check match
     for (pattern in matchPatterns) {
         if (urlMatchesPattern(url, pattern)) return true
     }
     return false
 }
 
+// ── Filter Rule Parser ───────────────────────────────────────────────
+fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
+    val networkRules = mutableListOf<String>()
+    val cosmeticRules = mutableListOf<String>()
+
+    for (line in rawText.lines()) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
+        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
+            cosmeticRules.add(trimmed)
+        } else {
+            networkRules.add(trimmed)
+        }
+    }
+    return Pair(networkRules, cosmeticRules)
+}
+
 // END OF PART 4/10
 
 
-
-
-
-
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v13] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v14] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -587,6 +647,17 @@ fun GreyBrowser() {
     var showScripts by remember { mutableStateOf(false) }
     var showScriptEditor by remember { mutableStateOf(false) }
     var editingScript by remember { mutableStateOf<Script?>(null) }
+
+    // ── Filters State ────────────────────────────────────────────────
+    val filters = remember { mutableStateListOf<Filter>().apply { addAll(loadFilters(context)) } }
+    var showFilters by remember { mutableStateOf(false) }
+    var filtersEnabled by remember {
+        mutableStateOf(
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_FILTERS_ENABLED, true)
+        )
+    }
+    var totalBlocked by remember { mutableIntStateOf(0) }
 
     // ── Toast State ──────────────────────────────────────────────────
     var toastMessage by remember { mutableStateOf("") }
@@ -688,6 +759,12 @@ fun GreyBrowser() {
     LaunchedEffect(bookmarks.toList()) { saveBookmarks(context, bookmarks) }
     LaunchedEffect(history.toList()) { saveHistory(context, history) }
     LaunchedEffect(scripts.toList()) { saveScripts(context, scripts) }
+    LaunchedEffect(filters.toList()) { saveFilters(context, filters) }
+
+    LaunchedEffect(filtersEnabled) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_FILTERS_ENABLED, filtersEnabled).apply()
+    }
 
     LaunchedEffect(currentTabIndex) {
         if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
@@ -705,12 +782,9 @@ fun GreyBrowser() {
 
     // END OF PART 5/10
 
-    
-    
-    
-    
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v19] ===
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -798,6 +872,39 @@ fun GreyBrowser() {
                     }
                 }
             }
+            // ── Ad/Filter blocking ───────────────────────────────────
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: android.webkit.WebResourceRequest
+            ): android.webkit.WebResourceResponse? {
+                if (!filtersEnabled) return null
+                val requestUrl = request.url.toString()
+                val requestHost = request.url.host ?: return null
+
+                for (filter in filters) {
+                    if (!filter.enabled) continue
+                    // Check exception rules first (@@)
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) {
+                            val exceptionPattern = rule.removePrefix("@@")
+                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) {
+                                return null // Exception — allow
+                            }
+                        }
+                    }
+                    // Check blocking rules
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) continue
+                        if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
+                            totalBlocked++
+                            return android.webkit.WebResourceResponse(
+                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
+                            )
+                        }
+                    }
+                }
+                return null // Allow
+            }
         }
 
         // ── Track touch coordinates (scaled for page content) ────────
@@ -829,6 +936,48 @@ fun GreyBrowser() {
             }
             true
         }
+    }
+
+    // ── Helper: match URL against an ad block rule ────────────────
+    fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
+        val trimmed = rule.trim()
+        if (trimmed.isEmpty()) return false
+
+        // Host-anchored rule: ||domain.com^
+        if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
+            val domain = trimmed.removePrefix("||").removeSuffix("^")
+            if (host == domain || host.endsWith(".$domain")) return true
+            // Check for $option after ^
+            val optionIndex = domain.indexOf('$')
+            if (optionIndex >= 0) {
+                val cleanDomain = domain.substring(0, optionIndex)
+                return host == cleanDomain || host.endsWith(".$cleanDomain")
+            }
+            return false
+        }
+
+        // Host-anchored without ^: ||domain.com
+        if (trimmed.startsWith("||")) {
+            val domain = trimmed.removePrefix("||")
+            val cleanDomain = if (domain.contains('$')) domain.substringBefore('$') else domain
+            return host == cleanDomain || host.endsWith(".$cleanDomain")
+        }
+
+        // Exact match: |url|
+        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+            val exact = trimmed.removePrefix("|").removeSuffix("|")
+            return url == exact
+        }
+
+        // Contains match for /path/ patterns
+        if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
+            return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
+        }
+
+        // Simple contains
+        if (url.contains(trimmed)) return true
+
+        return false
     }
 
     // ── Remove duplicate tab if exists, adjust indices ─────────────
@@ -1002,8 +1151,6 @@ fun GreyBrowser() {
 
 
 
-
-
     // ═══════════════════════════════════════════════════════════════════
     // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v21] ===
     // ═══════════════════════════════════════════════════════════════════
@@ -1130,7 +1277,7 @@ fun GreyBrowser() {
     
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v35] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v36] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1158,8 +1305,6 @@ fun GreyBrowser() {
     // ── Pattern Lock state ──────────────────────────────────────────
     var showAppLockSettings by remember { mutableStateOf(false) }
     var patternDrawMode by remember { mutableStateOf("") }
-    // "" = hidden, "unlock" = app launch unlock, "set" = setting new, "change_verify" = verify old to change,
-    // "change_set" = setting replacement, "remove" = verify to remove, "toggle_off" = verify to disable
 
     // ── Launch check: if lock enabled, show unlock screen ───────────
     LaunchedEffect(Unit) {
@@ -1299,14 +1444,13 @@ fun GreyBrowser() {
             )
         }
 
-        // ── Script Editor (no Popup — renders directly in main Box) ─
+        // ── Script Editor ───────────────────────────────────────────
         if (showScriptEditor) {
             ScriptEditorScreen(
                 script = editingScript,
                 onDismiss = { showScriptEditor = false },
                 onSave = { title, code ->
                     var finalTitle = title
-                    // Auto-name from script header if title is blank
                     if (finalTitle.isBlank()) {
                         val nameMatch = Regex("""@name\s+(.+)""").find(code)
                         finalTitle = nameMatch?.groupValues?.get(1)?.trim() ?: ""
@@ -1329,6 +1473,39 @@ fun GreyBrowser() {
                     }
                     showScriptEditor = false
                     showToast(if (editingScript != null) "Script updated" else "Script added")
+                }
+            )
+        }
+
+        // ── Filters Manager ─────────────────────────────────────────
+        if (showFilters) {
+            FiltersManagerScreen(
+                filters = filters,
+                filtersEnabled = filtersEnabled,
+                totalBlocked = totalBlocked,
+                onDismiss = { showFilters = false },
+                onToggleMaster = { filtersEnabled = it },
+                onToggleFilter = { id ->
+                    val index = filters.indexOfFirst { it.id == id }
+                    if (index >= 0) {
+                        filters[index] = filters[index].copy(enabled = !filters[index].enabled)
+                    }
+                },
+                onDeleteFilter = { id ->
+                    filters.removeAll { it.id == id }
+                    showToast("Filter deleted")
+                },
+                onImportFilter = { name, rawText ->
+                    val (network, cosmetic) = parseFilterRules(rawText)
+                    filters.add(Filter(
+                        name = name,
+                        rawText = rawText,
+                        networkRules = network,
+                        cosmeticRules = cosmetic,
+                        networkRuleCount = network.size,
+                        cosmeticRuleCount = cosmetic.size
+                    ))
+                    showToast("Filter imported: ${network.size} rules")
                 }
             )
         }
@@ -1359,7 +1536,7 @@ fun GreyBrowser() {
             )
         }
 
-        // ── Link Context Menu (centered, exact DropdownMenuItem style) ──
+        // ── Link Context Menu ───────────────────────────────────────
         if (showLinkMenu && linkMenuUrl != null) {
             Popup(
                 alignment = Alignment.Center,
@@ -1443,10 +1620,8 @@ fun GreyBrowser() {
 
                         // ── Body: Sidebar + Tab list ─────────────────
                         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                            // ── Sidebar ──────────────────────────────
                             val groupListState = rememberLazyListState()
 
-                            // ── Blink logic ──────────────────────────
                             LaunchedEffect(Unit) {
                                 selectedDomain = ""
                                 if (highlightDomain.isNotBlank()) {
@@ -1510,7 +1685,6 @@ fun GreyBrowser() {
                                 modifier = Modifier.fillMaxHeight().width(1.dp)
                             )
 
-                            // ── Tab list ─────────────────────────────
                             val tabsToShow = if (selectedDomain.isBlank()) realTabs
                             else domainGroups[selectedDomain] ?: emptyList()
                             val tabListState = rememberLazyListState()
@@ -1709,11 +1883,10 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Main layout — Simple Column ─────────────────────────────
+        // ── Main layout ─────────────────────────────────────────────
         Column(
             Modifier.fillMaxSize().systemBarsPadding().background(BG)
         ) {
-            // ── Top Bar ──────────────────────────────────────────────
             Surface(
                 color = SURFACE,
                 shadowElevation = 0.dp,
@@ -1723,7 +1896,6 @@ fun GreyBrowser() {
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Tabs button
                     Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                         IconButton({ showTabManager = true }) {
                             Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
@@ -1732,7 +1904,6 @@ fun GreyBrowser() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // Forward button
                     val canGoForward = currentTab?.webView?.canGoForward() == true
                     Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                         IconButton(
@@ -1749,7 +1920,6 @@ fun GreyBrowser() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // URL field
                     val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
                     OutlinedTextField(
                         value = urlInput,
@@ -1829,7 +1999,6 @@ fun GreyBrowser() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // New Tab button — goes to homepage (neutral ground)
                     Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                         IconButton({ currentTabIndex = -1 }) {
                             Icon(Icons.Default.Add, "New Tab", tint = WHITE)
@@ -1838,7 +2007,6 @@ fun GreyBrowser() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // Menu button
                     Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                         IconButton({ showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
@@ -1887,6 +2055,13 @@ fun GreyBrowser() {
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("Filters", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    showFilters = true
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("App Lock", color = WHITE) },
                                 onClick = {
                                     showMenu = false
@@ -1898,7 +2073,6 @@ fun GreyBrowser() {
                 }
             }
 
-            // ── Content area (fills remaining space below top bar) ───
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ContentLayer()
             }
@@ -1928,13 +2102,6 @@ fun GreyBrowser() {
 }
 
 // END OF PART 8/10
-    
-    
-    
-    
-    
-    
-    
     
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2786,8 +2953,6 @@ fun PatternDrawScreen(
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2960,193 +3125,118 @@ fun ScriptEditorScreen(
 ) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
-    var editorWebView by remember { mutableStateOf<WebView?>(null) }
 
-    // Sync code from external changes to the WebView
-    LaunchedEffect(code) {
-        editorWebView?.let { wv ->
-            val escaped = code
-                .replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-            wv.evaluateJavascript(
-                "var ed=document.getElementById('editor');if(ed.value!=='$escaped'){ed.value='$escaped';}",
-                null
-            )
-        }
-    }
-
-    // No Popup — renders directly in main Box for proper keyboard handling and cursor alignment
-    Surface(
-        Modifier
-            .fillMaxSize()
-            .background(SURFACE)
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            // ── Header ─────────────────────────────────────────
-            Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Default.Close, "Close", tint = WHITE)
-                }
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    if (script != null) "Edit Script" else "Add Script",
-                    color = WHITE,
-                    fontSize = 18.sp
-                )
-            }
-
-            Divider(color = Color.DarkGray, thickness = 0.5.dp)
-
-            // ── Fields ─────────────────────────────────────────
-            Column(
-                Modifier.fillMaxWidth().weight(1f)
-            ) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    singleLine = true,
-                    placeholder = {
-                        Text("Script name", color = WHITE.copy(alpha = 0.5f))
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    textStyle = TextStyle(
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = false)
-                    ),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
-                        cursorColor = WHITE
-                    )
-                )
-
-                // ── Embedded WebView code editor ──────────────
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .border(1.dp, WHITE, RectangleShape)
-                ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
-                                settings.javaScriptEnabled = true
-                                addJavascriptInterface(EditorBridge { newCode ->
-                                    code = newCode
-                                }, "Android")
-                                loadDataWithBaseURL(
-                                    null,
-                                    createEditorHtml(code),
-                                    "text/html",
-                                    "UTF-8",
-                                    null
-                                )
-                            }
-                        },
-                        update = { webView ->
-                            editorWebView = webView
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-
-            // ── Buttons ────────────────────────────────────────
-            Surface(
-                Modifier.fillMaxWidth(),
-                color = SURFACE
-            ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                // ── Header ─────────────────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
-                    ) {
-                        Text("Cancel", color = WHITE)
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
-                    OutlinedButton(
-                        onClick = {
-                            onSave(title, code)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (script != null) "Edit Script" else "Add Script",
+                        color = WHITE,
+                        fontSize = 18.sp
+                    )
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Fields ─────────────────────────────────────────
+                Column(
+                    Modifier.fillMaxWidth().weight(1f)
+                ) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text("Script name", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                         shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = WHITE
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        placeholder = {
+                            Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        textStyle = TextStyle(
+                            color = WHITE,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp
+                        ),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = WHITE
+                        )
+                    )
+                }
+
+                // ── Buttons ────────────────────────────────────────
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Save", color = WHITE)
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Cancel", color = WHITE)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onSave(title, code)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Save", color = WHITE)
+                        }
                     }
                 }
             }
         }
     }
-}
-
-// ── JavaScript bridge for the embedded editor ────────────────────────
-class EditorBridge(private val onCodeChange: (String) -> Unit) {
-    @android.webkit.JavascriptInterface
-    fun onCodeChange(newCode: String) {
-        onCodeChange(newCode)
-    }
-}
-
-// ── HTML template for the embedded editor ────────────────────────────
-fun createEditorHtml(initialCode: String): String {
-    val escapedCode = initialCode
-        .replace("\\", "\\\\")
-        .replace("'", "\\'")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-    return """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; overflow: hidden; background: #1E1E1E; }
-textarea {
-    width: 100%; height: 100%;
-    background: #1E1E1E;
-    color: #FFFFFF;
-    border: none; outline: none; resize: none;
-    font-family: monospace; font-size: 14px;
-    line-height: 1.5; padding: 12px;
-    -webkit-text-fill-color: #FFFFFF;
-    caret-color: #FFFFFF;
-}
-textarea::placeholder { color: rgba(255,255,255,0.5); }
-textarea:focus { outline: none; }
-</style>
-</head>
-<body>
-<textarea id="editor" placeholder="JavaScript code..." spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-<script>
-const editor = document.getElementById('editor');
-editor.value = '$escapedCode';
-editor.addEventListener('input', function() {
-    Android.onCodeChange(editor.value);
-});
-</script>
-</body>
-</html>
-""".trimIndent()
 }
 
 @Composable
@@ -3257,5 +3347,335 @@ for debugging via remote DevTools.
 // END OF PART 12/12
 
 
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 13/13 — Filters Manager + Import Dialog ===
+// ═══════════════════════════════════════════════════════════════════
+
+@Composable
+fun FiltersManagerScreen(
+    filters: List<Filter>,
+    filtersEnabled: Boolean,
+    totalBlocked: Int,
+    onDismiss: () -> Unit,
+    onToggleMaster: (Boolean) -> Unit,
+    onToggleFilter: (String) -> Unit,
+    onDeleteFilter: (String) -> Unit,
+    onImportFilter: (String, String) -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var filterToDelete by remember { mutableStateOf<Filter?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm && filterToDelete != null) {
+        val f = filterToDelete!!
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false; filterToDelete = null },
+            title = { Text("Delete Filter?", color = WHITE, fontSize = 18.sp) },
+            text = {
+                Column {
+                    Text(f.name, color = WHITE, fontSize = 14.sp)
+                    Text("${f.networkRuleCount} network rules", color = MUTED, fontSize = 12.sp)
+                    Text("${f.cosmeticRuleCount} cosmetic (skipped)", color = MUTED, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("This cannot be undone.", color = MUTED, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    onDeleteFilter(f.id)
+                    showDeleteConfirm = false
+                    filterToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    filterToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    if (showImportDialog) {
+        FilterImportDialog(
+            onDismiss = { showImportDialog = false },
+            onImport = { name, rawText ->
+                onImportFilter(name, rawText)
+                showImportDialog = false
+            }
+        )
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // ── Header ─────────────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Filters", color = WHITE, fontSize = 18.sp)
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Master Toggle ──────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            if (filtersEnabled) "Enabled" else "Disabled",
+                            color = WHITE,
+                            fontSize = 14.sp
+                        )
+                        if (totalBlocked > 0) {
+                            Text(
+                                "$totalBlocked blocked on this page",
+                                color = MUTED,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = filtersEnabled,
+                        onCheckedChange = onToggleMaster,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = WHITE,
+                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                            uncheckedTrackColor = Color(0xFF444444)
+                        )
+                    )
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                // ── Filter List ────────────────────────────────────
+                if (filters.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No filters", color = MUTED, fontSize = 16.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Tap Import to add a filter list", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        items(filters) { filter ->
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                color = Color.Transparent
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                filter.name,
+                                                color = if (filter.enabled) WHITE else MUTED,
+                                                fontSize = 14.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                "${filter.networkRuleCount} network rules",
+                                                color = MUTED,
+                                                fontSize = 11.sp
+                                            )
+                                            Text(
+                                                "${filter.cosmeticRuleCount} cosmetic (skipped)",
+                                                color = MUTED.copy(alpha = 0.7f),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        Switch(
+                                            checked = filter.enabled,
+                                            onCheckedChange = { onToggleFilter(filter.id) },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = WHITE,
+                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                                uncheckedTrackColor = Color(0xFF444444)
+                                            )
+                                        )
+                                        IconButton({
+                                            filterToDelete = filter
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Delete",
+                                                tint = WHITE.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Footer ─────────────────────────────────────────
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    OutlinedButton(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Import Filter", color = WHITE)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FilterImportDialog(
+    onDismiss: () -> Unit,
+    onImport: (String, String) -> Unit
+) {
+    var filterName by remember { mutableStateOf("") }
+    var selectedFileName by remember { mutableStateOf("") }
+    var fileContent by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val content = inputStream?.bufferedReader()?.readText() ?: ""
+                inputStream?.close()
+                fileContent = content
+                // Extract filename from URI
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            selectedFileName = it.getString(nameIndex)
+                        }
+                    }
+                }
+                if (selectedFileName.isEmpty()) selectedFileName = "filter.txt"
+                if (filterName.isEmpty()) {
+                    filterName = selectedFileName.removeSuffix(".txt")
+                }
+            } catch (e: Exception) {
+                // File read failed
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import Filter", color = WHITE, fontSize = 18.sp) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = filterName,
+                    onValueChange = { filterName = it },
+                    singleLine = true,
+                    placeholder = { Text("Filter name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { filePickerLauncher.launch("text/plain") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text(
+                        if (selectedFileName.isEmpty()) "Select File"
+                        else selectedFileName,
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
+                        onImport(filterName, fileContent)
+                    }
+                },
+                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
+            ) {
+                Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = WHITE)
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
+    )
+}
+
+// END OF PART 13/13
 
 
