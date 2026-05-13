@@ -2997,6 +2997,7 @@ fun PatternDrawScreen(
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -3170,7 +3171,7 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    // Full-width AlertDialog — no horizontal margins, no text wrapping, edge to edge
+    // AlertDialog — same style as Filter Import, but larger for code editing
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -3190,62 +3191,67 @@ fun ScriptEditorScreen(
             }
         },
         text = {
-            Box(
-                Modifier
-                    .fillMaxWidth(1f)
-                    .fillMaxHeight(0.95f)
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    // Title field (single line, fixed height)
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        singleLine = true,
-                        placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
+            Column {
+                // Title field
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
                     )
+                )
 
-                    Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
-                    // Code label
-                    Text("Code", color = MUTED, fontSize = 12.sp)
-                    Spacer(Modifier.height(4.dp))
+                // Code label
+                Text("Code", color = MUTED, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
 
-                    // Code field — full remaining space, no text wrapping
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        placeholder = { Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        textStyle = TextStyle(
-                            color = WHITE,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Default
-                        ),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
-                            cursorColor = WHITE
-                        )
+                // Code field — fixed height, internally scrollable
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    placeholder = {
+                        Column {
+                            Text(
+                                "JavaScript code...",
+                                color = WHITE.copy(alpha = 0.5f),
+                                fontSize = 14.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Note: Paste your code here. For editing, use an\nexternal code editor for a better experience.",
+                                color = MUTED.copy(alpha = 0.6f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 350.dp),
+                    textStyle = TextStyle(
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
                     )
-                }
+                )
             }
         },
         confirmButton = {
@@ -3384,6 +3390,8 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
+
+
 
 
 
