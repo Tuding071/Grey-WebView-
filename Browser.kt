@@ -2778,7 +2778,6 @@ fun PatternDrawScreen(
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2982,7 +2981,7 @@ fun ScriptEditorScreen(
 
                 // ── Fields ─────────────────────────────────────────
                 Column(
-                    Modifier.fillMaxWidth().weight(1f).padding(16.dp)
+                    Modifier.fillMaxWidth().weight(1f)
                 ) {
                     OutlinedTextField(
                         value = title,
@@ -2991,7 +2990,7 @@ fun ScriptEditorScreen(
                         placeholder = {
                             Text("Script name", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                         textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                         shape = RectangleShape,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -3003,15 +3002,16 @@ fun ScriptEditorScreen(
                         )
                     )
 
-                    Spacer(Modifier.height(12.dp))
-
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
                         placeholder = {
                             Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f))
                         },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                         textStyle = TextStyle(
                             color = WHITE,
                             fontSize = 14.sp,
@@ -3170,7 +3170,6 @@ for debugging via remote DevTools.
 }
 
 // END OF PART 12/12
-
 
 
 
