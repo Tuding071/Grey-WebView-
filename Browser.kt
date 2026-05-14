@@ -668,7 +668,7 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v14] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v15] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -760,6 +760,7 @@ fun GreyBrowser() {
 
     // currentTabIndex = -1 means homepage (neutral ground)
     var currentTabIndex by remember { mutableIntStateOf(-1) }
+    var previousTabIndex by remember { mutableIntStateOf(-1) }
     var highlightedTabIndex by remember {
         mutableIntStateOf(
             tabs.indexOfFirst { it.url.substringBefore("#") == savedLastActiveUrl.substringBefore("#") }
@@ -795,6 +796,15 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // ── Track previous tab when navigating to homepage ─────────────
+    SideEffect {
+        if (currentTabIndex == -1 && previousTabIndex == -1) {
+            // Don't overwrite previousTabIndex if it's already set
+        } else if (currentTabIndex >= 0) {
+            previousTabIndex = currentTabIndex
+        }
+    }
+
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
     }
@@ -826,6 +836,8 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1196,130 +1208,144 @@ fun GreyBrowser() {
 
 
 
-    // ═══════════════════════════════════════════════════════════════════
-    // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v21] ===
-    // ═══════════════════════════════════════════════════════════════════
 
-    // ── Helper: close a tab immediately and fix parent references ───
-    fun closeTabAndFixParents(index: Int) {
-        if (index < 0 || index >= tabs.size) return
-        tabs[index].webView?.destroy()
-        tabs.removeAt(index)
-        for (t in tabs) {
-            if (t.parentTabIndex == index) t.parentTabIndex = -1
-            else if (t.parentTabIndex > index) t.parentTabIndex--
-        }
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v22] ===
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Helper: close a tab immediately and fix parent references ───
+fun closeTabAndFixParents(index: Int) {
+    if (index < 0 || index >= tabs.size) return
+    tabs[index].webView?.destroy()
+    tabs.removeAt(index)
+    for (t in tabs) {
+        if (t.parentTabIndex == index) t.parentTabIndex = -1
+        else if (t.parentTabIndex > index) t.parentTabIndex--
     }
+}
 
-    BackHandler {
-        when {
-            // Close overlays first
-            showTabManager -> showTabManager = false
-            showBookmarks -> showBookmarks = false
-            showHistory -> showHistory = false
-            showMenu -> showMenu = false
-            showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
-            showLinkMenu -> { showLinkMenu = false; linkMenuUrl = null }
-            // On homepage (neutral ground)
-            currentTabIndex == -1 -> {
-                activity?.finish()
+BackHandler {
+    when {
+        // Close overlays first
+        showTabManager -> showTabManager = false
+        showBookmarks -> showBookmarks = false
+        showHistory -> showHistory = false
+        showMenu -> showMenu = false
+        showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
+        showLinkMenu -> { showLinkMenu = false; linkMenuUrl = null }
+        // On homepage (neutral ground)
+        currentTabIndex == -1 -> {
+            // Go back to previous tab if one exists
+            if (previousTabIndex >= 0 && previousTabIndex < tabs.size) {
+                currentTabIndex = previousTabIndex
+                previousTabIndex = -1
             }
-            // On a real tab
-            currentTabIndex >= 0 -> {
-                val tab = tabs.getOrNull(currentTabIndex)
-                if (tab?.webView?.canGoBack() == true) {
-                    // WebView has history → go back in page
-                    tab.webView?.goBack()
+            // Otherwise do nothing — user exits via home/recents
+        }
+        // On a real tab
+        currentTabIndex >= 0 -> {
+            val tab = tabs.getOrNull(currentTabIndex)
+            if (tab?.webView?.canGoBack() == true) {
+                // WebView has history → go back in page
+                tab.webView?.goBack()
+            } else {
+                // No WebView history → close tab and go to parent
+                val parentIdx = tab?.parentTabIndex ?: -1
+                val closingIdx = currentTabIndex
+                // Adjust indices
+                if (highlightedTabIndex == closingIdx) highlightedTabIndex = -1
+                else if (highlightedTabIndex > closingIdx) highlightedTabIndex--
+                // Remove from pending deletions
+                pendingDeletions.remove(closingIdx)
+                val updated = mutableMapOf<Int, Long>()
+                for ((idx, time) in pendingDeletions) {
+                    updated[if (idx > closingIdx) idx - 1 else idx] = time
+                }
+                pendingDeletions.clear()
+                pendingDeletions.putAll(updated)
+                // Close the tab
+                closeTabAndFixParents(closingIdx)
+                // Update previous tab index
+                if (previousTabIndex == closingIdx) previousTabIndex = -1
+                else if (previousTabIndex > closingIdx) previousTabIndex--
+                // Navigate to parent or homepage
+                if (parentIdx >= 0 && parentIdx < tabs.size) {
+                    currentTabIndex = parentIdx
                 } else {
-                    // No WebView history → close tab and go to parent
-                    val parentIdx = tab?.parentTabIndex ?: -1
-                    val closingIdx = currentTabIndex
-                    // Adjust indices
-                    if (highlightedTabIndex == closingIdx) highlightedTabIndex = -1
-                    else if (highlightedTabIndex > closingIdx) highlightedTabIndex--
-                    // Remove from pending deletions
-                    pendingDeletions.remove(closingIdx)
-                    val updated = mutableMapOf<Int, Long>()
-                    for ((idx, time) in pendingDeletions) {
-                        updated[if (idx > closingIdx) idx - 1 else idx] = time
-                    }
-                    pendingDeletions.clear()
-                    pendingDeletions.putAll(updated)
-                    // Close the tab
-                    closeTabAndFixParents(closingIdx)
-                    // Navigate to parent or homepage
-                    if (parentIdx >= 0 && parentIdx < tabs.size) {
-                        currentTabIndex = parentIdx
-                    } else {
-                        currentTabIndex = -1
-                    }
-                    if (tabs.isEmpty()) {
-                        currentTabIndex = -1
-                        selectedDomain = ""
-                    }
+                    currentTabIndex = -1
+                }
+                if (tabs.isEmpty()) {
+                    currentTabIndex = -1
+                    selectedDomain = ""
+                    previousTabIndex = -1
                 }
             }
         }
     }
+}
 
-    @Composable
-    fun ContentLayer() {
-        Box(Modifier.fillMaxSize().background(BG)) {
-            // ONE AndroidView — factory never changes, container always exists
-            AndroidView(
-                factory = { webViewContainer },
-                update = { container ->
-                    val target = if (currentTabIndex == -1) {
-                        baseWebView
-                    } else {
-                        tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
-                    }
-                    if (container.childCount == 0 || container.getChildAt(0) != target) {
-                        // Pause the old WebView if it exists
-                        val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
-                        old?.onPause()
-                        container.removeAllViews()
-                        container.addView(target)
-                        target.onResume()
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // Grey overlay only on homepage
-            if (currentTabIndex == -1) {
-                Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Grey",
-                        color = WHITE.copy(alpha = 0.15f),
-                        fontSize = 48.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+@Composable
+fun ContentLayer() {
+    Box(Modifier.fillMaxSize().background(BG)) {
+        // ONE AndroidView — factory never changes, container always exists
+        AndroidView(
+            factory = { webViewContainer },
+            update = { container ->
+                val target = if (currentTabIndex == -1) {
+                    baseWebView
+                } else {
+                    tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
                 }
-            }
+                if (container.childCount == 0 || container.getChildAt(0) != target) {
+                    // Pause the old WebView if it exists
+                    val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
+                    old?.onPause()
+                    container.removeAllViews()
+                    container.addView(target)
+                    target.onResume()
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
 
-            // Transparent overlay to dismiss keyboard when tapping WebView area
-            if (isUrlFocused) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            focusManager.clearFocus()
-                        }
+        // Grey overlay only on homepage
+        if (currentTabIndex == -1) {
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Grey",
+                    color = WHITE.copy(alpha = 0.15f),
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
-    }
 
-    // END OF PART 7/10
-    
-    
+        // Transparent overlay to dismiss keyboard when tapping WebView area
+        if (isUrlFocused) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        focusManager.clearFocus()
+                    }
+            )
+        }
+    }
+}
+
+// END OF PART 7/10
+
+
+
+
+
     
     // ═══════════════════════════════════════════════════════════════════
 // === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v36] ===
