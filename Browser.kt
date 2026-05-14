@@ -188,8 +188,8 @@ private const val KEY_SCRIPTS = "saved_scripts"
 private const val KEY_FILTERS = "saved_filters"
 private const val KEY_FILTERS_ENABLED = "filters_enabled"
 
-const val MAX_WARM_WEBVIEWS = 9
-const val UNDO_DELAY_MS = 3000L
+const val MAX_WARM_WEBVIEWS = 20
+const val UNDO_DELAY_MS = 2000L
 const val MAX_HISTORY_ITEMS = 500
 
 // ── Theme Colours ──────────────────────────────────────────────────
