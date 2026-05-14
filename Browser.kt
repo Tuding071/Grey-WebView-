@@ -54,8 +54,9 @@
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v12] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v13] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -65,6 +66,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -163,6 +165,12 @@ class MainActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
         )
+        // Request 90Hz refresh rate on supported devices (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes = window.attributes.apply {
+                preferredRefreshRate = 90f
+            }
+        }
         setContent { GreyBrowser() }
     }
     override fun onPause() { super.onPause(); saveTabsData(this) }
@@ -170,6 +178,9 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
+
+
+
 
 
 
