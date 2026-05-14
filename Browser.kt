@@ -668,7 +668,7 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v15] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v14] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -760,7 +760,6 @@ fun GreyBrowser() {
 
     // currentTabIndex = -1 means homepage (neutral ground)
     var currentTabIndex by remember { mutableIntStateOf(-1) }
-    var previousTabIndex by remember { mutableIntStateOf(-1) }
     var highlightedTabIndex by remember {
         mutableIntStateOf(
             tabs.indexOfFirst { it.url.substringBefore("#") == savedLastActiveUrl.substringBefore("#") }
@@ -796,15 +795,6 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // ── Track previous tab when navigating to homepage ─────────────
-    SideEffect {
-        if (currentTabIndex == -1 && previousTabIndex == -1) {
-            // Don't overwrite previousTabIndex if it's already set
-        } else if (currentTabIndex >= 0) {
-            previousTabIndex = currentTabIndex
-        }
-    }
-
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
     }
@@ -836,8 +826,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
-
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1209,7 +1197,6 @@ fun GreyBrowser() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1234,15 +1221,8 @@ BackHandler {
         showMenu -> showMenu = false
         showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
         showLinkMenu -> { showLinkMenu = false; linkMenuUrl = null }
-        // On homepage (neutral ground)
-        currentTabIndex == -1 -> {
-            // Go back to previous tab if one exists
-            if (previousTabIndex >= 0 && previousTabIndex < tabs.size) {
-                currentTabIndex = previousTabIndex
-                previousTabIndex = -1
-            }
-            // Otherwise do nothing — user exits via home/recents
-        }
+        // On homepage (neutral ground) — do nothing, user exits via home/recents
+        currentTabIndex == -1 -> { }
         // On a real tab
         currentTabIndex >= 0 -> {
             val tab = tabs.getOrNull(currentTabIndex)
@@ -1266,9 +1246,6 @@ BackHandler {
                 pendingDeletions.putAll(updated)
                 // Close the tab
                 closeTabAndFixParents(closingIdx)
-                // Update previous tab index
-                if (previousTabIndex == closingIdx) previousTabIndex = -1
-                else if (previousTabIndex > closingIdx) previousTabIndex--
                 // Navigate to parent or homepage
                 if (parentIdx >= 0 && parentIdx < tabs.size) {
                     currentTabIndex = parentIdx
@@ -1278,7 +1255,6 @@ BackHandler {
                 if (tabs.isEmpty()) {
                     currentTabIndex = -1
                     selectedDomain = ""
-                    previousTabIndex = -1
                 }
             }
         }
@@ -1341,9 +1317,6 @@ fun ContentLayer() {
 }
 
 // END OF PART 7/10
-
-
-
 
 
     
