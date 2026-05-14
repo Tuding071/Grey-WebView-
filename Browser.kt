@@ -855,9 +855,8 @@ fun GreyBrowser() {
 
 
     
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v23] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v24] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1106,25 +1105,48 @@ fun GreyBrowser() {
     // ── Favicon loading helpers ─────────────────────────────────────
     fun loadFavicon(domain: String) {
         if (domain.isBlank()) return
-        // Check memory cache first
-        if (FaviconMemoryCache.get(domain) != null) return
-        // Check disk cache
-        val diskBitmap = FaviconCache.getFaviconBitmap(context, domain)
-        if (diskBitmap != null) {
-            FaviconMemoryCache.put(domain, diskBitmap)
+        // Check memory cache first (instant, no disk I/O)
+        val cached = FaviconMemoryCache.get(domain)
+        if (cached != null) {
+            faviconBitmaps[domain] = cached
             return
         }
-        // Download if needed
-        scope.launch {
-            val bitmap = FaviconCache.downloadAndCacheFavicon(context, domain)
-            if (bitmap != null) {
-                FaviconMemoryCache.put(domain, bitmap)
+        // Fall back to disk + download (original behavior)
+        if (!faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
+            faviconLoading[domain] = true
+            scope.launch {
+                val bitmap = FaviconCache.getFaviconBitmap(context, domain)
+                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+                if (bitmap != null) {
+                    FaviconMemoryCache.put(domain, bitmap)
+                }
+                faviconBitmaps[domain] = bitmap
+                faviconLoading[domain] = false
             }
         }
     }
 
     fun loadTabFavicon(domain: String) {
-        loadFavicon(domain)
+        if (domain.isBlank()) return
+        // Check memory cache first (instant, no disk I/O)
+        val cached = FaviconMemoryCache.get(domain)
+        if (cached != null) {
+            tabFavicons[domain] = cached
+            return
+        }
+        // Fall back to disk + download (original behavior)
+        if (!tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
+            tabFaviconLoading[domain] = true
+            scope.launch {
+                val bitmap = FaviconCache.getFaviconBitmap(context, domain)
+                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+                if (bitmap != null) {
+                    FaviconMemoryCache.put(domain, bitmap)
+                }
+                tabFavicons[domain] = bitmap
+                tabFaviconLoading[domain] = false
+            }
+        }
     }
 
     // ── Process pending deletions (undo timer) ──────────────────────
@@ -1184,7 +1206,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-    
     
     
 
