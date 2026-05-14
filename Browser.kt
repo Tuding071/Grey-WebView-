@@ -828,8 +828,12 @@ fun GreyBrowser() {
     // END OF PART 5/10
 
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v20] ===
+    
+    
+    
+    
+    // ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v21] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -848,6 +852,8 @@ fun GreyBrowser() {
                 builtInZoomControls = true
                 displayZoomControls = false
                 setSupportZoom(true)
+                // Hardcoded Chrome Mobile user agent
+                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
             }
             loadUrl(url)
         }
@@ -865,6 +871,10 @@ fun GreyBrowser() {
                 if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
                     tabState.title = title
                 }
+            }
+            // Deny all permissions (location, camera, mic, notifications)
+            override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
+                request.deny()
             }
         }
         wv.webViewClient = object : WebViewClient() {
@@ -981,48 +991,6 @@ fun GreyBrowser() {
             }
             true
         }
-    }
-
-    // ── Helper: match URL against an ad block rule ────────────────
-    fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
-        val trimmed = rule.trim()
-        if (trimmed.isEmpty()) return false
-
-        // Host-anchored rule: ||domain.com^
-        if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
-            val domain = trimmed.removePrefix("||").removeSuffix("^")
-            if (host == domain || host.endsWith(".$domain")) return true
-            // Check for $option after ^
-            val optionIndex = domain.indexOf('$')
-            if (optionIndex >= 0) {
-                val cleanDomain = domain.substring(0, optionIndex)
-                return host == cleanDomain || host.endsWith(".$cleanDomain")
-            }
-            return false
-        }
-
-        // Host-anchored without ^: ||domain.com
-        if (trimmed.startsWith("||")) {
-            val domain = trimmed.removePrefix("||")
-            val cleanDomain = if (domain.contains('$')) domain.substringBefore('$') else domain
-            return host == cleanDomain || host.endsWith(".$cleanDomain")
-        }
-
-        // Exact match: |url|
-        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-            val exact = trimmed.removePrefix("|").removeSuffix("|")
-            return url == exact
-        }
-
-        // Contains match for /path/ patterns
-        if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
-            return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
-        }
-
-        // Simple contains
-        if (url.contains(trimmed)) return true
-
-        return false
     }
 
     // ── Remove duplicate tab if exists, adjust indices ─────────────
@@ -1193,7 +1161,9 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
+    
+    
+    
 
 
 
