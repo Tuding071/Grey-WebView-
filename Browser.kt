@@ -174,8 +174,9 @@ class MainActivity : ComponentActivity() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache [UPDATED v4] ===
+// === PART 2/10 — Constants, FaviconCache [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
 private const val PREFS_NAME = "browser_tabs"
@@ -203,7 +204,27 @@ private val DELETE_BG     = Color.Red.copy(alpha = 0.3f)
 private val TOAST_BG      = Color.White.copy(alpha = 0.9f)
 private val TOAST_TEXT    = Color.Black
 
-// ── FaviconCache ────────────────────────────────────────────────────
+// ── In-Memory Favicon Cache ─────────────────────────────────────────
+object FaviconMemoryCache {
+    private const val MAX_MEMORY_FAVICONS = 100
+    private val cache = object : LinkedHashMap<String, Bitmap>(
+        MAX_MEMORY_FAVICONS, 0.75f, true
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
+            return size > MAX_MEMORY_FAVICONS
+        }
+    }
+
+    fun get(domain: String): Bitmap? = cache[domain]
+
+    fun put(domain: String, bitmap: Bitmap) {
+        cache[domain] = bitmap
+    }
+
+    fun clear() = cache.clear()
+}
+
+// ── FaviconCache (Disk) ─────────────────────────────────────────────
 object FaviconCache {
     private const val MAX_FAVICONS = 50
     private const val FAVICON_DIR = "favicons"
@@ -301,6 +322,11 @@ object FaviconCache {
 }
 
 // END OF PART 2/10
+
+
+
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -832,7 +858,7 @@ fun GreyBrowser() {
     
     
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v22] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v23] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1080,23 +1106,20 @@ fun GreyBrowser() {
 
     // ── Favicon loading helpers ─────────────────────────────────────
     fun loadFavicon(domain: String) {
-        if (domain.isNotBlank() && !faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
-            faviconLoading[domain] = true
-            scope.launch {
-                faviconBitmaps[domain] = FaviconCache.getFaviconBitmap(context, domain)
-                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                faviconLoading[domain] = false
-            }
+        if (domain.isBlank()) return
+        // Check memory cache first
+        if (FaviconMemoryCache.get(domain) != null) return
+        // Check disk cache
+        val diskBitmap = FaviconCache.getFaviconBitmap(context, domain)
+        if (diskBitmap != null) {
+            FaviconMemoryCache.put(domain, diskBitmap)
+            return
         }
-    }
-
-    fun loadTabFavicon(domain: String) {
-        if (domain.isNotBlank() && !tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
-            tabFaviconLoading[domain] = true
-            scope.launch {
-                tabFavicons[domain] = FaviconCache.getFaviconBitmap(context, domain)
-                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                tabFaviconLoading[domain] = false
+        // Download if needed
+        scope.launch {
+            val bitmap = FaviconCache.downloadAndCacheFavicon(context, domain)
+            if (bitmap != null) {
+                FaviconMemoryCache.put(domain, bitmap)
             }
         }
     }
@@ -1158,8 +1181,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-    
-    
     
     
 
