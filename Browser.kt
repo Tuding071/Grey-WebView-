@@ -856,7 +856,6 @@ fun GreyBrowser() {
 
     
     
-    
     // ═══════════════════════════════════════════════════════════════════
 // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v23] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1124,6 +1123,10 @@ fun GreyBrowser() {
         }
     }
 
+    fun loadTabFavicon(domain: String) {
+        loadFavicon(domain)
+    }
+
     // ── Process pending deletions (undo timer) ──────────────────────
     LaunchedEffect(pendingDeletions.toMap()) {
         while (pendingDeletions.isNotEmpty()) {
@@ -1181,6 +1184,7 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
+    
     
     
 
