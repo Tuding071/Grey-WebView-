@@ -831,9 +831,8 @@ fun GreyBrowser() {
     
     
     
-    
     // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v21] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -852,8 +851,6 @@ fun GreyBrowser() {
                 builtInZoomControls = true
                 displayZoomControls = false
                 setSupportZoom(true)
-                // Hardcoded Chrome Mobile user agent
-                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
             }
             loadUrl(url)
         }
@@ -872,7 +869,7 @@ fun GreyBrowser() {
                     tabState.title = title
                 }
             }
-            // Deny all permissions (location, camera, mic, notifications)
+            // Deny all permissions (location, camera, mic, notifications, etc.)
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 request.deny()
             }
@@ -1161,6 +1158,7 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
+    
     
     
     
