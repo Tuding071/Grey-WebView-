@@ -193,7 +193,7 @@ const val UNDO_DELAY_MS = 2000L
 const val MAX_HISTORY_ITEMS = 500
 
 // ── Auto-Backup ─────────────────────────────────────────────────────
-const val BACKUP_DIR = "Grey"
+const val BACKUP_DIR = "Browser/Grey/Data"
 const val BACKUP_FILE = "Grey-backup.json"
 
 // ── Theme Colours ──────────────────────────────────────────────────
