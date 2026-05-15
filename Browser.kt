@@ -807,7 +807,7 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v16] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v17] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -833,6 +833,9 @@ fun GreyBrowser() {
 
     // ── Check for external backup on startup ─────────────────────────
     val backupData = remember { importBackup(context) }
+
+    // ── Gate flag — prevents auto-save until backup is fully loaded ──
+    var backupLoaded by remember { mutableStateOf(false) }
 
     // ── Bookmarks State ──────────────────────────────────────────────
     val bookmarks = remember {
@@ -964,28 +967,53 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // ── Mark backup as loaded after state is fully initialized ──────
+    LaunchedEffect(Unit) {
+        if (backupData != null) {
+            // Sync backup data into SharedPreferences so they match
+            saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+            saveBookmarks(context, bookmarks)
+            saveHistory(context, history)
+        } else {
+            // No backup exists — export current state to create one
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
+        }
+        // Allow auto-saves to proceed
+        backupLoaded = true
+    }
+
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
-        withContext(Dispatchers.IO) {
-            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
         }
     }
     LaunchedEffect(tabs.map { "${it.url}|${it.title}" }.joinToString()) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
-        withContext(Dispatchers.IO) {
-            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
         }
     }
     LaunchedEffect(bookmarks.toList()) {
         saveBookmarks(context, bookmarks)
-        withContext(Dispatchers.IO) {
-            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
         }
     }
     LaunchedEffect(history.toList()) {
         saveHistory(context, history)
-        withContext(Dispatchers.IO) {
-            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
         }
     }
     LaunchedEffect(scripts.toList()) { saveScripts(context, scripts) }
@@ -1011,6 +1039,9 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
+
+
+
 
 
 
