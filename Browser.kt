@@ -805,9 +805,8 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v17] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v18] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -818,39 +817,15 @@ fun GreyBrowser() {
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
-    // ── Request MANAGE_EXTERNAL_STORAGE on Android 11+ ──────────────
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            if (!android.os.Environment.isExternalStorageManager()) {
-                val intent = android.content.Intent(
-                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    android.net.Uri.parse("package:${context.packageName}")
-                )
-                context.startActivity(intent)
-            }
-        }
-    }
-
-    // ── Check for external backup on startup ─────────────────────────
-    val backupData = remember { importBackup(context) }
-
-    // ── Gate flag — prevents auto-save until backup is fully loaded ──
+    // ── Gate flags ──────────────────────────────────────────────────
     var backupLoaded by remember { mutableStateOf(false) }
 
     // ── Bookmarks State ──────────────────────────────────────────────
-    val bookmarks = remember {
-        mutableStateListOf<Bookmark>().apply {
-            addAll(backupData?.third ?: loadBookmarks(context))
-        }
-    }
+    val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
     var showBookmarks by remember { mutableStateOf(false) }
 
     // ── History State ────────────────────────────────────────────────
-    val history = remember {
-        mutableStateListOf<HistoryItem>().apply {
-            addAll(backupData?.second ?: loadHistory(context))
-        }
-    }
+    val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
     var showHistory by remember { mutableStateOf(false) }
 
     // ── Scripts State ────────────────────────────────────────────────
@@ -912,13 +887,7 @@ fun GreyBrowser() {
     }
 
     // ── Load saved tabs ──────────────────────────────────────────────
-    val (savedTabs, savedPinned, savedLastActiveUrl) = remember {
-        if (backupData != null) {
-            Triple(backupData.first, emptyList<String>(), backupData.first.lastOrNull()?.first ?: "")
-        } else {
-            loadTabsData(context)
-        }
-    }
+    val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
     val tabs = remember {
         mutableStateListOf<TabState>().apply {
             for ((url, title) in savedTabs) {
@@ -967,20 +936,54 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // ── Mark backup as loaded after state is fully initialized ──────
+    // ── Permission-aware backup loading ─────────────────────────────
     LaunchedEffect(Unit) {
-        if (backupData != null) {
-            // Sync backup data into SharedPreferences so they match
-            saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+        // Check if we have storage permission
+        val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else {
+            true // Older Android — permission granted via manifest
+        }
+
+        if (!hasPermission) {
+            // Request permission — don't touch backup until granted
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                android.net.Uri.parse("package:${context.packageName}")
+            )
+            context.startActivity(intent)
+            // Mark as loaded so auto-save doesn't hang — but we skip backup
+            backupLoaded = true
+            return@LaunchedEffect
+        }
+
+        // Permission granted — try to load backup
+        val backup = importBackup(context)
+        if (backup != null) {
+            // Replace state with backup data
+            tabs.clear()
+            for ((url, title) in backup.first) {
+                tabs.add(TabState().apply {
+                    this.url = url; this.title = title; isBlankTab = false
+                    isDiscarded = true; webView = null
+                })
+            }
+            history.clear()
+            history.addAll(backup.second)
+            bookmarks.clear()
+            bookmarks.addAll(backup.third)
+
+            // Sync to SharedPreferences
             saveBookmarks(context, bookmarks)
             saveHistory(context, history)
+            saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         } else {
-            // No backup exists — export current state to create one
+            // No backup file — export current state
             withContext(Dispatchers.IO) {
                 exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
             }
         }
-        // Allow auto-saves to proceed
+
         backupLoaded = true
     }
 
@@ -1039,7 +1042,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
 
 
 
