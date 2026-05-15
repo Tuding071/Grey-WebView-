@@ -805,9 +805,8 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v21] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -937,62 +936,55 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // ── Helper: load backup into state (after all state vars declared)
-    suspend fun loadBackupData() {
-        val backup = importBackup(context)
-        if (backup != null) {
-            tabs.clear()
-            for ((url, title) in backup.first) {
-                tabs.add(TabState().apply {
-                    this.url = url; this.title = title; isBlankTab = false
-                    isDiscarded = true; webView = null
-                })
-            }
-            history.clear()
-            history.addAll(backup.second)
-            bookmarks.clear()
-            bookmarks.addAll(backup.third)
+    // ── Poll for permission then load backup (dialog shown once) ────
+    LaunchedEffect(Unit) {
+        var permissionRequested = false
 
-            saveBookmarks(context, bookmarks)
-            saveHistory(context, history)
-            saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
-        } else {
-            withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
-            }
-        }
-        backupLoaded = true
-    }
-
-    // ── Permission launcher — fires once when user returns ──────────
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) {
-        scope.launch {
+        while (!backupLoaded) {
             val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 android.os.Environment.isExternalStorageManager()
-            } else true
-
-            if (hasPermission) {
-                loadBackupData()
+            } else {
+                true
             }
-        }
-    }
 
-    // ── Check permission once, load or request ──────────────────────
-    LaunchedEffect(Unit) {
-        val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            android.os.Environment.isExternalStorageManager()
-        } else true
+            if (!hasPermission) {
+                if (!permissionRequested) {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:${context.packageName}")
+                    )
+                    context.startActivity(intent)
+                    permissionRequested = true
+                }
+                delay(500)
+                continue
+            }
 
-        if (hasPermission) {
-            loadBackupData()
-        } else {
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                android.net.Uri.parse("package:${context.packageName}")
-            )
-            permissionLauncher.launch(intent)
+            // Permission granted — load backup
+            val backup = importBackup(context)
+            if (backup != null) {
+                tabs.clear()
+                for ((url, title) in backup.first) {
+                    tabs.add(TabState().apply {
+                        this.url = url; this.title = title; isBlankTab = false
+                        isDiscarded = true; webView = null
+                    })
+                }
+                history.clear()
+                history.addAll(backup.second)
+                bookmarks.clear()
+                bookmarks.addAll(backup.third)
+
+                saveBookmarks(context, bookmarks)
+                saveHistory(context, history)
+                saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+            } else {
+                withContext(Dispatchers.IO) {
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                }
+            }
+
+            backupLoaded = true
         }
     }
 
@@ -1051,7 +1043,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
 
 
 
