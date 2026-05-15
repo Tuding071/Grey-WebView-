@@ -54,9 +54,8 @@
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v13] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v12] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -66,7 +65,6 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -165,12 +163,6 @@ class MainActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
         )
-        // Request 90Hz refresh rate on supported devices (API 30+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.attributes = window.attributes.apply {
-                preferredRefreshRate = 90f
-            }
-        }
         setContent { GreyBrowser() }
     }
     override fun onPause() { super.onPause(); saveTabsData(this) }
@@ -182,12 +174,8 @@ class MainActivity : ComponentActivity() {
 
 
 
-
-
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache [UPDATED v5] ===
+// === PART 2/10 — Constants, FaviconCache [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
 private const val PREFS_NAME = "browser_tabs"
@@ -203,6 +191,10 @@ private const val KEY_FILTERS_ENABLED = "filters_enabled"
 const val MAX_WARM_WEBVIEWS = 20
 const val UNDO_DELAY_MS = 2000L
 const val MAX_HISTORY_ITEMS = 500
+
+// ── Auto-Backup ─────────────────────────────────────────────────────
+const val BACKUP_DIR = "Grey"
+const val BACKUP_FILE = "Grey-backup.json"
 
 // ── Theme Colours ──────────────────────────────────────────────────
 private val BG            = Color(0xFF121212)
@@ -333,8 +325,6 @@ object FaviconCache {
 }
 
 // END OF PART 2/10
-
-
 
 
 
@@ -568,8 +558,9 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v4] ===
+// === PART 4/10 — Utility Functions [UPDATED v5] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -699,13 +690,123 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
+// ── Auto-Backup Functions ────────────────────────────────────────────
+fun getBackupDir(): File {
+    return File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
+}
+
+fun getBackupFile(): File {
+    return File(getBackupDir(), BACKUP_FILE)
+}
+
+fun exportBackup(
+    context: Context,
+    tabs: List<TabState>,
+    history: List<HistoryItem>,
+    bookmarks: List<Bookmark>
+) {
+    try {
+        val dir = getBackupDir()
+        if (!dir.exists()) dir.mkdirs()
+
+        val root = JSONObject()
+
+        // Tabs
+        val tabsArray = JSONArray()
+        for (tab in tabs) {
+            if (!tab.isBlankTab) {
+                val obj = JSONObject()
+                obj.put("url", tab.url)
+                obj.put("title", tab.title)
+                obj.put("parentTabIndex", tab.parentTabIndex)
+                tabsArray.put(obj)
+            }
+        }
+        root.put("tabs", tabsArray)
+
+        // History
+        val historyArray = JSONArray()
+        for (h in history) {
+            val obj = JSONObject()
+            obj.put("url", h.url)
+            obj.put("title", h.title)
+            obj.put("timestamp", h.timestamp)
+            historyArray.put(obj)
+        }
+        root.put("history", historyArray)
+
+        // Bookmarks
+        val bookmarksArray = JSONArray()
+        for (b in bookmarks) {
+            val obj = JSONObject()
+            obj.put("id", b.id)
+            obj.put("url", b.url)
+            obj.put("title", b.title)
+            obj.put("timestamp", b.timestamp)
+            bookmarksArray.put(obj)
+        }
+        root.put("bookmarks", bookmarksArray)
+
+        getBackupFile().writeText(root.toString())
+    } catch (e: Exception) {
+        // Silently fail — backup is non-critical
+    }
+}
+
+fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<HistoryItem>, List<Bookmark>>? {
+    return try {
+        val file = getBackupFile()
+        if (!file.exists()) return null
+
+        val root = JSONObject(file.readText())
+
+        val tabsList = mutableListOf<Pair<String, String>>()
+        val tabsArray = root.optJSONArray("tabs")
+        if (tabsArray != null) {
+            for (i in 0 until tabsArray.length()) {
+                val obj = tabsArray.getJSONObject(i)
+                tabsList.add(Pair(obj.getString("url"), obj.optString("title", obj.getString("url"))))
+            }
+        }
+
+        val historyList = mutableListOf<HistoryItem>()
+        val historyArray = root.optJSONArray("history")
+        if (historyArray != null) {
+            for (i in 0 until historyArray.length()) {
+                val obj = historyArray.getJSONObject(i)
+                historyList.add(HistoryItem(
+                    obj.getString("url"),
+                    obj.getString("title"),
+                    obj.getLong("timestamp")
+                ))
+            }
+        }
+
+        val bookmarksList = mutableListOf<Bookmark>()
+        val bookmarksArray = root.optJSONArray("bookmarks")
+        if (bookmarksArray != null) {
+            for (i in 0 until bookmarksArray.length()) {
+                val obj = bookmarksArray.getJSONObject(i)
+                bookmarksList.add(Bookmark(
+                    obj.getString("id"),
+                    obj.getString("url"),
+                    obj.getString("title"),
+                    obj.getLong("timestamp")
+                ))
+            }
+        }
+
+        Triple(tabsList, historyList, bookmarksList)
+    } catch (e: Exception) {
+        null
+    }
+}
+
 // END OF PART 4/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v14] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v15] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -716,12 +817,23 @@ fun GreyBrowser() {
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
+    // ── Check for external backup on startup ─────────────────────────
+    val backupData = remember { importBackup(context) }
+
     // ── Bookmarks State ──────────────────────────────────────────────
-    val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
+    val bookmarks = remember {
+        mutableStateListOf<Bookmark>().apply {
+            addAll(backupData?.third ?: loadBookmarks(context))
+        }
+    }
     var showBookmarks by remember { mutableStateOf(false) }
 
     // ── History State ────────────────────────────────────────────────
-    val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
+    val history = remember {
+        mutableStateListOf<HistoryItem>().apply {
+            addAll(backupData?.second ?: loadHistory(context))
+        }
+    }
     var showHistory by remember { mutableStateOf(false) }
 
     // ── Scripts State ────────────────────────────────────────────────
@@ -783,7 +895,13 @@ fun GreyBrowser() {
     }
 
     // ── Load saved tabs ──────────────────────────────────────────────
-    val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
+    val (savedTabs, savedPinned, savedLastActiveUrl) = remember {
+        if (backupData != null) {
+            Triple(backupData.first, emptyList<String>(), backupData.first.lastOrNull()?.first ?: "")
+        } else {
+            loadTabsData(context)
+        }
+    }
     val tabs = remember {
         mutableStateListOf<TabState>().apply {
             for ((url, title) in savedTabs) {
@@ -832,14 +950,39 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // ── Auto-export on first launch if no backup exists ────────────
+    LaunchedEffect(Unit) {
+        if (backupData == null) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+            }
+        }
+    }
+
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+        withContext(Dispatchers.IO) {
+            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        }
     }
     LaunchedEffect(tabs.map { "${it.url}|${it.title}" }.joinToString()) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
+        withContext(Dispatchers.IO) {
+            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        }
     }
-    LaunchedEffect(bookmarks.toList()) { saveBookmarks(context, bookmarks) }
-    LaunchedEffect(history.toList()) { saveHistory(context, history) }
+    LaunchedEffect(bookmarks.toList()) {
+        saveBookmarks(context, bookmarks)
+        withContext(Dispatchers.IO) {
+            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        }
+    }
+    LaunchedEffect(history.toList()) {
+        saveHistory(context, history)
+        withContext(Dispatchers.IO) {
+            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+        }
+    }
     LaunchedEffect(scripts.toList()) { saveScripts(context, scripts) }
     LaunchedEffect(filters.toList()) { saveFilters(context, filters) }
 
@@ -863,6 +1006,9 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
+
+
+
 
 
     
