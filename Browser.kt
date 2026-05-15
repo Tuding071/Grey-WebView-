@@ -193,7 +193,7 @@ const val UNDO_DELAY_MS = 2000L
 const val MAX_HISTORY_ITEMS = 500
 
 // ── Auto-Backup ─────────────────────────────────────────────────────
-const val BACKUP_DIR = "Browser/Grey/Data"
+const val BACKUP_DIR = "Grey"
 const val BACKUP_FILE = "Grey-backup.json"
 
 // ── Theme Colours ──────────────────────────────────────────────────
@@ -558,9 +558,8 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v5] ===
+// === PART 4/10 — Utility Functions [UPDATED v6] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -692,7 +691,9 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 
 // ── Auto-Backup Functions ────────────────────────────────────────────
 fun getBackupDir(): File {
-    return File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
+    val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    return dir
 }
 
 fun getBackupFile(): File {
@@ -706,9 +707,6 @@ fun exportBackup(
     bookmarks: List<Bookmark>
 ) {
     try {
-        val dir = getBackupDir()
-        if (!dir.exists()) dir.mkdirs()
-
         val root = JSONObject()
 
         // Tabs
@@ -805,8 +803,11 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
 // END OF PART 4/10
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v15] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v16] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -816,6 +817,19 @@ fun GreyBrowser() {
     val activity = context as? ComponentActivity
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
+
+    // ── Request MANAGE_EXTERNAL_STORAGE on Android 11+ ──────────────
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    android.net.Uri.parse("package:${context.packageName}")
+                )
+                context.startActivity(intent)
+            }
+        }
+    }
 
     // ── Check for external backup on startup ─────────────────────────
     val backupData = remember { importBackup(context) }
@@ -950,15 +964,6 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // ── Auto-export on first launch if no backup exists ────────────
-    LaunchedEffect(Unit) {
-        if (backupData == null) {
-            withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
-            }
-        }
-    }
-
     LaunchedEffect(tabs.toList(), pinnedDomains.toList(), lastActiveUrl) {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         withContext(Dispatchers.IO) {
@@ -1006,8 +1011,6 @@ fun GreyBrowser() {
     }
 
     // END OF PART 5/10
-
-
 
 
 
