@@ -558,8 +558,10 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v6] ===
+// === PART 4/10 — Utility Functions [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
 fun getDomainName(url: String): String {
@@ -745,7 +747,7 @@ fun exportBackup(
         }
         root.put("bookmarks", bookmarksArray)
 
-        getBackupFile().writeText(root.toString())
+        getBackupFile().writeText(root.toString(1))
     } catch (e: Exception) {
         // Silently fail — backup is non-critical
     }
@@ -801,6 +803,7 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
 }
 
 // END OF PART 4/10
+
 
 
 
