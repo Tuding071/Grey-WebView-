@@ -1533,8 +1533,10 @@ fun ContentLayer() {
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v38] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v39] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1846,6 +1848,13 @@ fun ContentLayer() {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
 
+            // Build grouped tab list — all tabs, sorted by domain groups
+            val groupedTabs = buildList {
+                for (domain in sortedDomains) {
+                    addAll(domainGroups[domain] ?: emptyList())
+                }
+            }
+
             Popup(
                 alignment = Alignment.TopStart,
                 onDismissRequest = { showTabManager = false },
@@ -1877,11 +1886,24 @@ fun ContentLayer() {
 
                         // ── Body: Tab list (left) + Sidebar (right) ──
                         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                            // ── Tab list (left side) ────────────────
-                            val tabsToShow = if (selectedDomain.isBlank()) realTabs
+                            // ── Tab list (left side, grouped by domain) ──
+                            val tabsToShow = if (selectedDomain.isBlank()) groupedTabs
                             else domainGroups[selectedDomain] ?: emptyList()
                             val tabListState = rememberLazyListState()
                             val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
+
+                            // Scroll to selected domain group
+                            LaunchedEffect(selectedDomain) {
+                                if (selectedDomain.isNotBlank()) {
+                                    val firstInGroup = tabsToShow.firstOrNull()
+                                    if (firstInGroup != null) {
+                                        val idx = tabsToShow.indexOf(firstInGroup)
+                                        if (idx >= 0) tabListState.scrollToItem(idx)
+                                    }
+                                }
+                            }
+
+                            // Scroll to highlighted tab
                             LaunchedEffect(selectedDomain) {
                                 val idx = tabsToShow.indexOf(scrollTarget)
                                 if (idx >= 0) tabListState.scrollToItem(idx)
@@ -1913,6 +1935,7 @@ fun ContentLayer() {
                                             }
                                         }
                                     } else {
+                                        var lastDomain = ""
                                         items(tabsToShow) { tab: TabState ->
                                             val tabIndex = tabs.indexOf(tab)
                                             val isHighlighted = tabIndex == highlightedTabIndex
@@ -1920,6 +1943,14 @@ fun ContentLayer() {
                                             val tabDomain = getDomainName(tab.url)
                                             LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                             val tabFav = tabFavicons[tabDomain]
+
+                                            // Divider between domain groups
+                                            if (selectedDomain.isBlank() && tabDomain != lastDomain && lastDomain.isNotEmpty()) {
+                                                Box(
+                                                    Modifier.fillMaxWidth().height(1.dp).background(Color.DarkGray.copy(alpha = 0.5f))
+                                                )
+                                            }
+                                            lastDomain = tabDomain
 
                                             Surface(
                                                 Modifier.fillMaxWidth()
@@ -1996,10 +2027,10 @@ fun ContentLayer() {
                                 modifier = Modifier.fillMaxHeight().width(1.dp)
                             )
 
-                            // ── Sidebar (right side) ────────────────
+                            // ── Sidebar (right side, scroll anchors) ──
                             val groupListState = rememberLazyListState()
 
-                            // ── Blink logic (never stops) ──────────
+                            // Blink logic (never stops)
                             LaunchedEffect(Unit) {
                                 selectedDomain = ""
                                 if (highlightDomain.isNotBlank()) {
@@ -2008,15 +2039,8 @@ fun ContentLayer() {
                                         groupListState.scrollToItem(blinkIdx)
                                         blinkTargetDomain.value = highlightDomain
                                         showBlink = true
-                                        // Blink continues indefinitely
                                     }
                                 }
-                            }
-
-                            LaunchedEffect(allSidebarItems, selectedDomain) {
-                                val idx = if (selectedDomain.isBlank()) 0
-                                else allSidebarItems.indexOf(selectedDomain)
-                                if (idx >= 0) groupListState.scrollToItem(idx)
                             }
 
                             LazyColumn(
@@ -2028,7 +2052,7 @@ fun ContentLayer() {
                                     SidebarGroupChip(
                                         domain, domain == selectedDomain,
                                         domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = domain },
+                                        { selectedDomain = if (selectedDomain == domain) "" else domain },
                                         faviconBitmaps[domain],
                                         { loadFavicon(domain) },
                                         showBlink && blinkTargetDomain.value == domain,
@@ -2039,7 +2063,7 @@ fun ContentLayer() {
                                     SidebarGroupChip(
                                         domain, domain == selectedDomain,
                                         domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = domain },
+                                        { selectedDomain = if (selectedDomain == domain) "" else domain },
                                         faviconBitmaps[domain],
                                         { loadFavicon(domain) },
                                         showBlink && blinkTargetDomain.value == domain,
@@ -2352,8 +2376,6 @@ fun ContentLayer() {
 }
 
 // END OF PART 8/10
-
-
 
 
 
