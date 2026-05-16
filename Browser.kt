@@ -1532,8 +1532,9 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v37] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v38] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1830,7 +1831,7 @@ fun ContentLayer() {
             }
         }
 
-        // ── Tab Manager (real tabs only) ────────────────────────────
+        // ── Tab Manager ────────────────────────────────────────────
         if (showTabManager) {
             val realTabs = tabs.toList()
             val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
@@ -1840,7 +1841,7 @@ fun ContentLayer() {
             )
             val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
             val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
-            val allSidebarItems = listOf("__ALL__") + pinnedSorted + unpinnedSorted
+            val allSidebarItems = pinnedSorted + unpinnedSorted
             val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
@@ -1876,7 +1877,7 @@ fun ContentLayer() {
 
                         // ── Body: Tab list (left) + Sidebar (right) ──
                         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                            // ── Tab list (left side now) ────────────
+                            // ── Tab list (left side) ────────────────
                             val tabsToShow = if (selectedDomain.isBlank()) realTabs
                             else domainGroups[selectedDomain] ?: emptyList()
                             val tabListState = rememberLazyListState()
@@ -1900,7 +1901,7 @@ fun ContentLayer() {
                             } else {
                                 LazyColumn(
                                     state = tabListState,
-                                    modifier = Modifier.weight(1f).fillMaxHeight()
+                                    modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 2.dp)
                                 ) {
                                     if (tabsToShow.isEmpty()) {
                                         item {
@@ -1995,9 +1996,10 @@ fun ContentLayer() {
                                 modifier = Modifier.fillMaxHeight().width(1.dp)
                             )
 
-                            // ── Sidebar (right side now) ────────────
+                            // ── Sidebar (right side) ────────────────
                             val groupListState = rememberLazyListState()
 
+                            // ── Blink logic (never stops) ──────────
                             LaunchedEffect(Unit) {
                                 selectedDomain = ""
                                 if (highlightDomain.isNotBlank()) {
@@ -2006,10 +2008,7 @@ fun ContentLayer() {
                                         groupListState.scrollToItem(blinkIdx)
                                         blinkTargetDomain.value = highlightDomain
                                         showBlink = true
-                                        delay(1200)
-                                        showBlink = false
-                                        blinkTargetDomain.value = ""
-                                        groupListState.scrollToItem(0)
+                                        // Blink continues indefinitely
                                     }
                                 }
                             }
@@ -2022,16 +2021,9 @@ fun ContentLayer() {
 
                             LazyColumn(
                                 state = groupListState,
-                                modifier = Modifier.width(56.dp).fillMaxHeight(),
+                                modifier = Modifier.width(56.dp).fillMaxHeight().padding(top = 2.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                item {
-                                    AllGroupChip(
-                                        isSelected = selectedDomain.isBlank(),
-                                        tabCount = realTabs.size,
-                                        onClick = { selectedDomain = "" }
-                                    )
-                                }
                                 items(pinnedSorted) { domain: String ->
                                     SidebarGroupChip(
                                         domain, domain == selectedDomain,
@@ -2360,7 +2352,6 @@ fun ContentLayer() {
 }
 
 // END OF PART 8/10
-
 
 
 
