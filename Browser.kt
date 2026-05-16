@@ -1531,9 +1531,9 @@ fun ContentLayer() {
 // END OF PART 7/10
 
 
-    
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v36] ===
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v37] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1874,73 +1874,9 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Body: Sidebar + Tab list ─────────────────
+                        // ── Body: Tab list (left) + Sidebar (right) ──
                         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                            val groupListState = rememberLazyListState()
-
-                            LaunchedEffect(Unit) {
-                                selectedDomain = ""
-                                if (highlightDomain.isNotBlank()) {
-                                    val blinkIdx = allSidebarItems.indexOf(highlightDomain)
-                                    if (blinkIdx >= 0) {
-                                        groupListState.scrollToItem(blinkIdx)
-                                        blinkTargetDomain.value = highlightDomain
-                                        showBlink = true
-                                        delay(1200)
-                                        showBlink = false
-                                        blinkTargetDomain.value = ""
-                                        groupListState.scrollToItem(0)
-                                    }
-                                }
-                            }
-
-                            LaunchedEffect(allSidebarItems, selectedDomain) {
-                                val idx = if (selectedDomain.isBlank()) 0
-                                else allSidebarItems.indexOf(selectedDomain)
-                                if (idx >= 0) groupListState.scrollToItem(idx)
-                            }
-
-                            LazyColumn(
-                                state = groupListState,
-                                modifier = Modifier.width(56.dp).fillMaxHeight().padding(vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                item {
-                                    AllGroupChip(
-                                        isSelected = selectedDomain.isBlank(),
-                                        tabCount = realTabs.size,
-                                        onClick = { selectedDomain = "" }
-                                    )
-                                }
-                                items(pinnedSorted) { domain: String ->
-                                    SidebarGroupChip(
-                                        domain, domain == selectedDomain,
-                                        domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = domain },
-                                        faviconBitmaps[domain],
-                                        { loadFavicon(domain) },
-                                        showBlink && blinkTargetDomain.value == domain,
-                                        true
-                                    )
-                                }
-                                items(unpinnedSorted) { domain: String ->
-                                    SidebarGroupChip(
-                                        domain, domain == selectedDomain,
-                                        domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = domain },
-                                        faviconBitmaps[domain],
-                                        { loadFavicon(domain) },
-                                        showBlink && blinkTargetDomain.value == domain,
-                                        false
-                                    )
-                                }
-                            }
-
-                            VerticalDivider(
-                                color = Color.DarkGray,
-                                modifier = Modifier.fillMaxHeight().width(1.dp)
-                            )
-
+                            // ── Tab list (left side now) ────────────
                             val tabsToShow = if (selectedDomain.isBlank()) realTabs
                             else domainGroups[selectedDomain] ?: emptyList()
                             val tabListState = rememberLazyListState()
@@ -2051,6 +1987,72 @@ fun ContentLayer() {
                                             }
                                         }
                                     }
+                                }
+                            }
+
+                            VerticalDivider(
+                                color = Color.DarkGray,
+                                modifier = Modifier.fillMaxHeight().width(1.dp)
+                            )
+
+                            // ── Sidebar (right side now) ────────────
+                            val groupListState = rememberLazyListState()
+
+                            LaunchedEffect(Unit) {
+                                selectedDomain = ""
+                                if (highlightDomain.isNotBlank()) {
+                                    val blinkIdx = allSidebarItems.indexOf(highlightDomain)
+                                    if (blinkIdx >= 0) {
+                                        groupListState.scrollToItem(blinkIdx)
+                                        blinkTargetDomain.value = highlightDomain
+                                        showBlink = true
+                                        delay(1200)
+                                        showBlink = false
+                                        blinkTargetDomain.value = ""
+                                        groupListState.scrollToItem(0)
+                                    }
+                                }
+                            }
+
+                            LaunchedEffect(allSidebarItems, selectedDomain) {
+                                val idx = if (selectedDomain.isBlank()) 0
+                                else allSidebarItems.indexOf(selectedDomain)
+                                if (idx >= 0) groupListState.scrollToItem(idx)
+                            }
+
+                            LazyColumn(
+                                state = groupListState,
+                                modifier = Modifier.width(56.dp).fillMaxHeight(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                item {
+                                    AllGroupChip(
+                                        isSelected = selectedDomain.isBlank(),
+                                        tabCount = realTabs.size,
+                                        onClick = { selectedDomain = "" }
+                                    )
+                                }
+                                items(pinnedSorted) { domain: String ->
+                                    SidebarGroupChip(
+                                        domain, domain == selectedDomain,
+                                        domainGroups[domain]?.size ?: 0,
+                                        { selectedDomain = domain },
+                                        faviconBitmaps[domain],
+                                        { loadFavicon(domain) },
+                                        showBlink && blinkTargetDomain.value == domain,
+                                        true
+                                    )
+                                }
+                                items(unpinnedSorted) { domain: String ->
+                                    SidebarGroupChip(
+                                        domain, domain == selectedDomain,
+                                        domainGroups[domain]?.size ?: 0,
+                                        { selectedDomain = domain },
+                                        faviconBitmaps[domain],
+                                        { loadFavicon(domain) },
+                                        showBlink && blinkTargetDomain.value == domain,
+                                        false
+                                    )
                                 }
                             }
                         }
@@ -2358,7 +2360,13 @@ fun ContentLayer() {
 }
 
 // END OF PART 8/10
-    
+
+
+
+
+
+
+
 
 // ═══════════════════════════════════════════════════════════════════
 // === PART 9/10 — BookmarksUI Composable ===
