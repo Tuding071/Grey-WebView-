@@ -1887,8 +1887,7 @@ fun ContentLayer() {
                         // ── Body: Tab list (left) + Sidebar (right) ──
                         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
                             // ── Tab list (left side, grouped by domain) ──
-                            val tabsToShow = if (selectedDomain.isBlank()) groupedTabs
-                            else domainGroups[selectedDomain] ?: emptyList()
+                            val tabsToShow = groupedTabs  // Always show all tabs, grouped
                             val tabListState = rememberLazyListState()
                             val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
 
