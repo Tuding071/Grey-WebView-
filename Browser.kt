@@ -1865,6 +1865,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1924,7 +1925,7 @@ fun ContentLayer() {
                             Spacer(Modifier.width(4.dp))
                             Text("Tabs", color = WHITE, fontSize = 18.sp)
                             if (realTabs.isNotEmpty()) {
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
                             }
                         }
@@ -1934,13 +1935,14 @@ fun ContentLayer() {
                         val tabsToShow = if (selectedDomain.isBlank()) groupedTabs
                             else domainGroups[selectedDomain] ?: emptyList()
 
-                        // Scroll to highlighted tab on open
+                        // Scroll to current tab's group on open
+                        val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
+                        val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         LaunchedEffect(Unit) {
-                            if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                            if (highlightDomain.isNotBlank()) {
                                 delay(300)
-                                val targetTab = tabs[highlightedTabIndex]
-                                val idx = groupedTabs.indexOf(targetTab)
-                                if (idx >= 0) tabListState.animateScrollToItem(idx)
+                                val domainIdx = displayOrder.indexOf(highlightDomain)
+                                if (domainIdx >= 0) tabListState.animateScrollToItem(domainIdx)
                             }
                         }
 
@@ -1982,9 +1984,6 @@ fun ContentLayer() {
                                         }
                                     }
                                 } else {
-                                    val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
-                                    val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
-
                                     items(displayOrder) { domain ->
                                         val groupTabs = groupedForDisplay[domain] ?: return@items
 
@@ -1992,7 +1991,7 @@ fun ContentLayer() {
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 4.dp, vertical = 8.dp)
+                                                .padding(horizontal = 4.dp, vertical = 12.dp)
                                                 .border(0.5.dp, Color.DarkGray, RectangleShape),
                                             color = Color.Transparent
                                         ) {
@@ -2092,11 +2091,9 @@ fun ContentLayer() {
                                     LaunchedEffect(domain) { loadFavicon(domain) }
                                     val fav = faviconBitmaps[domain]
 
-                                    // Chip border: thick white if manual selected, else thin
                                     val borderWidth = if (isManualSelected) 2.dp else 0.5.dp
                                     val borderCol = if (isManualSelected) WHITE else BORDER_SUBTLE
 
-                                    // Chip background
                                     val chipBg = when {
                                         isBoth -> Color.DarkGray
                                         isManualSelected -> Color.Transparent
@@ -2257,6 +2254,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
