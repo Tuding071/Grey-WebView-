@@ -1865,6 +1865,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1877,8 +1878,6 @@ fun ContentLayer() {
                 compareByDescending<String> { pinnedDomains.contains(it) }
                     .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
             )
-            val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
-            val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
             val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
@@ -1923,13 +1922,14 @@ fun ContentLayer() {
                         val tabListState = rememberLazyListState()
                         val tabsToShow = groupedTabs
 
-                        // Scroll to highlighted tab's group on open
+                        // Scroll to highlighted tab on open (with delay for layout)
                         LaunchedEffect(Unit) {
-                            if (highlightDomain.isNotBlank()) {
-                                val firstInGroup = tabsToShow.firstOrNull { getDomainName(it.url) == highlightDomain }
-                                if (firstInGroup != null) {
-                                    val idx = tabsToShow.indexOf(firstInGroup)
-                                    if (idx >= 0) tabListState.scrollToItem(idx)
+                            if (highlightedTabIndex >= 0) {
+                                delay(150)
+                                val targetTab = tabs.getOrNull(highlightedTabIndex)
+                                if (targetTab != null) {
+                                    val idx = tabsToShow.indexOf(targetTab)
+                                    if (idx >= 0) tabListState.animateScrollToItem(idx)
                                 }
                             }
                         }
@@ -1965,22 +1965,32 @@ fun ContentLayer() {
 
                                     items(displayOrder) { domain ->
                                         val groupTabs = groupedForDisplay[domain] ?: return@items
-                                        val isHighlightedGroup = domain == highlightDomain
                                         val isPinned = pinnedDomains.contains(domain)
                                         val tabCount = groupTabs.size
                                         LaunchedEffect(domain) { loadFavicon(domain) }
                                         val fav = faviconBitmaps[domain]
 
-                                        // Group box
+                                        // Extract dominant color from favicon for border
+                                        val borderColor = remember(fav) {
+                                            if (fav != null) {
+                                                try {
+                                                    val palette = androidx.palette.graphics.Palette.from(fav).generate()
+                                                    val dominant = palette.getDominantColor(WHITE.hashCode())
+                                                    Color(dominant)
+                                                } catch (e: Exception) {
+                                                    WHITE
+                                                }
+                                            } else {
+                                                WHITE
+                                            }
+                                        }
+
+                                        // Group box — thick border with favicon color
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 4.dp, vertical = 4.dp)
-                                                .border(
-                                                    if (isHighlightedGroup) 2.dp else 0.5.dp,
-                                                    if (isHighlightedGroup) WHITE else Color.DarkGray,
-                                                    RectangleShape
-                                                ),
+                                                .border(2.dp, borderColor, RectangleShape),
                                             color = Color.Transparent
                                         ) {
                                             Column {
@@ -2117,7 +2127,7 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Footer buttons ───────────────────────────
+                        // ── Footer button ────────────────────────────
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -2147,6 +2157,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
