@@ -143,6 +143,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.horizontalScroll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1865,7 +1866,7 @@ fun ContentLayer() {
 // END OF PART 8e/10
 
 
-
+```kotlin
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2286,7 +2287,6 @@ fun ContentLayer() {
 
 // END OF PART 8f/10
 ```
-
 
 
 
