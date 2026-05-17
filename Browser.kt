@@ -1866,7 +1866,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1922,26 +1921,65 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Tab list (full width, grouped by domain) ──
-                        val tabsToShow = groupedTabs
+                        // ── Tab list (vertical, grouped by domain) ──
                         val tabListState = rememberLazyListState()
-                        val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
+                        val tabsToShow = groupedTabs
 
-                        // Scroll to selected domain group
+                        // Detect which group is most centered in the viewport
+                        val centeredDomain by remember {
+                            derivedStateOf {
+                                val layoutInfo = tabListState.layoutInfo
+                                val viewportCenter = layoutInfo.viewportStartOffset + layoutInfo.viewportSize.height / 2
+                                var closestDomain = ""
+                                var closestDistance = Int.MAX_VALUE
+
+                                for (item in layoutInfo.visibleItemsInfo) {
+                                    val itemCenter = item.offset + item.size / 2
+                                    val distance = kotlin.math.abs(itemCenter - viewportCenter)
+                                    if (distance < closestDistance) {
+                                        closestDistance = distance
+                                        // Find domain for this item
+                                        val tab = tabsToShow.getOrNull(item.index)
+                                        if (tab != null) {
+                                            closestDomain = getDomainName(tab.url)
+                                        }
+                                    }
+                                }
+                                closestDomain
+                            }
+                        }
+
+                        // Sync carousel when tab list scrolls
+                        LaunchedEffect(centeredDomain) {
+                            if (centeredDomain.isNotBlank() && centeredDomain != selectedDomain) {
+                                selectedDomain = centeredDomain
+                            }
+                        }
+
+                        // Scroll tab list when a chip is tapped
                         LaunchedEffect(selectedDomain) {
                             if (selectedDomain.isNotBlank()) {
                                 val firstInGroup = tabsToShow.firstOrNull { getDomainName(it.url) == selectedDomain }
                                 if (firstInGroup != null) {
                                     val idx = tabsToShow.indexOf(firstInGroup)
-                                    if (idx >= 0) tabListState.scrollToItem(idx)
+                                    if (idx >= 0) tabListState.animateScrollToItem(idx)
                                 }
                             }
                         }
 
-                        // Scroll to highlighted tab
-                        LaunchedEffect(selectedDomain) {
-                            val idx = tabsToShow.indexOf(scrollTarget)
-                            if (idx >= 0) tabListState.scrollToItem(idx)
+                        // Scroll to highlighted tab on open
+                        LaunchedEffect(Unit) {
+                            selectedDomain = ""
+                            if (highlightDomain.isNotBlank()) {
+                                val firstInGroup = tabsToShow.firstOrNull { getDomainName(it.url) == highlightDomain }
+                                if (firstInGroup != null) {
+                                    val idx = tabsToShow.indexOf(firstInGroup)
+                                    if (idx >= 0) {
+                                        tabListState.scrollToItem(idx)
+                                        selectedDomain = highlightDomain
+                                    }
+                                }
+                            }
                         }
 
                         if (realTabs.isEmpty()) {
@@ -1975,12 +2013,18 @@ fun ContentLayer() {
 
                                     items(displayOrder) { domain ->
                                         val groupTabs = groupedForDisplay[domain] ?: return@items
-                                        // Group box
+                                        val isCentered = domain == centeredDomain
+
+                                        // Group box — thick border if centered
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 4.dp, vertical = 4.dp)
-                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                                .border(
+                                                    if (isCentered) 2.dp else 0.5.dp,
+                                                    if (isCentered) WHITE else Color.DarkGray,
+                                                    RectangleShape
+                                                ),
                                             color = Color.Transparent
                                         ) {
                                             Column {
@@ -2003,7 +2047,7 @@ fun ContentLayer() {
                                                             ),
                                                         color = when {
                                                             isPending -> DELETE_BG
-                                                            isHighlighted -> WHITE
+                                                            isHighlighted -> Color.DarkGray
                                                             else -> Color.Transparent
                                                         }
                                                     ) {
@@ -2020,7 +2064,7 @@ fun ContentLayer() {
                                                                 )
                                                             } else {
                                                                 Box(
-                                                                    Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
+                                                                    Modifier.size(16.dp).clip(CircleShape).background(Color.Gray),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {
                                                                     Text(
@@ -2035,11 +2079,7 @@ fun ContentLayer() {
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
                                                                 else tab.title,
-                                                                color = when {
-                                                                    isPending -> WHITE
-                                                                    isHighlighted -> Color.Black
-                                                                    else -> WHITE
-                                                                },
+                                                                color = WHITE,
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Ellipsis,
                                                                 fontSize = 14.sp,
@@ -2051,7 +2091,7 @@ fun ContentLayer() {
                                                                 }
                                                             } else {
                                                                 IconButton({ requestDeleteTab(tabIndex) }) {
-                                                                    Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
+                                                                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(18.dp))
                                                                 }
                                                             }
                                                         }
@@ -2064,34 +2104,94 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Group chips (horizontal, below tabs) ────
+                        // ── Group chip carousel (horizontal, synced) ──
                         if (realTabs.isNotEmpty()) {
-                            // Blink logic (never stops)
-                            LaunchedEffect(Unit) {
-                                selectedDomain = ""
-                                if (highlightDomain.isNotBlank()) {
-                                    blinkTargetDomain.value = highlightDomain
-                                    showBlink = true
+                            val chipCarouselState = rememberLazyListState()
+
+                            // Sync chip carousel when selectedDomain changes
+                            LaunchedEffect(selectedDomain) {
+                                if (selectedDomain.isNotBlank()) {
+                                    val idx = allSidebarItems.indexOf(selectedDomain)
+                                    if (idx >= 0) {
+                                        chipCarouselState.animateScrollToItem(idx)
+                                    }
                                 }
                             }
 
-                            Row(
-                                Modifier
+                            LazyRow(
+                                state = chipCarouselState,
+                                modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.Center
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                allSidebarItems.forEach { domain ->
-                                    SidebarGroupChip(
-                                        domain = domain,
-                                        isSelected = domain == selectedDomain,
-                                        tabCount = domainGroups[domain]?.size ?: 0,
-                                        onClick = { selectedDomain = if (selectedDomain == domain) "" else domain },
-                                        favicon = faviconBitmaps[domain],
-                                        onAppear = { loadFavicon(domain) },
-                                        isBlinking = showBlink && blinkTargetDomain.value == domain,
-                                        isPinned = pinnedDomains.contains(domain)
-                                    )
+                                items(allSidebarItems) { domain ->
+                                    val isCentered = domain == selectedDomain
+                                    val isPinned = pinnedDomains.contains(domain)
+                                    val tabCount = domainGroups[domain]?.size ?: 0
+                                    LaunchedEffect(domain) { loadFavicon(domain) }
+                                    val fav = faviconBitmaps[domain]
+
+                                    Surface(
+                                        Modifier
+                                            .padding(horizontal = 4.dp)
+                                            .clickable { selectedDomain = domain }
+                                            .border(
+                                                if (isCentered) 2.dp else 0.5.dp,
+                                                if (isCentered) WHITE else BORDER_SUBTLE,
+                                                RectangleShape
+                                            ),
+                                        color = Color.Transparent
+                                    ) {
+                                        Box(
+                                            Modifier.padding(6.dp).width(52.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isPinned) {
+                                                Icon(
+                                                    Icons.Default.PushPin,
+                                                    "Pinned",
+                                                    tint = WHITE,
+                                                    modifier = Modifier.size(10.dp).align(Alignment.TopStart)
+                                                )
+                                            }
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                if (fav != null) {
+                                                    Image(
+                                                        fav.asImageBitmap(),
+                                                        domain,
+                                                        Modifier.size(20.dp).clip(CircleShape),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            domain.take(1).uppercase(),
+                                                            color = WHITE,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(Modifier.height(2.dp))
+                                                Box(
+                                                    Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        tabCount.toString(),
+                                                        color = WHITE,
+                                                        fontSize = 9.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
