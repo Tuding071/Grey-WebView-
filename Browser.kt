@@ -1938,7 +1938,6 @@ fun ContentLayer() {
                                     val distance = kotlin.math.abs(itemCenter - viewportCenter)
                                     if (distance < closestDistance) {
                                         closestDistance = distance
-                                        // Find domain for this item
                                         val tab = tabsToShow.getOrNull(item.index)
                                         if (tab != null) {
                                             closestDomain = getDomainName(tab.url)
@@ -2104,29 +2103,31 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Group chip carousel (horizontal, synced) ──
+                        // ── Group chip carousel (horizontal scroll, synced) ──
                         if (realTabs.isNotEmpty()) {
-                            val chipCarouselState = rememberLazyListState()
+                            val chipScrollState = rememberScrollState()
 
-                            // Sync chip carousel when selectedDomain changes
+                            // Sync chip scroll when selectedDomain changes
                             LaunchedEffect(selectedDomain) {
                                 if (selectedDomain.isNotBlank()) {
                                     val idx = allSidebarItems.indexOf(selectedDomain)
                                     if (idx >= 0) {
-                                        chipCarouselState.animateScrollToItem(idx)
+                                        // Estimate scroll position based on chip width (~64dp each)
+                                        val estimatedChipWidth = 64
+                                        chipScrollState.animateScrollTo(idx * estimatedChipWidth)
                                     }
                                 }
                             }
 
-                            LazyRow(
-                                state = chipCarouselState,
-                                modifier = Modifier
+                            Row(
+                                Modifier
                                     .fillMaxWidth()
+                                    .horizontalScroll(chipScrollState)
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                items(allSidebarItems) { domain ->
+                                allSidebarItems.forEach { domain ->
                                     val isCentered = domain == selectedDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
@@ -2284,6 +2285,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+```
 
 
 
