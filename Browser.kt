@@ -1865,8 +1865,6 @@ fun ContentLayer() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1926,7 +1924,7 @@ fun ContentLayer() {
                             Spacer(Modifier.width(4.dp))
                             Text("Tabs", color = WHITE, fontSize = 18.sp)
                             if (realTabs.isNotEmpty()) {
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(12.dp))
                                 Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
                             }
                         }
@@ -1938,12 +1936,22 @@ fun ContentLayer() {
 
                         // Scroll to highlighted tab on open
                         LaunchedEffect(Unit) {
-                            if (highlightedTabIndex >= 0) {
-                                delay(150)
-                                val targetTab = tabs.getOrNull(highlightedTabIndex)
-                                if (targetTab != null) {
-                                    val idx = groupedTabs.indexOf(targetTab)
-                                    if (idx >= 0) tabListState.animateScrollToItem(idx)
+                            if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                                delay(300)
+                                val targetTab = tabs[highlightedTabIndex]
+                                val idx = groupedTabs.indexOf(targetTab)
+                                if (idx >= 0) tabListState.animateScrollToItem(idx)
+                            }
+                        }
+
+                        // Scroll chip carousel to current tab's group on open
+                        val chipScrollState = rememberScrollState()
+                        LaunchedEffect(Unit) {
+                            if (highlightDomain.isNotBlank()) {
+                                delay(200)
+                                val chipIdx = allSidebarItems.indexOf(highlightDomain)
+                                if (chipIdx >= 0) {
+                                    chipScrollState.animateScrollTo(chipIdx * 68)
                                 }
                             }
                         }
@@ -2067,8 +2075,6 @@ fun ContentLayer() {
 
                         // ── Group chip carousel (horizontal, scrollable) ──
                         if (realTabs.isNotEmpty()) {
-                            val chipScrollState = rememberScrollState()
-
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -2092,9 +2098,9 @@ fun ContentLayer() {
 
                                     // Chip background
                                     val chipBg = when {
-                                        isBoth -> Color.DarkGray       // Both: blinking grey bg + thick white border
-                                        isManualSelected -> Color.Transparent  // Manual: thick white border only
-                                        isCurrentTabGroup -> Color.DarkGray   // Current: blinking grey bg
+                                        isBoth -> Color.DarkGray
+                                        isManualSelected -> Color.Transparent
+                                        isCurrentTabGroup -> Color.DarkGray
                                         else -> Color.Transparent
                                     }
 
