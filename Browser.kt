@@ -1866,6 +1866,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1878,6 +1879,9 @@ fun ContentLayer() {
                 compareByDescending<String> { pinnedDomains.contains(it) }
                     .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
             )
+            val pinnedSorted = sortedDomains.filter { pinnedDomains.contains(it) }
+            val unpinnedSorted = sortedDomains.filter { !pinnedDomains.contains(it) }
+            val allSidebarItems = pinnedSorted + unpinnedSorted
             val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
@@ -1886,6 +1890,15 @@ fun ContentLayer() {
             val groupedTabs = buildList {
                 for (domain in sortedDomains) {
                     addAll(domainGroups[domain] ?: emptyList())
+                }
+            }
+
+            // Blink logic for the chip that contains the current tab
+            LaunchedEffect(Unit) {
+                selectedDomain = ""
+                if (highlightDomain.isNotBlank()) {
+                    blinkTargetDomain.value = highlightDomain
+                    showBlink = true
                 }
             }
 
@@ -1920,15 +1933,16 @@ fun ContentLayer() {
 
                         // ── Tab list (vertical, simple grouped) ──────
                         val tabListState = rememberLazyListState()
-                        val tabsToShow = groupedTabs
+                        val tabsToShow = if (selectedDomain.isBlank()) groupedTabs
+                            else domainGroups[selectedDomain] ?: emptyList()
 
-                        // Scroll to highlighted tab on open (with delay for layout)
+                        // Scroll to highlighted tab on open
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex >= 0) {
                                 delay(150)
                                 val targetTab = tabs.getOrNull(highlightedTabIndex)
                                 if (targetTab != null) {
-                                    val idx = tabsToShow.indexOf(targetTab)
+                                    val idx = groupedTabs.indexOf(targetTab)
                                     if (idx >= 0) tabListState.animateScrollToItem(idx)
                                 }
                             }
@@ -1965,92 +1979,16 @@ fun ContentLayer() {
 
                                     items(displayOrder) { domain ->
                                         val groupTabs = groupedForDisplay[domain] ?: return@items
-                                        val isPinned = pinnedDomains.contains(domain)
-                                        val tabCount = groupTabs.size
-                                        LaunchedEffect(domain) { loadFavicon(domain) }
-                                        val fav = faviconBitmaps[domain]
 
-                                        // Extract dominant color from favicon for border
-                                        val borderColor = remember(fav) {
-                                            if (fav != null) {
-                                                try {
-                                                    val palette = androidx.palette.graphics.Palette.from(fav).generate()
-                                                    val dominant = palette.getDominantColor(WHITE.hashCode())
-                                                    Color(dominant)
-                                                } catch (e: Exception) {
-                                                    WHITE
-                                                }
-                                            } else {
-                                                WHITE
-                                            }
-                                        }
-
-                                        // Group box — thick border with favicon color
+                                        // Group box — thin border, double spacing
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 4.dp, vertical = 4.dp)
-                                                .border(2.dp, borderColor, RectangleShape),
+                                                .padding(horizontal = 4.dp, vertical = 8.dp)
+                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
                                             color = Color.Transparent
                                         ) {
                                             Column {
-                                                // ── Group chip header (centered, not clickable) ──
-                                                Box(
-                                                    Modifier.fillMaxWidth().padding(top = 6.dp),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Surface(
-                                                        Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape),
-                                                        color = Color.Transparent
-                                                    ) {
-                                                        Box(
-                                                            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.Center
-                                                            ) {
-                                                                if (isPinned) {
-                                                                    Icon(
-                                                                        Icons.Default.PushPin,
-                                                                        "Pinned",
-                                                                        tint = WHITE,
-                                                                        modifier = Modifier.size(10.dp)
-                                                                    )
-                                                                    Spacer(Modifier.width(4.dp))
-                                                                }
-                                                                if (fav != null) {
-                                                                    Image(
-                                                                        fav.asImageBitmap(),
-                                                                        domain,
-                                                                        Modifier.size(16.dp).clip(CircleShape),
-                                                                        contentScale = ContentScale.Fit
-                                                                    )
-                                                                    Spacer(Modifier.width(4.dp))
-                                                                }
-                                                                Text(
-                                                                    domain,
-                                                                    color = WHITE,
-                                                                    fontSize = 12.sp,
-                                                                    fontWeight = FontWeight.Bold
-                                                                )
-                                                                Spacer(Modifier.width(4.dp))
-                                                                Box(
-                                                                    Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)
-                                                                ) {
-                                                                    Text(
-                                                                        tabCount.toString(),
-                                                                        color = WHITE,
-                                                                        fontSize = 10.sp
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                // ── Tabs in this group ──────────────────────
                                                 groupTabs.forEach { tab ->
                                                     val tabIndex = tabs.indexOf(tab)
                                                     val isHighlighted = tabIndex == highlightedTabIndex
@@ -2127,7 +2065,105 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Footer button ────────────────────────────
+                        // ── Group chip carousel (horizontal, scrollable) ──
+                        if (realTabs.isNotEmpty()) {
+                            val chipScrollState = rememberScrollState()
+
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(chipScrollState)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                allSidebarItems.forEach { domain ->
+                                    val isCurrentTabGroup = domain == highlightDomain && showBlink
+                                    val isManualSelected = domain == selectedDomain
+                                    val isBoth = isManualSelected && domain == highlightDomain
+                                    val isPinned = pinnedDomains.contains(domain)
+                                    val tabCount = domainGroups[domain]?.size ?: 0
+                                    LaunchedEffect(domain) { loadFavicon(domain) }
+                                    val fav = faviconBitmaps[domain]
+
+                                    // Chip border: thick white if manual selected, else thin
+                                    val borderWidth = if (isManualSelected) 2.dp else 0.5.dp
+                                    val borderCol = if (isManualSelected) WHITE else BORDER_SUBTLE
+
+                                    // Chip background
+                                    val chipBg = when {
+                                        isBoth -> Color.DarkGray       // Both: blinking grey bg + thick white border
+                                        isManualSelected -> Color.Transparent  // Manual: thick white border only
+                                        isCurrentTabGroup -> Color.DarkGray   // Current: blinking grey bg
+                                        else -> Color.Transparent
+                                    }
+
+                                    Surface(
+                                        Modifier
+                                            .padding(horizontal = 4.dp)
+                                            .clickable {
+                                                selectedDomain = if (selectedDomain == domain) "" else domain
+                                            }
+                                            .border(borderWidth, borderCol, RectangleShape),
+                                        color = chipBg
+                                    ) {
+                                        Box(
+                                            Modifier.padding(6.dp).width(52.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isPinned) {
+                                                Icon(
+                                                    Icons.Default.PushPin,
+                                                    "Pinned",
+                                                    tint = if (isManualSelected && !isBoth) Color.Black else WHITE,
+                                                    modifier = Modifier.size(10.dp).align(Alignment.TopStart)
+                                                )
+                                            }
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                if (fav != null) {
+                                                    Image(
+                                                        fav.asImageBitmap(),
+                                                        domain,
+                                                        Modifier.size(20.dp).clip(CircleShape),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        Modifier.size(20.dp).clip(CircleShape).background(
+                                                            if (isManualSelected && !isBoth) Color.LightGray else Color.DarkGray
+                                                        ),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            domain.take(1).uppercase(),
+                                                            color = if (isManualSelected && !isBoth) Color.Black else WHITE,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(Modifier.height(2.dp))
+                                                Box(
+                                                    Modifier.background(
+                                                        if (isManualSelected && !isBoth) Color.LightGray else Color.DarkGray
+                                                    ).padding(horizontal = 4.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        tabCount.toString(),
+                                                        color = if (isManualSelected && !isBoth) Color.Black else WHITE,
+                                                        fontSize = 9.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Footer buttons ───────────────────────────
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -2135,6 +2171,64 @@ fun ContentLayer() {
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            val hasSelection = selectedDomain.isNotBlank()
+                            val isPinned = selectedDomain.isNotBlank() && pinnedDomains.contains(selectedDomain)
+                            val tint = if (hasSelection) WHITE else ACCENT_DIM
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasSelection) {
+                                        confirmTitle = if (isPinned) "Unpin Group?" else "Pin Group?"
+                                        confirmMessage = "Are you sure?"
+                                        confirmAction = {
+                                            if (isPinned) pinnedDomains.remove(selectedDomain)
+                                            else pinnedDomains.add(selectedDomain)
+                                        }
+                                        showConfirmDialog = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                border = BorderStroke(1.dp, tint),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            ) {
+                                Text("Pin Group", fontSize = 11.sp, color = tint)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasSelection) {
+                                        confirmTitle = "Delete Group?"
+                                        confirmMessage = "All tabs in this group will be lost."
+                                        confirmAction = {
+                                            val toRemove = (domainGroups[selectedDomain] ?: emptyList()).toList()
+                                            toRemove.forEach { tab ->
+                                                val idx = tabs.indexOf(tab)
+                                                if (idx >= 0) pendingDeletions.remove(idx)
+                                                tab.webView?.destroy()
+                                            }
+                                            tabs.removeAll(toRemove.toSet())
+                                            if (tabs.isEmpty()) {
+                                                currentTabIndex = -1
+                                                highlightedTabIndex = -1
+                                                selectedDomain = ""
+                                            } else {
+                                                currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
+                                                highlightedTabIndex = currentTabIndex
+                                                selectedDomain = ""
+                                            }
+                                        }
+                                        showConfirmDialog = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                border = BorderStroke(1.dp, tint),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            ) {
+                                Text("Delete Group", fontSize = 11.sp, color = tint)
+                            }
                             OutlinedButton(
                                 onClick = {
                                     currentTabIndex = -1
@@ -2144,11 +2238,11 @@ fun ContentLayer() {
                                 shape = RectangleShape,
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
                                 border = BorderStroke(1.dp, WHITE),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                             ) {
                                 Icon(Icons.Default.Add, null, tint = WHITE, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("New Tab", fontSize = 13.sp, color = WHITE)
+                                Spacer(Modifier.width(2.dp))
+                                Text("New Tab", fontSize = 11.sp, color = WHITE)
                             }
                         }
                     }
@@ -2157,7 +2251,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
