@@ -1531,10 +1531,8 @@ fun ContentLayer() {
 // END OF PART 7/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v41] ===
+// === PART 8a/10 — URL Sync, Pattern Lock State, Launch Check ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1575,6 +1573,13 @@ fun ContentLayer() {
 
     // ── Everything wrapped in a Box so overlays layer correctly ─────
     Box(Modifier.fillMaxSize()) {
+
+// END OF PART 8a/10
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8b/10 — Pattern Unlock, Confirm Dialog, App Lock ===
+// ═══════════════════════════════════════════════════════════════════
 
         // ── Pattern Unlock Screen (app launch) ──────────────────────
         if (patternDrawMode == "unlock") {
@@ -1675,6 +1680,14 @@ fun ContentLayer() {
             )
         }
 
+// END OF PART 8b/10
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8c/10 — Scripts Manager, Script Editor ===
+// ═══════════════════════════════════════════════════════════════════
+
         // ── Scripts Manager ─────────────────────────────────────────
         if (showScripts) {
             ScriptsManagerScreen(
@@ -1734,6 +1747,15 @@ fun ContentLayer() {
             )
         }
 
+// END OF PART 8c/10
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8d/10 — Filters Manager ===
+// ═══════════════════════════════════════════════════════════════════
+
         // ── Filters Manager ─────────────────────────────────────────
         if (showFilters) {
             FiltersManagerScreen(
@@ -1766,6 +1788,15 @@ fun ContentLayer() {
                 }
             )
         }
+
+// END OF PART 8d/10
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8e/10 — Bookmarks, History, Link Menu ===
+// ═══════════════════════════════════════════════════════════════════
 
         // ── Bookmarks UI ────────────────────────────────────────────
         if (showBookmarks) {
@@ -1831,6 +1862,15 @@ fun ContentLayer() {
             }
         }
 
+// END OF PART 8e/10
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8f/10 — Tab Manager ===
+// ═══════════════════════════════════════════════════════════════════
+
         // ── Tab Manager ────────────────────────────────────────────
         if (showTabManager) {
             val realTabs = tabs.toList()
@@ -1882,139 +1922,136 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Body: Tab list (left) + Sidebar (right) ──
-                        Row(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp)) {
-                            // ── Tab list (left side, grouped by domain) ──
-                            val tabsToShow = groupedTabs
-                            val tabListState = rememberLazyListState()
-                            val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
+                        // ── Tab list (full width, grouped by domain) ──
+                        val tabsToShow = groupedTabs
+                        val tabListState = rememberLazyListState()
+                        val scrollTarget = if (highlightedTabIndex >= 0) tabs.getOrNull(highlightedTabIndex) else null
 
-                            // Scroll to selected domain group
-                            LaunchedEffect(selectedDomain) {
-                                if (selectedDomain.isNotBlank()) {
-                                    val firstInGroup = tabsToShow.firstOrNull { getDomainName(it.url) == selectedDomain }
-                                    if (firstInGroup != null) {
-                                        val idx = tabsToShow.indexOf(firstInGroup)
-                                        if (idx >= 0) tabListState.scrollToItem(idx)
-                                    }
+                        // Scroll to selected domain group
+                        LaunchedEffect(selectedDomain) {
+                            if (selectedDomain.isNotBlank()) {
+                                val firstInGroup = tabsToShow.firstOrNull { getDomainName(it.url) == selectedDomain }
+                                if (firstInGroup != null) {
+                                    val idx = tabsToShow.indexOf(firstInGroup)
+                                    if (idx >= 0) tabListState.scrollToItem(idx)
                                 }
                             }
+                        }
 
-                            // Scroll to highlighted tab
-                            LaunchedEffect(selectedDomain) {
-                                val idx = tabsToShow.indexOf(scrollTarget)
-                                if (idx >= 0) tabListState.scrollToItem(idx)
-                            }
+                        // Scroll to highlighted tab
+                        LaunchedEffect(selectedDomain) {
+                            val idx = tabsToShow.indexOf(scrollTarget)
+                            if (idx >= 0) tabListState.scrollToItem(idx)
+                        }
 
-                            if (realTabs.isEmpty()) {
-                                Box(
-                                    Modifier.weight(1f).fillMaxHeight(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("No open tabs", color = MUTED, fontSize = 16.sp)
-                                        Spacer(Modifier.height(8.dp))
-                                        Text("Tap the + button to browse", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
-                                    }
+                        if (realTabs.isEmpty()) {
+                            Box(
+                                Modifier.weight(1f).fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("No open tabs", color = MUTED, fontSize = 16.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Tap the + button to browse", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
                                 }
-                            } else {
-                                LazyColumn(
-                                    state = tabListState,
-                                    modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 2.dp)
-                                ) {
-                                    if (tabsToShow.isEmpty()) {
-                                        item {
-                                            Box(
-                                                Modifier.fillMaxWidth().padding(32.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text("No tabs in this group", color = MUTED, fontSize = 14.sp)
-                                            }
+                            }
+                        } else {
+                            LazyColumn(
+                                state = tabListState,
+                                modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 2.dp)
+                            ) {
+                                if (tabsToShow.isEmpty()) {
+                                    item {
+                                        Box(
+                                            Modifier.fillMaxWidth().padding(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("No tabs in this group", color = MUTED, fontSize = 14.sp)
                                         }
-                                    } else {
-                                        val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
-                                        val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
+                                    }
+                                } else {
+                                    val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
+                                    val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
 
-                                        items(displayOrder) { domain ->
-                                            val groupTabs = groupedForDisplay[domain] ?: return@items
-                                            // Group box
-                                            Surface(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 4.dp, vertical = 4.dp)
-                                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                                color = Color.Transparent
-                                            ) {
-                                                Column {
-                                                    groupTabs.forEach { tab ->
-                                                        val tabIndex = tabs.indexOf(tab)
-                                                        val isHighlighted = tabIndex == highlightedTabIndex
-                                                        val isPending = pendingDeletions.containsKey(tabIndex)
-                                                        val tabDomain = getDomainName(tab.url)
-                                                        LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
-                                                        val tabFav = tabFavicons[tabDomain]
+                                    items(displayOrder) { domain ->
+                                        val groupTabs = groupedForDisplay[domain] ?: return@items
+                                        // Group box
+                                        Surface(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                            color = Color.Transparent
+                                        ) {
+                                            Column {
+                                                groupTabs.forEach { tab ->
+                                                    val tabIndex = tabs.indexOf(tab)
+                                                    val isHighlighted = tabIndex == highlightedTabIndex
+                                                    val isPending = pendingDeletions.containsKey(tabIndex)
+                                                    val tabDomain = getDomainName(tab.url)
+                                                    LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
+                                                    val tabFav = tabFavicons[tabDomain]
 
-                                                        Surface(
-                                                            Modifier.fillMaxWidth()
-                                                                .clickable(
-                                                                    enabled = !isPending,
-                                                                    onClick = {
-                                                                        currentTabIndex = tabIndex
-                                                                        showTabManager = false
-                                                                    }
-                                                                ),
-                                                            color = when {
-                                                                isPending -> DELETE_BG
-                                                                isHighlighted -> WHITE
-                                                                else -> Color.Transparent
-                                                            }
-                                                        ) {
-                                                            Row(
-                                                                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                if (tabFav != null) {
-                                                                    Image(
-                                                                        tabFav.asImageBitmap(),
-                                                                        tabDomain,
-                                                                        Modifier.size(16.dp).clip(CircleShape),
-                                                                        contentScale = ContentScale.Fit
-                                                                    )
-                                                                } else {
-                                                                    Box(
-                                                                        Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
-                                                                        contentAlignment = Alignment.Center
-                                                                    ) {
-                                                                        Text(
-                                                                            text = tabDomain.take(1).uppercase(),
-                                                                            color = WHITE,
-                                                                            fontSize = 8.sp,
-                                                                            fontWeight = FontWeight.Bold
-                                                                        )
-                                                                    }
+                                                    Surface(
+                                                        Modifier.fillMaxWidth()
+                                                            .clickable(
+                                                                enabled = !isPending,
+                                                                onClick = {
+                                                                    currentTabIndex = tabIndex
+                                                                    showTabManager = false
                                                                 }
-                                                                Spacer(Modifier.width(8.dp))
-                                                                Text(
-                                                                    if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
-                                                                    else tab.title,
-                                                                    color = when {
-                                                                        isPending -> WHITE
-                                                                        isHighlighted -> Color.Black
-                                                                        else -> WHITE
-                                                                    },
-                                                                    maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis,
-                                                                    fontSize = 14.sp,
-                                                                    modifier = Modifier.weight(1f)
+                                                            ),
+                                                        color = when {
+                                                            isPending -> DELETE_BG
+                                                            isHighlighted -> WHITE
+                                                            else -> Color.Transparent
+                                                        }
+                                                    ) {
+                                                        Row(
+                                                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            if (tabFav != null) {
+                                                                Image(
+                                                                    tabFav.asImageBitmap(),
+                                                                    tabDomain,
+                                                                    Modifier.size(16.dp).clip(CircleShape),
+                                                                    contentScale = ContentScale.Fit
                                                                 )
-                                                                if (isPending) {
-                                                                    IconButton({ undoDeleteTab(tabIndex) }) {
-                                                                        Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                                    }
-                                                                } else {
-                                                                    IconButton({ requestDeleteTab(tabIndex) }) {
-                                                                        Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
-                                                                    }
+                                                            } else {
+                                                                Box(
+                                                                    Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Text(
+                                                                        text = tabDomain.take(1).uppercase(),
+                                                                        color = WHITE,
+                                                                        fontSize = 8.sp,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                }
+                                                            }
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Text(
+                                                                if (tab.title == "New Tab" || tab.title.isBlank()) tab.url
+                                                                else tab.title,
+                                                                color = when {
+                                                                    isPending -> WHITE
+                                                                    isHighlighted -> Color.Black
+                                                                    else -> WHITE
+                                                                },
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                fontSize = 14.sp,
+                                                                modifier = Modifier.weight(1f)
+                                                            )
+                                                            if (isPending) {
+                                                                IconButton({ undoDeleteTab(tabIndex) }) {
+                                                                    Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                                }
+                                                            } else {
+                                                                IconButton({ requestDeleteTab(tabIndex) }) {
+                                                                    Icon(Icons.Default.Close, "Close", tint = if (isHighlighted) Color.Black else WHITE, modifier = Modifier.size(18.dp))
                                                                 }
                                                             }
                                                         }
@@ -2025,141 +2062,136 @@ fun ContentLayer() {
                                     }
                                 }
                             }
+                        }
 
-                            VerticalDivider(
-                                color = Color.DarkGray,
-                                modifier = Modifier.fillMaxHeight().width(1.dp)
-                            )
-
-                            // ── Sidebar (right side, scroll anchors) ──
-                            val groupListState = rememberLazyListState()
-
+                        // ── Group chips (horizontal, below tabs) ────
+                        if (realTabs.isNotEmpty()) {
                             // Blink logic (never stops)
                             LaunchedEffect(Unit) {
                                 selectedDomain = ""
                                 if (highlightDomain.isNotBlank()) {
-                                    val blinkIdx = allSidebarItems.indexOf(highlightDomain)
-                                    if (blinkIdx >= 0) {
-                                        groupListState.scrollToItem(blinkIdx)
-                                        blinkTargetDomain.value = highlightDomain
-                                        showBlink = true
-                                    }
+                                    blinkTargetDomain.value = highlightDomain
+                                    showBlink = true
                                 }
                             }
 
-                            LazyColumn(
-                                state = groupListState,
-                                modifier = Modifier.width(56.dp).fillMaxHeight().padding(top = 2.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.Center
                             ) {
-                                items(pinnedSorted) { domain: String ->
+                                allSidebarItems.forEach { domain ->
                                     SidebarGroupChip(
-                                        domain, domain == selectedDomain,
-                                        domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = if (selectedDomain == domain) "" else domain },
-                                        faviconBitmaps[domain],
-                                        { loadFavicon(domain) },
-                                        showBlink && blinkTargetDomain.value == domain,
-                                        true
-                                    )
-                                }
-                                items(unpinnedSorted) { domain: String ->
-                                    SidebarGroupChip(
-                                        domain, domain == selectedDomain,
-                                        domainGroups[domain]?.size ?: 0,
-                                        { selectedDomain = if (selectedDomain == domain) "" else domain },
-                                        faviconBitmaps[domain],
-                                        { loadFavicon(domain) },
-                                        showBlink && blinkTargetDomain.value == domain,
-                                        false
+                                        domain = domain,
+                                        isSelected = domain == selectedDomain,
+                                        tabCount = domainGroups[domain]?.size ?: 0,
+                                        onClick = { selectedDomain = if (selectedDomain == domain) "" else domain },
+                                        favicon = faviconBitmaps[domain],
+                                        onAppear = { loadFavicon(domain) },
+                                        isBlinking = showBlink && blinkTargetDomain.value == domain,
+                                        isPinned = pinnedDomains.contains(domain)
                                     )
                                 }
                             }
                         }
 
-                        // ── Footer ───────────────────────────────────
-                        Column(
-                            Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding()
+                        // ── Footer buttons ───────────────────────────
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            val hasSelection = selectedDomain.isNotBlank()
+                            val isPinned = pinnedDomains.contains(selectedDomain)
+                            val tint = if (hasSelection) WHITE else ACCENT_DIM
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasSelection) {
+                                        confirmTitle = if (isPinned) "Unpin Group?" else "Pin Group?"
+                                        confirmMessage = "Are you sure?"
+                                        confirmAction = {
+                                            if (isPinned) pinnedDomains.remove(selectedDomain)
+                                            else pinnedDomains.add(selectedDomain)
+                                        }
+                                        showConfirmDialog = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                border = BorderStroke(1.dp, tint),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text("Pin Group", fontSize = 13.sp, color = tint)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasSelection) {
+                                        confirmTitle = "Delete Group?"
+                                        confirmMessage = "All tabs in this group will be lost."
+                                        confirmAction = {
+                                            val toRemove = (domainGroups[selectedDomain] ?: emptyList()).toList()
+                                            toRemove.forEach { tab ->
+                                                val idx = tabs.indexOf(tab)
+                                                if (idx >= 0) pendingDeletions.remove(idx)
+                                                tab.webView?.destroy()
+                                            }
+                                            tabs.removeAll(toRemove.toSet())
+                                            if (tabs.isEmpty()) {
+                                                currentTabIndex = -1
+                                                highlightedTabIndex = -1
+                                                selectedDomain = ""
+                                            } else {
+                                                currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
+                                                highlightedTabIndex = currentTabIndex
+                                                selectedDomain = ""
+                                            }
+                                        }
+                                        showConfirmDialog = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                                border = BorderStroke(1.dp, tint),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text("Delete Group", fontSize = 13.sp, color = tint)
+                            }
                             OutlinedButton(
                                 onClick = {
                                     currentTabIndex = -1
                                     showTabManager = false
                                 },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.weight(1f),
                                 shape = RectangleShape,
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                                border = BorderStroke(1.dp, WHITE)
+                                border = BorderStroke(1.dp, WHITE),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                             ) {
-                                Icon(Icons.Default.Add, null, tint = WHITE)
-                                Spacer(Modifier.width(8.dp))
-                                Text("New Tab", color = WHITE)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth()) {
-                                val hasSelection = selectedDomain.isNotBlank()
-                                val isPinned = pinnedDomains.contains(selectedDomain)
-                                val tint = if (hasSelection) WHITE else ACCENT_DIM
-
-                                OutlinedButton(
-                                    onClick = {
-                                        if (hasSelection) {
-                                            confirmTitle = if (isPinned) "Unpin Group?" else "Pin Group?"
-                                            confirmMessage = "Are you sure?"
-                                            confirmAction = {
-                                                if (isPinned) pinnedDomains.remove(selectedDomain)
-                                                else pinnedDomains.add(selectedDomain)
-                                            }
-                                            showConfirmDialog = true
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RectangleShape,
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
-                                    border = BorderStroke(1.dp, tint)
-                                ) {
-                                    Text(if (isPinned) "Unpin Group" else "Pin Group", fontSize = 13.sp, color = tint)
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                OutlinedButton(
-                                    onClick = {
-                                        if (hasSelection) {
-                                            confirmTitle = "Delete Group?"
-                                            confirmMessage = "All tabs in this group will be lost."
-                                            confirmAction = {
-                                                val toRemove = (domainGroups[selectedDomain] ?: emptyList()).toList()
-                                                toRemove.forEach { tab ->
-                                                    val idx = tabs.indexOf(tab)
-                                                    if (idx >= 0) pendingDeletions.remove(idx)
-                                                    tab.webView?.destroy()
-                                                }
-                                                tabs.removeAll(toRemove.toSet())
-                                                if (tabs.isEmpty()) {
-                                                    currentTabIndex = -1
-                                                    highlightedTabIndex = -1
-                                                    selectedDomain = ""
-                                                } else {
-                                                    currentTabIndex = currentTabIndex.coerceIn(0, tabs.lastIndex)
-                                                    highlightedTabIndex = currentTabIndex
-                                                    selectedDomain = ""
-                                                }
-                                            }
-                                            showConfirmDialog = true
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RectangleShape,
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
-                                    border = BorderStroke(1.dp, tint)
-                                ) {
-                                    Text("Delete Group", fontSize = 13.sp, color = tint)
-                                }
+                                Icon(Icons.Default.Add, null, tint = WHITE, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("New Tab", fontSize = 13.sp, color = WHITE)
                             }
                         }
                     }
                 }
             }
         }
+
+// END OF PART 8f/10
+
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// === PART 8g/10 — Main Layout, Top Bar, ContentLayer, Toast ===
+// ═══════════════════════════════════════════════════════════════════
 
         // ── Main layout ─────────────────────────────────────────────
         Column(
@@ -2379,7 +2411,7 @@ fun ContentLayer() {
     }
 }
 
-// END OF PART 8/10
+// END OF PART 8g/10
 
 
 
