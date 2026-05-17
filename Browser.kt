@@ -52,10 +52,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v12] ===
+// === PART 1/10 — Package, Imports, MainActivity [UPDATED v14] ===
 // ═══════════════════════════════════════════════════════════════════
 
 package com.grey.browser
@@ -84,6 +82,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -143,7 +142,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.foundation.horizontalScroll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -171,7 +169,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // END OF PART 1/10
-
 
 
 
@@ -2289,8 +2286,6 @@ fun ContentLayer() {
 ```
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8g/10 — Main Layout, Top Bar, ContentLayer, Toast ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2514,7 +2509,6 @@ fun ContentLayer() {
 }
 
 // END OF PART 8g/10
-
 
 
 
