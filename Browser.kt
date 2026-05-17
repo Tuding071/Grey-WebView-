@@ -1533,10 +1533,8 @@ fun ContentLayer() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v40] ===
+// === PART 8/10 — Top Bar, Tab Manager UI, Menu, Toast, Link Menu [UPDATED v41] ===
 // ═══════════════════════════════════════════════════════════════════
 
     var urlInput by remember {
@@ -1848,6 +1846,13 @@ fun ContentLayer() {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
 
+            // Build grouped tab list for display order
+            val groupedTabs = buildList {
+                for (domain in sortedDomains) {
+                    addAll(domainGroups[domain] ?: emptyList())
+                }
+            }
+
             Popup(
                 alignment = Alignment.TopStart,
                 onDismissRequest = { showTabManager = false },
@@ -1927,7 +1932,6 @@ fun ContentLayer() {
                                             }
                                         }
                                     } else {
-                                        // Group tabs by domain for visual grouping
                                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
 
@@ -2376,8 +2380,6 @@ fun ContentLayer() {
 }
 
 // END OF PART 8/10
-
-
 
 
 
