@@ -1867,6 +1867,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1895,9 +1896,6 @@ fun ContentLayer() {
             LaunchedEffect(Unit) {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
-
-            // Unified surface color — slightly lighter
-            val GROUP_SURFACE = Color(0xFF181818)
 
             Popup(
                 alignment = Alignment.TopStart,
@@ -1941,7 +1939,7 @@ fun ContentLayer() {
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        // Derived: which domain group is at the top of the visible tab list
+                        // Derived: which domain group is at the top
                         val visibleDomainIndex by remember {
                             derivedStateOf {
                                 val firstIdx = tabListState.firstVisibleItemIndex
@@ -1949,42 +1947,30 @@ fun ContentLayer() {
                             }
                         }
 
-                        // On open: scroll to center the current tab
+                        // On open: scroll to current tab
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
                             delay(250)
-
-                            val targetUrl   = tabs[highlightedTabIndex].url
+                            val targetUrl = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            val domainIdx   = displayOrder.indexOf(targetDomain)
+                            val domainIdx = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
-
                             val contentItemIdx = domainIdx * 2 + 1
-                            val tabsInGroup    = groupedForDisplay[targetDomain] ?: emptyList()
-                            val tabIdxInGroup  = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
-
+                            val tabsInGroup = groupedForDisplay[targetDomain] ?: emptyList()
+                            val tabIdxInGroup = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
                             tabListState.scrollToItem(domainIdx * 2)
                             delay(100)
-
-                            val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 56.dp.toPx() }
-                            val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
-                                .firstOrNull { it.index == contentItemIdx }
-
+                            val viewportPx = tabListState.layoutInfo.viewportSize.height.toFloat()
+                            val tabHeightPx = with(density) { 56.dp.toPx() }
+                            val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == contentItemIdx }
                             if (contentItemInfo == null) {
-                                val fallbackOffset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f)
-                                    .toInt().coerceAtLeast(0)
+                                val fallbackOffset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f).toInt().coerceAtLeast(0)
                                 tabListState.animateScrollToItem(contentItemIdx, fallbackOffset)
                             } else {
-                                val tabCenterInViewport =
-                                    contentItemInfo.offset.toFloat() +
-                                    tabIdxInGroup * tabHeightPx +
-                                    tabHeightPx / 2f
-
+                                val tabCenterInViewport = contentItemInfo.offset.toFloat() + tabIdxInGroup * tabHeightPx + tabHeightPx / 2f
                                 val scrollDelta = tabCenterInViewport - viewportPx / 2f
                                 tabListState.animateScrollBy(scrollDelta)
                             }
-
                             delay(150)
                             if (domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
@@ -1992,7 +1978,7 @@ fun ContentLayer() {
                             }
                         }
 
-                        // Tabs → Chip sync (one-way, no feedback loop)
+                        // Tabs → Chip sync
                         LaunchedEffect(visibleDomainIndex) {
                             if (domainCount > 1) {
                                 val progress = visibleDomainIndex.toFloat() / (domainCount - 1).toFloat()
@@ -2002,11 +1988,7 @@ fun ContentLayer() {
 
                         if (realTabs.isEmpty()) {
                             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("No open tabs", color = MUTED, fontSize = 16.sp)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Tap the + button to browse", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
-                                }
+                                Text("No open tabs", color = MUTED, fontSize = 16.sp)
                             }
                         } else {
                             LazyColumn(
@@ -2020,79 +2002,80 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Sticky header — same color, no border, aligned with tab box
+                                    // Simple header — favicon + domain + count, no background, no border
                                     stickyHeader(key = domain) {
-                                        Surface(Modifier.fillMaxWidth(), color = GROUP_SURFACE) {
-                                            Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                                Spacer(Modifier.width(10.dp))
-                                                Text(domain, color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                                Spacer(Modifier.weight(1f))
-                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(14.dp))
-                                                Spacer(Modifier.width(8.dp))
-                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                                                    Text(tabCount.toString(), color = WHITE, fontSize = 11.sp)
-                                                }
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                            else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                Text(domain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(domain, color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.weight(1f))
+                                            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                                                Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
                                             }
                                         }
                                     }
 
-                                    // Tab box — same color, no border, narrowed width, taller rows, double spacing
+                                    // Tab box — EXACTLY like BookmarksUI
                                     item(key = "$domain-tabs") {
-                                        Surface(
-                                            Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 24.dp),
-                                            color = GROUP_SURFACE,
-                                            shape = RectangleShape
-                                        ) {
-                                            Column {
-                                                groupTabs.forEachIndexed { index, tab ->
-                                                    val tabIndex = tabs.indexOf(tab)
-                                                    val isHighlighted = tabIndex == highlightedTabIndex
-                                                    val isPending = pendingDeletions.containsKey(tabIndex)
-                                                    val tabDomain = getDomainName(tab.url)
-                                                    val tabFav = tabFavicons[tabDomain]
+                                        Column(Modifier.padding(bottom = 8.dp)) {
+                                            groupTabs.forEach { tab ->
+                                                val tabIndex = tabs.indexOf(tab)
+                                                val isHighlighted = tabIndex == highlightedTabIndex
+                                                val isPending = pendingDeletions.containsKey(tabIndex)
+                                                val tabDomain = getDomainName(tab.url)
+                                                LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
+                                                val tabFav = tabFavicons[tabDomain]
 
-                                                    // Divider between tab rows (not before first)
-                                                    if (index > 0) {
-                                                        Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                                                Surface(
+                                                    Modifier.fillMaxWidth().padding(vertical = 2.dp).padding(horizontal = 8.dp)
+                                                        .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                                    color = when {
+                                                        isPending -> DELETE_BG
+                                                        isHighlighted -> Color.DarkGray
+                                                        else -> Color.Transparent
                                                     }
-
-                                                    Surface(
-                                                        Modifier.fillMaxWidth().clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
-                                                        color = when { isPending -> DELETE_BG; isHighlighted -> Color.DarkGray; else -> Color.Transparent }
+                                                ) {
+                                                    Row(
+                                                        Modifier.fillMaxWidth().padding(12.dp)
+                                                            .clickable(enabled = !isPending) { currentTabIndex = tabIndex; showTabManager = false },
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Row(
-                                                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            if (tabFav != null) Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                            else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.Gray), contentAlignment = Alignment.Center) {
-                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        if (tabFav != null) {
+                                                            Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                        } else {
+                                                            Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                             }
-                                                            Spacer(Modifier.width(10.dp))
-                                                            Column(Modifier.weight(1f)) {
-                                                                Text(
-                                                                    if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
-                                                                    color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                                    fontSize = 14.sp
-                                                                )
-                                                                Text(
-                                                                    tab.url,
-                                                                    color = MUTED.copy(alpha = 0.5f),
-                                                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                                    fontSize = 11.sp
-                                                                )
+                                                        }
+                                                        Spacer(Modifier.width(10.dp))
+                                                        Column(Modifier.weight(1f)) {
+                                                            Text(
+                                                                if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
+                                                                color = if (isPending) WHITE else WHITE,
+                                                                fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                                            )
+                                                            Text(
+                                                                tab.url,
+                                                                color = MUTED.copy(alpha = 0.7f),
+                                                                fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                        if (isPending) {
+                                                            IconButton({ undoDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
                                                             }
-                                                            if (isPending) IconButton({ undoDeleteTab(tabIndex) }) { Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(20.dp)) }
-                                                            else IconButton({ requestDeleteTab(tabIndex) }) { Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp)) }
+                                                        } else {
+                                                            IconButton({ requestDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -2127,9 +2110,7 @@ fun ContentLayer() {
                                             .clickable {
                                                 val domainIdx = displayOrder.indexOf(domain)
                                                 if (domainIdx >= 0) {
-                                                    coroutineScope.launch {
-                                                        tabListState.animateScrollToItem(domainIdx * 2)
-                                                    }
+                                                    coroutineScope.launch { tabListState.animateScrollToItem(domainIdx * 2) }
                                                 }
                                             },
                                         color = if (isActiveTabDomain) Color.DarkGray else Color.Transparent
@@ -2174,8 +2155,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
