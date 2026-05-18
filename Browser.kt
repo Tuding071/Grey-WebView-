@@ -1867,8 +1867,6 @@ fun ContentLayer() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1898,8 +1896,8 @@ fun ContentLayer() {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
-            // Unified surface color for headers and tab boxes
-            val GROUP_SURFACE = Color(0xFF0E0E0E)
+            // Unified surface color — slightly lighter
+            val GROUP_SURFACE = Color(0xFF181818)
 
             Popup(
                 alignment = Alignment.TopStart,
@@ -2022,13 +2020,13 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Sticky header — same color as tab box, no border, taller, shortened width
+                                    // Sticky header — same color, no border, aligned with tab box
                                     stickyHeader(key = domain) {
                                         Surface(Modifier.fillMaxWidth(), color = GROUP_SURFACE) {
                                             Row(
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                                                    .padding(horizontal = 20.dp, vertical = 14.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
@@ -2047,10 +2045,10 @@ fun ContentLayer() {
                                         }
                                     }
 
-                                    // Tab box — same color as header, no border, shortened width, taller rows
+                                    // Tab box — same color, no border, narrowed width, taller rows, double spacing
                                     item(key = "$domain-tabs") {
                                         Surface(
-                                            Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 12.dp),
+                                            Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 24.dp),
                                             color = GROUP_SURFACE,
                                             shape = RectangleShape
                                         ) {
@@ -2086,7 +2084,6 @@ fun ContentLayer() {
                                                                     color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                                     fontSize = 14.sp
                                                                 )
-                                                                // Second row placeholder for future use
                                                                 Text(
                                                                     tab.url,
                                                                     color = MUTED.copy(alpha = 0.5f),
@@ -2177,6 +2174,8 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
+
 
 
 
