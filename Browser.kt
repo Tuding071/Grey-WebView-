@@ -1934,24 +1934,6 @@ fun ContentLayer() {
                         // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
 
-                        // Helper: sync chip to match tab position percentage
-                        fun syncChipToTab(tabIndex: Int) {
-                            val progress = tabIndex.toFloat() / totalTabs.toFloat()
-                            val chipMax = chipScrollState.maxValue.toFloat()
-                            chipScrollState.scrollTo((progress * chipMax).toInt().coerceAtLeast(0))
-                        }
-
-                        // Helper: sync tab to match chip position percentage
-                        fun syncTabToChip(chipValue: Int) {
-                            val chipMax = chipScrollState.maxValue
-                            if (chipMax == 0) return
-                            val progress = chipValue.toFloat() / chipMax.toFloat()
-                            val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
-                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetIndex) > 1) {
-                                tabListState.scrollToItem(targetIndex)
-                            }
-                        }
-
                         // Auto-scroll to current tab — center as possible, then sync chip
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
@@ -1964,8 +1946,13 @@ fun ContentLayer() {
                                     val centeringOffset = (viewportHeight / 2) - (estimatedTabHeight / 2)
                                     val safeOffset = if (idx <= 2) 0 else -centeringOffset.coerceAtMost(centeringOffset)
                                     tabListState.animateScrollToItem(idx, safeOffset)
+                                    // Sync chip after tab settles
                                     delay(400)
-                                    syncChipToTab(idx)
+                                    val progress = idx.toFloat() / totalTabs.toFloat()
+                                    val chipMax = chipScrollState.maxValue.toFloat()
+                                    if (chipMax > 0) {
+                                        chipScrollState.animateScrollTo((progress * chipMax).toInt().coerceAtLeast(0))
+                                    }
                                 }
                             }
                         }
@@ -1973,12 +1960,22 @@ fun ContentLayer() {
                         // Tabs → Chip (percentage sync)
                         LaunchedEffect(tabListState.firstVisibleItemIndex, tabListState.firstVisibleItemScrollOffset) {
                             val currentIndex = tabListState.firstVisibleItemIndex.coerceIn(0, totalTabs - 1)
-                            syncChipToTab(currentIndex)
+                            val progress = currentIndex.toFloat() / totalTabs.toFloat()
+                            val chipMax = chipScrollState.maxValue.toFloat()
+                            if (chipMax > 0) {
+                                chipScrollState.animateScrollTo((progress * chipMax).toInt().coerceAtLeast(0))
+                            }
                         }
 
                         // Chip → Tabs (percentage sync)
                         LaunchedEffect(chipScrollState.value) {
-                            syncTabToChip(chipScrollState.value)
+                            val chipMax = chipScrollState.maxValue
+                            if (chipMax == 0) return@LaunchedEffect
+                            val progress = chipScrollState.value.toFloat() / chipMax.toFloat()
+                            val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
+                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetIndex) > 1) {
+                                tabListState.scrollToItem(targetIndex)
+                            }
                         }
 
                         if (realTabs.isEmpty()) {
@@ -2114,7 +2111,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
