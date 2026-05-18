@@ -1864,6 +1864,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1961,43 +1962,22 @@ fun ContentLayer() {
                             }
                         }
 
-                        // Detect all visible group headers using firstVisibleItemIndex
-                        val visibleHeaderDomains by remember {
-                            derivedStateOf {
-                                val layoutInfo = tabListState.layoutInfo
-                                val visibleDomains = mutableListOf<String>()
-                                for (item in layoutInfo.visibleItemsInfo) {
-                                    val tab = tabsToShow.getOrNull(item.index) ?: continue
-                                    val domain = getDomainName(tab.url)
-                                    if (domain.isNotBlank() && domain !in visibleDomains) {
-                                        visibleDomains.add(domain)
+                        // One-way sync: chip carousel → tab list (scroll bar mapping)
+                        // Uses snapshotFlow for smooth debounced updates
+                        LaunchedEffect(Unit) {
+                            snapshotFlow { chipScrollState.value }
+                                .collect { scrollValue ->
+                                    val chipMax = chipScrollState.maxValue
+                                    if (chipMax == 0) return@collect
+                                    val progress = scrollValue.toFloat() / chipMax.toFloat()
+                                    val totalTabs = tabsToShow.size.coerceAtLeast(1)
+                                    val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
+                                    // Only update if difference is significant to avoid micro-jumps
+                                    val currentIndex = tabListState.firstVisibleItemIndex
+                                    if (kotlin.math.abs(currentIndex - targetIndex) > 0) {
+                                        tabListState.scrollToItem(targetIndex)
                                     }
                                 }
-                                visibleDomains
-                            }
-                        }
-
-                        // Sync chip carousel proportionally when tab list scrolls (scroll bar mapping)
-                        LaunchedEffect(tabListState.firstVisibleItemIndex, tabListState.firstVisibleItemScrollOffset) {
-                            val totalTabs = tabsToShow.size
-                            if (totalTabs == 0) return@LaunchedEffect
-                            val currentTabIndex = tabListState.firstVisibleItemIndex.coerceIn(0, totalTabs - 1)
-                            val progress = currentTabIndex.toFloat() / totalTabs.toFloat()
-                            val chipMaxScroll = chipScrollState.maxValue.toFloat()
-                            val targetChipScroll = (progress * chipMaxScroll).toInt()
-                            chipScrollState.animateScrollTo(targetChipScroll.coerceAtLeast(0))
-                        }
-
-                        // Sync tab list proportionally when chip carousel scrolls (scroll bar mapping)
-                        LaunchedEffect(chipScrollState.value) {
-                            val chipMax = chipScrollState.maxValue
-                            if (chipMax == 0) return@LaunchedEffect
-                            val chipProgress = chipScrollState.value.toFloat() / chipMax.toFloat()
-                            val totalTabs = tabsToShow.size
-                            val targetTabIndex = (chipProgress * totalTabs).toInt().coerceIn(0, totalTabs - 1)
-                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetTabIndex) > 1) {
-                                tabListState.animateScrollToItem(targetTabIndex)
-                            }
                         }
 
                         if (realTabs.isEmpty()) {
@@ -2019,7 +1999,6 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Sticky header
                                     stickyHeader(key = domain) {
                                         Surface(Modifier.fillMaxWidth().background(SURFACE), color = SURFACE) {
                                             Row(
@@ -2042,7 +2021,6 @@ fun ContentLayer() {
                                         }
                                     }
 
-                                    // Group box with tabs
                                     item(key = "$domain-tabs") {
                                         Surface(
                                             Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = 12.dp).border(0.5.dp, Color.DarkGray, RectangleShape),
@@ -2087,16 +2065,12 @@ fun ContentLayer() {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isCurrentTabGroup = domain == highlightDomain
-                                    val isHeaderVisible = domain in visibleHeaderDomains
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
 
-                                    val borderWidth = if (isHeaderVisible) 2.dp else 0.5.dp
-                                    val borderCol = if (isHeaderVisible) WHITE else BORDER_SUBTLE
-
                                     Surface(
-                                        Modifier.padding(horizontal = 4.dp).border(borderWidth, borderCol, RectangleShape),
+                                        Modifier.padding(horizontal = 4.dp).border(0.5.dp, BORDER_SUBTLE, RectangleShape),
                                         color = if (isCurrentTabGroup) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
