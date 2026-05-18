@@ -1866,7 +1866,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2032,8 +2031,9 @@ fun ContentLayer() {
                                     Box(Modifier.height(200.dp))
                                 }
 
-                                displayOrder.forEach { domain ->
-                                    val groupTabs = groupedForDisplay[domain] ?: return@forEach
+                                // Render each domain group
+                                for (domain in displayOrder) {
+                                    val groupTabs = groupedForDisplay[domain] ?: continue
                                     val isHighlightedGroup = domain == highlightDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = groupTabs.size
@@ -2041,7 +2041,7 @@ fun ContentLayer() {
                                     val fav = faviconBitmaps[domain]
 
                                     // Sticky header for this group
-                                    stickyHeader {
+                                    stickyHeader(key = domain) {
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
@@ -2104,7 +2104,7 @@ fun ContentLayer() {
                                     }
 
                                     // Group box with tabs
-                                    item {
+                                    item(key = "$domain-tabs") {
                                         Surface(
                                             Modifier
                                                 .fillMaxWidth()
@@ -2381,8 +2381,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
