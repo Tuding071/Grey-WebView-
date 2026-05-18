@@ -144,7 +144,6 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1868,28 +1867,10 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
-
-// ── Dominant-color extractor (place as a top-level private fun outside the Composable) ──
-fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
-    val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 16, 16, true)
-    val pixels = IntArray(scaled.width * scaled.height)
-    scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
-    val colorCount = mutableMapOf<Int, Int>()
-    for (pixel in pixels) {
-        if (android.graphics.Color.alpha(pixel) < 128) continue
-        // Quantize channels to reduce noise
-        val r = (android.graphics.Color.red(pixel)   / 32) * 32
-        val g = (android.graphics.Color.green(pixel) / 32) * 32
-        val b = (android.graphics.Color.blue(pixel)  / 32) * 32
-        val q = android.graphics.Color.rgb(r, g, b)
-        colorCount[q] = (colorCount[q] ?: 0) + 1
-    }
-    val dominant = colorCount.maxByOrNull { it.value }?.key ?: return Color.DarkGray
-    return Color(dominant)
-}
 
         // ── Tab Manager ────────────────────────────────────────────
         if (showTabManager) {
@@ -1904,27 +1885,21 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
 
+            // Build grouped tab list for display order
             val groupedTabs = buildList {
-                for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) }
+                for (domain in sortedDomains) {
+                    addAll(domainGroups[domain] ?: emptyList())
+                }
             }
 
+            // Preload all group favicons
             LaunchedEffect(Unit) {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
-            // ── Per-domain accent colors derived from favicons ──────────
-            val domainAccentColors = remember { mutableStateMapOf<String, Color>() }
-           LaunchedEffect(faviconBitmaps.size) {
-              withContext(Dispatchers.Default) {
-              	faviconBitmaps.forEach { (domain, bitmap) ->
-            if (bitmap == null) return@forEach
-            if (!domainAccentColors.containsKey(domain)) {
-                val color = extractDominantColor(bitmap)
-                withContext(Dispatchers.Main) { domainAccentColors[domain] = color }
-            }
-        }
-    }
-}
+            // Darker surface colors
+            val TAB_ROW_BG = Color(0xFF0E0E0E)
+            val HEADER_BG = Color(0xFF0A0A0A)
 
             Popup(
                 alignment = Alignment.TopStart,
@@ -1941,7 +1916,10 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                             Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton({ showTabManager = false }, modifier = Modifier.size(48.dp)) {
+                            IconButton(
+                                { showTabManager = false },
+                                modifier = Modifier.size(48.dp)
+                            ) {
                                 Icon(Icons.Default.Close, "Close", tint = WHITE)
                             }
                             Spacer(Modifier.width(4.dp))
@@ -1959,11 +1937,13 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         val domainCount = displayOrder.size
 
+                        // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
+                        // Derived: which domain group is at the top of the visible tab list
                         val visibleDomainIndex by remember {
                             derivedStateOf {
                                 val firstIdx = tabListState.firstVisibleItemIndex
@@ -1971,13 +1951,14 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                             }
                         }
 
-                        // ── On open: center current tab ──────────────
+                        // On open: scroll to center the current tab
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
                             delay(250)
-                            val targetUrl    = tabs[highlightedTabIndex].url
+
+                            val targetUrl   = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            val domainIdx    = displayOrder.indexOf(targetDomain)
+                            val domainIdx   = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
 
                             val contentItemIdx = domainIdx * 2 + 1
@@ -2001,7 +1982,9 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                                     contentItemInfo.offset.toFloat() +
                                     tabIdxInGroup * tabHeightPx +
                                     tabHeightPx / 2f
-                                tabListState.animateScrollBy(tabCenterInViewport - viewportPx / 2f)
+
+                                val scrollDelta = tabCenterInViewport - viewportPx / 2f
+                                tabListState.animateScrollBy(scrollDelta)
                             }
 
                             delay(150)
@@ -2011,7 +1994,7 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                             }
                         }
 
-                        // ── Tabs → Chip sync (one-way) ───────────────
+                        // Tabs → Chip sync (one-way, no feedback loop)
                         LaunchedEffect(visibleDomainIndex) {
                             if (domainCount > 1) {
                                 val progress = visibleDomainIndex.toFloat() / (domainCount - 1).toFloat()
@@ -2035,60 +2018,50 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
-                                    val isPinned  = pinnedDomains.contains(domain)
-                                    val tabCount  = groupTabs.size
-                                    val fav       = faviconBitmaps[domain]
+                                    val isPinned = pinnedDomains.contains(domain)
+                                    val tabCount = groupTabs.size
+                                    val fav = faviconBitmaps[domain]
 
-                                    // Accent: favicon dominant color at 75% opacity, fallback DarkGray
-                                    val accentColor = (domainAccentColors[domain] ?: Color.DarkGray)
-                                        .copy(alpha = 0.75f)
-
+                                    // Sticky header — darkest, aligned with tab box
                                     stickyHeader(key = domain) {
-                                        // Full-width Surface keeps the sticky background opaque
-                                        Surface(Modifier.fillMaxWidth().background(SURFACE), color = SURFACE) {
-                                            // Inner Box matches the horizontal indent of tab item boxes
-                                            Box(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-                                                Row(
-                                                    Modifier
-                                                        .fillMaxWidth()
-                                                        .background(accentColor)          // favicon-tinted fill
-                                                        .border(2.dp, accentColor, RectangleShape)
-                                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                    else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                    Spacer(Modifier.weight(1f))
-                                                    if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                                                        Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
-                                                    }
+                                        Surface(Modifier.fillMaxWidth(), color = HEADER_BG) {
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 4.dp)
+                                                    .border(0.5.dp, Color.DarkGray, RectangleShape)
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.weight(1f))
+                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                                                    Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
                                                 }
                                             }
                                         }
                                     }
 
+                                    // Tab box — darker than background, lighter than header
                                     item(key = "$domain-tabs") {
                                         Surface(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 4.dp)
-                                                .padding(bottom = 18.dp)             // +50% spacing between groups
-                                                .border(2.dp, accentColor, RectangleShape),  // favicon-tinted border, 2dp
-                                            color = Color.Transparent
+                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = 12.dp).border(0.5.dp, Color.DarkGray, RectangleShape),
+                                            color = TAB_ROW_BG
                                         ) {
                                             Column {
                                                 groupTabs.forEach { tab ->
-                                                    val tabIndex    = tabs.indexOf(tab)
+                                                    val tabIndex = tabs.indexOf(tab)
                                                     val isHighlighted = tabIndex == highlightedTabIndex
-                                                    val isPending   = pendingDeletions.containsKey(tabIndex)
-                                                    val tabDomain   = getDomainName(tab.url)
-                                                    val tabFav      = tabFavicons[tabDomain]
+                                                    val isPending = pendingDeletions.containsKey(tabIndex)
+                                                    val tabDomain = getDomainName(tab.url)
+                                                    val tabFav = tabFavicons[tabDomain]
 
                                                     Surface(
                                                         Modifier.fillMaxWidth().clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
@@ -2121,10 +2094,10 @@ fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isScrolledToDomain = domain == displayOrder.getOrElse(visibleDomainIndex) { "" }
-                                    val isActiveTabDomain  = domain == highlightDomain
-                                    val isPinned   = pinnedDomains.contains(domain)
-                                    val tabCount   = domainGroups[domain]?.size ?: 0
-                                    val fav        = faviconBitmaps[domain]
+                                    val isActiveTabDomain = domain == highlightDomain
+                                    val isPinned = pinnedDomains.contains(domain)
+                                    val tabCount = domainGroups[domain]?.size ?: 0
+                                    val fav = faviconBitmaps[domain]
 
                                     Surface(
                                         Modifier
