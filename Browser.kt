@@ -1873,7 +1873,7 @@ fun ContentLayer() {
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Dominant-color extractor (place as a top-level private fun outside the Composable) ──
-private fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
+fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
     val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 16, 16, true)
     val pixels = IntArray(scaled.width * scaled.height)
     scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
@@ -1914,16 +1914,17 @@ private fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
 
             // ── Per-domain accent colors derived from favicons ──────────
             val domainAccentColors = remember { mutableStateMapOf<String, Color>() }
-            LaunchedEffect(faviconBitmaps.size) {
-                withContext(Dispatchers.Default) {
-                    faviconBitmaps.forEach { (domain, bitmap) ->
-                        if (!domainAccentColors.containsKey(domain)) {
-                            val color = extractDominantColor(bitmap)
-                            withContext(Dispatchers.Main) { domainAccentColors[domain] = color }
-                        }
-                    }
-                }
+           LaunchedEffect(faviconBitmaps.size) {
+              withContext(Dispatchers.Default) {
+              	faviconBitmaps.forEach { (domain, bitmap) ->
+            if (bitmap == null) return@forEach
+            if (!domainAccentColors.containsKey(domain)) {
+                val color = extractDominantColor(bitmap)
+                withContext(Dispatchers.Main) { domainAccentColors[domain] = color }
             }
+        }
+    }
+}
 
             Popup(
                 alignment = Alignment.TopStart,
