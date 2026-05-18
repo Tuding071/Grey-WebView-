@@ -1865,6 +1865,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1928,14 +1929,30 @@ fun ContentLayer() {
                         val tabsToShow = groupedTabs
                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
+                        val totalTabs = tabsToShow.size.coerceAtLeast(1)
 
-                        // Sync flag to prevent feedback loop
-                        var syncingFromChip by remember { mutableStateOf(false) }
-
-                        // Chip carousel scroll state (declared before use)
+                        // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
 
-                        // Auto-scroll to current tab — center as possible
+                        // Helper: sync chip to match tab position percentage
+                        fun syncChipToTab(tabIndex: Int) {
+                            val progress = tabIndex.toFloat() / totalTabs.toFloat()
+                            val chipMax = chipScrollState.maxValue.toFloat()
+                            chipScrollState.scrollTo((progress * chipMax).toInt().coerceAtLeast(0))
+                        }
+
+                        // Helper: sync tab to match chip position percentage
+                        fun syncTabToChip(chipValue: Int) {
+                            val chipMax = chipScrollState.maxValue
+                            if (chipMax == 0) return
+                            val progress = chipValue.toFloat() / chipMax.toFloat()
+                            val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
+                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetIndex) > 1) {
+                                tabListState.scrollToItem(targetIndex)
+                            }
+                        }
+
+                        // Auto-scroll to current tab — center as possible, then sync chip
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
                                 delay(350)
@@ -1947,63 +1964,21 @@ fun ContentLayer() {
                                     val centeringOffset = (viewportHeight / 2) - (estimatedTabHeight / 2)
                                     val safeOffset = if (idx <= 2) 0 else -centeringOffset.coerceAtMost(centeringOffset)
                                     tabListState.animateScrollToItem(idx, safeOffset)
-                                    // Sync chip after settling
                                     delay(400)
-                                    syncingFromChip = true
-                                    val progress = idx.toFloat() / tabsToShow.size.coerceAtLeast(1).toFloat()
-                                    val chipMax = chipScrollState.maxValue.toFloat()
-                                    chipScrollState.animateScrollTo((progress * chipMax).toInt().coerceAtLeast(0))
-                                    syncingFromChip = false
+                                    syncChipToTab(idx)
                                 }
                             }
                         }
 
-                        // Auto-scroll chip carousel to current tab's group (fallback)
-                        LaunchedEffect(Unit) {
-                            if (highlightDomain.isNotBlank()) {
-                                delay(300)
-                                val chipIdx = allSidebarItems.indexOf(highlightDomain)
-                                if (chipIdx >= 0) {
-                                    val chipWidth = 68
-                                    val screenWidth = chipScrollState.viewportSize
-                                    val centerPosition = (chipIdx * chipWidth) - (screenWidth / 2) + (chipWidth / 2)
-                                    chipScrollState.animateScrollTo(centerPosition.coerceAtLeast(0))
-                                }
-                            }
-                        }
-
-                        // Chip → Tabs (one-way scroll bar)
-                        LaunchedEffect(Unit) {
-                            snapshotFlow { chipScrollState.value }
-                                .collect { scrollValue ->
-                                    if (syncingFromChip) return@collect
-                                    val chipMax = chipScrollState.maxValue
-                                    if (chipMax == 0) return@collect
-                                    val progress = scrollValue.toFloat() / chipMax.toFloat()
-                                    val totalTabs = tabsToShow.size.coerceAtLeast(1)
-                                    val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
-                                    val currentIndex = tabListState.firstVisibleItemIndex
-                                    if (kotlin.math.abs(currentIndex - targetIndex) > 0) {
-                                        syncingFromChip = true
-                                        tabListState.scrollToItem(targetIndex)
-                                        syncingFromChip = false
-                                    }
-                                }
-                        }
-
-                        // Tabs → Chip (user scrolled tabs manually)
-                        LaunchedEffect(tabListState.firstVisibleItemIndex) {
-                            if (syncingFromChip) return@LaunchedEffect
-                            val totalTabs = tabsToShow.size
-                            if (totalTabs == 0) return@LaunchedEffect
+                        // Tabs → Chip (percentage sync)
+                        LaunchedEffect(tabListState.firstVisibleItemIndex, tabListState.firstVisibleItemScrollOffset) {
                             val currentIndex = tabListState.firstVisibleItemIndex.coerceIn(0, totalTabs - 1)
-                            val progress = currentIndex.toFloat() / totalTabs.toFloat()
-                            val chipMax = chipScrollState.maxValue
-                            if (chipMax == 0) return@LaunchedEffect
-                            val targetChipScroll = (progress * chipMax).toInt()
-                            if (kotlin.math.abs(chipScrollState.value - targetChipScroll) > 2) {
-                                chipScrollState.animateScrollTo(targetChipScroll.coerceAtLeast(0))
-                            }
+                            syncChipToTab(currentIndex)
+                        }
+
+                        // Chip → Tabs (percentage sync)
+                        LaunchedEffect(chipScrollState.value) {
+                            syncTabToChip(chipScrollState.value)
                         }
 
                         if (realTabs.isEmpty()) {
@@ -2139,6 +2114,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
