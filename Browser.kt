@@ -1868,6 +1868,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1897,9 +1898,8 @@ fun ContentLayer() {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
-            // Darker surface colors
-            val TAB_ROW_BG = Color(0xFF0E0E0E)
-            val HEADER_BG = Color(0xFF0A0A0A)
+            // Unified surface color for headers and tab boxes
+            val GROUP_SURFACE = Color(0xFF0E0E0E)
 
             Popup(
                 alignment = Alignment.TopStart,
@@ -1969,7 +1969,7 @@ fun ContentLayer() {
                             delay(100)
 
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 40.dp.toPx() }
+                            val tabHeightPx     = with(density) { 56.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
                                 .firstOrNull { it.index == contentItemIdx }
 
@@ -2022,60 +2022,80 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Sticky header — darkest, aligned with tab box
+                                    // Sticky header — same color as tab box, no border, taller, shortened width
                                     stickyHeader(key = domain) {
-                                        Surface(Modifier.fillMaxWidth(), color = HEADER_BG) {
+                                        Surface(Modifier.fillMaxWidth(), color = GROUP_SURFACE) {
                                             Row(
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 4.dp)
-                                                    .border(0.5.dp, Color.DarkGray, RectangleShape)
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                    .padding(horizontal = 12.dp, vertical = 14.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                                 }
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.width(10.dp))
+                                                Text(domain, color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                                 Spacer(Modifier.weight(1f))
-                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
-                                                Spacer(Modifier.width(6.dp))
-                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                                                    Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
+                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(8.dp))
+                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                                                    Text(tabCount.toString(), color = WHITE, fontSize = 11.sp)
                                                 }
                                             }
                                         }
                                     }
 
-                                    // Tab box — darker than background, lighter than header
+                                    // Tab box — same color as header, no border, shortened width, taller rows
                                     item(key = "$domain-tabs") {
                                         Surface(
-                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = 12.dp).border(0.5.dp, Color.DarkGray, RectangleShape),
-                                            color = TAB_ROW_BG
+                                            Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 12.dp),
+                                            color = GROUP_SURFACE,
+                                            shape = RectangleShape
                                         ) {
                                             Column {
-                                                groupTabs.forEach { tab ->
+                                                groupTabs.forEachIndexed { index, tab ->
                                                     val tabIndex = tabs.indexOf(tab)
                                                     val isHighlighted = tabIndex == highlightedTabIndex
                                                     val isPending = pendingDeletions.containsKey(tabIndex)
                                                     val tabDomain = getDomainName(tab.url)
                                                     val tabFav = tabFavicons[tabDomain]
 
+                                                    // Divider between tab rows (not before first)
+                                                    if (index > 0) {
+                                                        Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                                                    }
+
                                                     Surface(
                                                         Modifier.fillMaxWidth().clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
                                                         color = when { isPending -> DELETE_BG; isHighlighted -> Color.DarkGray; else -> Color.Transparent }
                                                     ) {
-                                                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                            if (tabFav != null) Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                            else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.Gray), contentAlignment = Alignment.Center) {
-                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                        Row(
+                                                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            if (tabFav != null) Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                            else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.Gray), contentAlignment = Alignment.Center) {
+                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                                             }
-                                                            Spacer(Modifier.width(8.dp))
-                                                            Text(if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title, color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                                            if (isPending) IconButton({ undoDeleteTab(tabIndex) }) { Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp)) }
-                                                            else IconButton({ requestDeleteTab(tabIndex) }) { Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(18.dp)) }
+                                                            Spacer(Modifier.width(10.dp))
+                                                            Column(Modifier.weight(1f)) {
+                                                                Text(
+                                                                    if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
+                                                                    color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                                    fontSize = 14.sp
+                                                                )
+                                                                // Second row placeholder for future use
+                                                                Text(
+                                                                    tab.url,
+                                                                    color = MUTED.copy(alpha = 0.5f),
+                                                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                                    fontSize = 11.sp
+                                                                )
+                                                            }
+                                                            if (isPending) IconButton({ undoDeleteTab(tabIndex) }) { Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(20.dp)) }
+                                                            else IconButton({ requestDeleteTab(tabIndex) }) { Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp)) }
                                                         }
                                                     }
                                                 }
@@ -2157,8 +2177,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
