@@ -1865,6 +1865,9 @@ fun ContentLayer() {
 
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1936,8 +1939,8 @@ fun ContentLayer() {
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        // ── Derived: which domain group is currently at the top of the tab list
-                        // Layout in LazyColumn: [stickyHeader(idx*2), item(idx*2+1)] per domain
+                        // ── Derived: which domain group is at the top of the visible tab list
+                        // LazyColumn layout: [stickyHeader(domainIdx*2), item(domainIdx*2+1)] per domain
                         val visibleDomainIndex by remember {
                             derivedStateOf {
                                 val firstIdx = tabListState.firstVisibleItemIndex
@@ -1945,37 +1948,63 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── On open: scroll to current tab, centered as possible ──────
+                        // ── On open: scroll to center the current tab as much as possible ──
+                        //
+                        // Strategy:
+                        //   1. Jump to the domain header so the group is rendered and measured.
+                        //   2. After layout settles, read the ACTUAL pixel offset of the content
+                        //      item from the LazyListLayoutInfo (no guessing).
+                        //   3. Compute how far the target tab's center is from the viewport center.
+                        //   4. animateScrollBy(delta) — naturally clamps at the top boundary, so
+                        //      "scroll as much as possible toward center" is automatic.
+                        //   5. Sync the chip carousel to the domain.
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
-                            delay(300)
+                            delay(250)
 
-                            val targetUrl = tabs[highlightedTabIndex].url
+                            val targetUrl   = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            val domainIdx = displayOrder.indexOf(targetDomain)
+                            val domainIdx   = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
 
-                            // Content item index (header = domainIdx*2, content = domainIdx*2+1)
+                            // content item is always one index after the header
                             val contentItemIdx = domainIdx * 2 + 1
-                            val tabsInGroup = groupedForDisplay[targetDomain] ?: emptyList()
-                            val tabIdxInGroup = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
+                            val tabsInGroup    = groupedForDisplay[targetDomain] ?: emptyList()
+                            val tabIdxInGroup  = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
 
-                            // First pass: scroll to make the group visible so layoutInfo is populated
+                            // Step 1 — jump to domain header so the group is in the layout tree
                             tabListState.scrollToItem(domainIdx * 2)
-                            delay(80)
+                            delay(100) // wait one frame for layout measurement
 
-                            // Calculate offset to center the specific tab within the content item.
-                            // Each tab row: vertical padding 10dp top + 10dp bottom + ~16dp icon = ~36dp.
-                            // Using 40dp as a safe estimate.
-                            val tabHeightPx = with(density) { 40.dp.toPx() }
-                            val viewportPx = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            // Offset within the content item to bring this tab to mid-screen
-                            val tabMidInContent = tabIdxInGroup * tabHeightPx + tabHeightPx / 2f
-                            val scrollOffset = (tabMidInContent - viewportPx / 2f).toInt().coerceAtLeast(0)
+                            // Step 2 — read the actual position of the content item
+                            val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
+                            val tabHeightPx     = with(density) { 40.dp.toPx() } // each tab row ≈ 40 dp
+                            val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.index == contentItemIdx }
 
-                            tabListState.animateScrollToItem(contentItemIdx, scrollOffset)
+                            // If the content item isn't in the visible window yet
+                            // (e.g. a very tall header pushed it off), fall back to a direct scroll.
+                            if (contentItemInfo == null) {
+                                val fallbackOffset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f)
+                                    .toInt().coerceAtLeast(0)
+                                tabListState.animateScrollToItem(contentItemIdx, fallbackOffset)
+                            } else {
+                                // Step 3 — where is the target tab's center, relative to viewport top?
+                                //   contentItemInfo.offset  = px from viewport top to content item top
+                                //   tabIdxInGroup * tabHeightPx = px from content item top to this tab's top
+                                val tabCenterInViewport =
+                                    contentItemInfo.offset.toFloat() +
+                                    tabIdxInGroup * tabHeightPx +
+                                    tabHeightPx / 2f
 
-                            // Sync chip to the current domain after settling
+                                // Step 4 — scroll by the difference; clamps naturally at boundaries
+                                //   positive delta → scroll down  (tab is above viewport center)
+                                //   negative delta → scroll up    (tab is below viewport center)
+                                val scrollDelta = tabCenterInViewport - viewportPx / 2f
+                                tabListState.animateScrollBy(scrollDelta)
+                            }
+
+                            // Step 5 — sync chip carousel to the current domain
                             delay(150)
                             if (domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
@@ -2145,6 +2174,8 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
+
 
 
 
