@@ -142,6 +142,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.platform.LocalConfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1864,7 +1865,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1934,6 +1934,7 @@ fun ContentLayer() {
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val density = LocalDensity.current
+                        val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
                         // ── Derived: which domain group is currently at the top of the tab list
                         // Layout in LazyColumn: [stickyHeader(idx*2), item(idx*2+1)] per domain
@@ -2002,7 +2003,10 @@ fun ContentLayer() {
                         } else {
                             LazyColumn(
                                 state = tabListState,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                // Allows the last group header to scroll all the way to the top
+                                // regardless of how few tabs it contains
+                                contentPadding = PaddingValues(bottom = screenHeightDp)
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
@@ -2075,8 +2079,10 @@ fun ContentLayer() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 allSidebarItems.forEach { domain ->
-                                    // Highlight the chip whose domain is currently visible in the list
-                                    val isVisibleDomain = domain == (displayOrder.getOrElse(visibleDomainIndex) { highlightDomain })
+                                    // thick white border = scroll position indicator (where you're currently viewing)
+                                    val isScrolledToDomain = domain == displayOrder.getOrElse(visibleDomainIndex) { "" }
+                                    // grey fill = active tab's domain (where your current tab lives)
+                                    val isActiveTabDomain = domain == highlightDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
@@ -2084,8 +2090,11 @@ fun ContentLayer() {
                                     Surface(
                                         Modifier
                                             .padding(horizontal = 4.dp)
-                                            .border(0.5.dp, BORDER_SUBTLE, RectangleShape)
-                                            // Tapping a chip scrolls the tab list to that domain group
+                                            .border(
+                                                width = if (isScrolledToDomain) 2.dp else 0.5.dp,
+                                                color = if (isScrolledToDomain) WHITE else BORDER_SUBTLE,
+                                                shape = RectangleShape
+                                            )
                                             .clickable {
                                                 val domainIdx = displayOrder.indexOf(domain)
                                                 if (domainIdx >= 0) {
@@ -2094,7 +2103,7 @@ fun ContentLayer() {
                                                     }
                                                 }
                                             },
-                                        color = if (isVisibleDomain) Color.DarkGray else Color.Transparent
+                                        color = if (isActiveTabDomain) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
@@ -2136,8 +2145,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
