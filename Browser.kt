@@ -1865,7 +1865,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1890,6 +1889,11 @@ fun ContentLayer() {
                 for (domain in sortedDomains) {
                     addAll(domainGroups[domain] ?: emptyList())
                 }
+            }
+
+            // Preload all group favicons
+            LaunchedEffect(Unit) {
+                sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
             // Blink logic for the chip that contains the current tab
@@ -2037,7 +2041,6 @@ fun ContentLayer() {
                                     val isHighlightedGroup = domain == highlightDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = groupTabs.size
-                                    LaunchedEffect(domain) { loadFavicon(domain) }
                                     val fav = faviconBitmaps[domain]
 
                                     // Sticky header for this group
@@ -2123,7 +2126,6 @@ fun ContentLayer() {
                                                     val isHighlighted = tabIndex == highlightedTabIndex
                                                     val isPending = pendingDeletions.containsKey(tabIndex)
                                                     val tabDomain = getDomainName(tab.url)
-                                                    LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                                     val tabFav = tabFavicons[tabDomain]
 
                                                     Surface(
@@ -2217,7 +2219,6 @@ fun ContentLayer() {
                                     val isBoth = isManualSelected && domain == highlightDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
-                                    LaunchedEffect(domain) { loadFavicon(domain) }
                                     val fav = faviconBitmaps[domain]
 
                                     val borderWidth = if (isManualSelected) 2.dp else 0.5.dp
