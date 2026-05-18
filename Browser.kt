@@ -1864,6 +1864,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1928,20 +1929,26 @@ fun ContentLayer() {
                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
 
-                        // Auto-scroll to current tab on open
+                        // Auto-scroll to current tab — center as possible
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
                                 delay(300)
                                 val targetTab = tabs[highlightedTabIndex]
                                 val idx = groupedTabs.indexOf(targetTab)
-                                if (idx >= 0) tabListState.scrollToItem(idx)
+                                if (idx >= 0) {
+                                    val viewportHeight = tabListState.layoutInfo.viewportSize.height
+                                    val estimatedTabHeight = 56 // Approximate height of a tab row
+                                    val centeringOffset = (viewportHeight / 2) - (estimatedTabHeight / 2)
+                                    val safeOffset = if (idx <= 2) 0 else -centeringOffset.coerceAtMost(centeringOffset)
+                                    tabListState.animateScrollToItem(idx, safeOffset)
+                                }
                             }
                         }
 
                         // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
 
-                        // Auto-scroll chip carousel to current tab's group
+                        // Auto-scroll chip carousel to current tab's group (center as possible)
                         LaunchedEffect(Unit) {
                             if (highlightDomain.isNotBlank()) {
                                 delay(250)
@@ -1955,11 +1962,45 @@ fun ContentLayer() {
                             }
                         }
 
+                        // Detect which group headers are visible in the tab list viewport
+                        val visibleHeaders by remember {
+                            derivedStateOf {
+                                val layoutInfo = tabListState.layoutInfo
+                                val visibleDomains = mutableListOf<String>()
+                                var topmostDomain = ""
+                                var topmostOffset = Int.MAX_VALUE
+
+                                for (item in layoutInfo.visibleItemsInfo) {
+                                    val tab = tabsToShow.getOrNull(item.index) ?: continue
+                                    val domain = getDomainName(tab.url)
+                                    if (domain.isNotBlank() && domain !in visibleDomains) {
+                                        visibleDomains.add(domain)
+                                    }
+                                    if (item.offset < topmostOffset && domain.isNotBlank()) {
+                                        topmostOffset = item.offset
+                                        topmostDomain = domain
+                                    }
+                                }
+                                Pair(visibleDomains, topmostDomain)
+                            }
+                        }
+
+                        // Sync chip carousel to show visible header chips (one-way: tabs → chips)
+                        LaunchedEffect(visibleHeaders) {
+                            val (domains, topmost) = visibleHeaders
+                            if (topmost.isNotBlank()) {
+                                val chipIdx = allSidebarItems.indexOf(topmost)
+                                if (chipIdx >= 0) {
+                                    val chipWidth = 68
+                                    val screenWidth = chipScrollState.viewportSize
+                                    val centerPosition = (chipIdx * chipWidth) - (screenWidth / 2) + (chipWidth / 2)
+                                    chipScrollState.animateScrollTo(centerPosition.coerceAtLeast(0))
+                                }
+                            }
+                        }
+
                         if (realTabs.isEmpty()) {
-                            Box(
-                                Modifier.weight(1f).fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("No open tabs", color = MUTED, fontSize = 16.sp)
                                     Spacer(Modifier.height(8.dp))
@@ -1980,9 +2021,7 @@ fun ContentLayer() {
                                     // Sticky header
                                     stickyHeader(key = domain) {
                                         Surface(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .background(SURFACE),
+                                            Modifier.fillMaxWidth().background(SURFACE),
                                             color = SURFACE
                                         ) {
                                             Row(
@@ -2002,9 +2041,7 @@ fun ContentLayer() {
                                                 Spacer(Modifier.width(8.dp))
                                                 Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                                 Spacer(Modifier.weight(1f))
-                                                if (isPinned) {
-                                                    Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
-                                                }
+                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
                                                 Spacer(Modifier.width(6.dp))
                                                 Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
                                                     Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
@@ -2034,38 +2071,17 @@ fun ContentLayer() {
                                                     Surface(
                                                         Modifier.fillMaxWidth()
                                                             .clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
-                                                        color = when {
-                                                            isPending -> DELETE_BG
-                                                            isHighlighted -> Color.DarkGray
-                                                            else -> Color.Transparent
-                                                        }
+                                                        color = when { isPending -> DELETE_BG; isHighlighted -> Color.DarkGray; else -> Color.Transparent }
                                                     ) {
-                                                        Row(
-                                                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            if (tabFav != null) {
-                                                                Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                            } else {
-                                                                Box(Modifier.size(16.dp).clip(CircleShape).background(Color.Gray), contentAlignment = Alignment.Center) {
-                                                                    Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                                                }
+                                                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                            if (tabFav != null) Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                            else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.Gray), contentAlignment = Alignment.Center) {
+                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                                             }
                                                             Spacer(Modifier.width(8.dp))
-                                                            Text(
-                                                                if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
-                                                                color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                                fontSize = 14.sp, modifier = Modifier.weight(1f)
-                                                            )
-                                                            if (isPending) {
-                                                                IconButton({ undoDeleteTab(tabIndex) }) {
-                                                                    Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                                }
-                                                            } else {
-                                                                IconButton({ requestDeleteTab(tabIndex) }) {
-                                                                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                                }
-                                                            }
+                                                            Text(if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title, color = WHITE, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                                            if (isPending) IconButton({ undoDeleteTab(tabIndex) }) { Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp)) }
+                                                            else IconButton({ requestDeleteTab(tabIndex) }) { Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(18.dp)) }
                                                         }
                                                     }
                                                 }
@@ -2087,27 +2103,26 @@ fun ContentLayer() {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isCurrentTabGroup = domain == highlightDomain
+                                    val isHeaderVisible = domain in visibleHeaders.first
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
 
+                                    val borderWidth = if (isHeaderVisible) 2.dp else 0.5.dp
+                                    val borderCol = if (isHeaderVisible) WHITE else BORDER_SUBTLE
+
                                     Surface(
                                         Modifier
                                             .padding(horizontal = 4.dp)
-                                            .border(0.5.dp, BORDER_SUBTLE, RectangleShape),
+                                            .border(borderWidth, borderCol, RectangleShape),
                                         color = if (isCurrentTabGroup) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
-                                            if (isPinned) {
-                                                Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
-                                            }
+                                            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                if (fav != null) {
-                                                    Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                } else {
-                                                    Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                                    }
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                 }
                                                 Spacer(Modifier.height(2.dp))
                                                 Box(Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
@@ -2122,18 +2137,13 @@ fun ContentLayer() {
 
                         // ── Footer ───────────────────────────────────
                         Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
                                 onClick = { currentTabIndex = -1; showTabManager = false },
-                                modifier = Modifier.weight(1f),
-                                shape = RectangleShape,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                                border = BorderStroke(1.dp, WHITE),
+                                modifier = Modifier.weight(1f), shape = RectangleShape,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE), border = BorderStroke(1.dp, WHITE),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                             ) {
                                 Icon(Icons.Default.Add, null, tint = WHITE, modifier = Modifier.size(16.dp))
