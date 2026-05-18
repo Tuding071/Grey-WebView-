@@ -1863,9 +1863,6 @@ fun ContentLayer() {
 // END OF PART 8e/10
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1929,6 +1926,7 @@ fun ContentLayer() {
                         val tabsToShow = groupedTabs
                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
+                        val density = LocalDensity.current
 
                         // Scroll to current tab's group on open
                         LaunchedEffect(Unit) {
@@ -1948,10 +1946,11 @@ fun ContentLayer() {
                         // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
 
-                        // Detect most centered group in tab list → sync chip carousel
+                        // Detect most centered group in tab list
                         val centeredDomain by remember {
                             derivedStateOf {
                                 val layoutInfo = tabListState.layoutInfo
+                                if (layoutInfo.visibleItemsInfo.isEmpty()) return@derivedStateOf highlightDomain
                                 val viewportCenter = layoutInfo.viewportStartOffset + layoutInfo.viewportSize.height / 2
                                 var closestDomain = highlightDomain
                                 var closestDistance = Int.MAX_VALUE
@@ -1973,10 +1972,41 @@ fun ContentLayer() {
                             if (centeredDomain.isNotBlank()) {
                                 val chipIdx = allSidebarItems.indexOf(centeredDomain)
                                 if (chipIdx >= 0) {
-                                    val chipWidth = 68
-                                    val screenWidth = chipScrollState.viewportSize
-                                    val centerPosition = (chipIdx * chipWidth) - (screenWidth / 2) + (chipWidth / 2)
+                                    val chipWidth = 68f
+                                    val screenWidth = chipScrollState.viewportSize.toFloat()
+                                    val centerPosition = ((chipIdx * chipWidth) - (screenWidth / 2f) + (chipWidth / 2f)).toInt()
                                     chipScrollState.animateScrollTo(centerPosition.coerceAtLeast(0))
+                                }
+                            }
+                        }
+
+                        // Detect centered chip from carousel scroll
+                        val centeredChipDomain by remember {
+                            derivedStateOf {
+                                if (chipScrollState.viewportSize == 0) return@derivedStateOf centeredDomain
+                                val scrollCenter = chipScrollState.value.toFloat() + chipScrollState.viewportSize.toFloat() / 2f
+                                val chipWidth = 68f
+                                val startSpacer = 120f * density.density
+                                var closestDomain = centeredDomain
+                                var closestDistance = Float.MAX_VALUE
+                                for ((idx, domain) in allSidebarItems.withIndex()) {
+                                    val chipCenter = startSpacer + (idx * chipWidth * density.density) + (chipWidth * density.density / 2f)
+                                    val distance = kotlin.math.abs(scrollCenter - chipCenter)
+                                    if (distance < closestDistance && distance < (chipWidth * density.density / 2f)) {
+                                        closestDistance = distance
+                                        closestDomain = domain
+                                    }
+                                }
+                                closestDomain
+                            }
+                        }
+
+                        // Sync tab list when carousel scrolls
+                        LaunchedEffect(centeredChipDomain) {
+                            if (centeredChipDomain.isNotBlank() && centeredChipDomain != centeredDomain) {
+                                val domainIdx = displayOrder.indexOf(centeredChipDomain)
+                                if (domainIdx >= 0) {
+                                    tabListState.animateScrollToItem(domainIdx)
                                 }
                             }
                         }
@@ -2027,17 +2057,9 @@ fun ContentLayer() {
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 if (fav != null) {
-                                                    Image(
-                                                        fav.asImageBitmap(),
-                                                        domain,
-                                                        Modifier.size(16.dp).clip(CircleShape),
-                                                        contentScale = ContentScale.Fit
-                                                    )
+                                                    Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
                                                 } else {
-                                                    Box(
-                                                        Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
+                                                    Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
                                                         Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                                     }
                                                 }
@@ -2079,13 +2101,7 @@ fun ContentLayer() {
 
                                                     Surface(
                                                         Modifier.fillMaxWidth()
-                                                            .clickable(
-                                                                enabled = !isPending,
-                                                                onClick = {
-                                                                    currentTabIndex = tabIndex
-                                                                    showTabManager = false
-                                                                }
-                                                            ),
+                                                            .clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
                                                         color = when {
                                                             isPending -> DELETE_BG
                                                             isHighlighted -> Color.DarkGray
@@ -2133,7 +2149,7 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Group chip carousel (purely indicators, no tap) ──
+                        // ── Group chip carousel (scroll-driven selector) ──
                         if (realTabs.isNotEmpty()) {
                             Row(
                                 Modifier
@@ -2145,7 +2161,7 @@ fun ContentLayer() {
                                 Spacer(Modifier.width(120.dp))
 
                                 allSidebarItems.forEach { domain ->
-                                    val isCentered = domain == centeredDomain
+                                    val isCentered = domain == centeredChipDomain || domain == centeredDomain
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
@@ -2194,10 +2210,7 @@ fun ContentLayer() {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
-                                onClick = {
-                                    currentTabIndex = -1
-                                    showTabManager = false
-                                },
+                                onClick = { currentTabIndex = -1; showTabManager = false },
                                 modifier = Modifier.weight(1f),
                                 shape = RectangleShape,
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
@@ -2215,6 +2228,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
