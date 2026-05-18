@@ -1932,6 +1932,9 @@ fun ContentLayer() {
                         // Sync flag to prevent feedback loop
                         var syncingFromChip by remember { mutableStateOf(false) }
 
+                        // Chip carousel scroll state (declared before use)
+                        val chipScrollState = rememberScrollState()
+
                         // Auto-scroll to current tab — center as possible
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
@@ -1954,9 +1957,6 @@ fun ContentLayer() {
                                 }
                             }
                         }
-
-                        // Chip carousel scroll state
-                        val chipScrollState = rememberScrollState()
 
                         // Auto-scroll chip carousel to current tab's group (fallback)
                         LaunchedEffect(Unit) {
@@ -2139,6 +2139,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
