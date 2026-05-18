@@ -1864,7 +1864,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1937,7 +1936,7 @@ fun ContentLayer() {
                                 val idx = groupedTabs.indexOf(targetTab)
                                 if (idx >= 0) {
                                     val viewportHeight = tabListState.layoutInfo.viewportSize.height
-                                    val estimatedTabHeight = 56 // Approximate height of a tab row
+                                    val estimatedTabHeight = 56
                                     val centeringOffset = (viewportHeight / 2) - (estimatedTabHeight / 2)
                                     val safeOffset = if (idx <= 2) 0 else -centeringOffset.coerceAtMost(centeringOffset)
                                     tabListState.animateScrollToItem(idx, safeOffset)
@@ -1962,40 +1961,42 @@ fun ContentLayer() {
                             }
                         }
 
-                        // Detect which group headers are visible in the tab list viewport
-                        val visibleHeaders by remember {
+                        // Detect all visible group headers using firstVisibleItemIndex
+                        val visibleHeaderDomains by remember {
                             derivedStateOf {
                                 val layoutInfo = tabListState.layoutInfo
                                 val visibleDomains = mutableListOf<String>()
-                                var topmostDomain = ""
-                                var topmostOffset = Int.MAX_VALUE
-
                                 for (item in layoutInfo.visibleItemsInfo) {
                                     val tab = tabsToShow.getOrNull(item.index) ?: continue
                                     val domain = getDomainName(tab.url)
                                     if (domain.isNotBlank() && domain !in visibleDomains) {
                                         visibleDomains.add(domain)
                                     }
-                                    if (item.offset < topmostOffset && domain.isNotBlank()) {
-                                        topmostOffset = item.offset
-                                        topmostDomain = domain
-                                    }
                                 }
-                                Pair(visibleDomains, topmostDomain)
+                                visibleDomains
                             }
                         }
 
-                        // Sync chip carousel to show visible header chips (one-way: tabs → chips)
-                        LaunchedEffect(visibleHeaders) {
-                            val (domains, topmost) = visibleHeaders
-                            if (topmost.isNotBlank()) {
-                                val chipIdx = allSidebarItems.indexOf(topmost)
-                                if (chipIdx >= 0) {
-                                    val chipWidth = 68
-                                    val screenWidth = chipScrollState.viewportSize
-                                    val centerPosition = (chipIdx * chipWidth) - (screenWidth / 2) + (chipWidth / 2)
-                                    chipScrollState.animateScrollTo(centerPosition.coerceAtLeast(0))
-                                }
+                        // Sync chip carousel proportionally when tab list scrolls (scroll bar mapping)
+                        LaunchedEffect(tabListState.firstVisibleItemIndex, tabListState.firstVisibleItemScrollOffset) {
+                            val totalTabs = tabsToShow.size
+                            if (totalTabs == 0) return@LaunchedEffect
+                            val currentTabIndex = tabListState.firstVisibleItemIndex.coerceIn(0, totalTabs - 1)
+                            val progress = currentTabIndex.toFloat() / totalTabs.toFloat()
+                            val chipMaxScroll = chipScrollState.maxValue.toFloat()
+                            val targetChipScroll = (progress * chipMaxScroll).toInt()
+                            chipScrollState.animateScrollTo(targetChipScroll.coerceAtLeast(0))
+                        }
+
+                        // Sync tab list proportionally when chip carousel scrolls (scroll bar mapping)
+                        LaunchedEffect(chipScrollState.value) {
+                            val chipMax = chipScrollState.maxValue
+                            if (chipMax == 0) return@LaunchedEffect
+                            val chipProgress = chipScrollState.value.toFloat() / chipMax.toFloat()
+                            val totalTabs = tabsToShow.size
+                            val targetTabIndex = (chipProgress * totalTabs).toInt().coerceIn(0, totalTabs - 1)
+                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetTabIndex) > 1) {
+                                tabListState.animateScrollToItem(targetTabIndex)
                             }
                         }
 
@@ -2020,23 +2021,14 @@ fun ContentLayer() {
 
                                     // Sticky header
                                     stickyHeader(key = domain) {
-                                        Surface(
-                                            Modifier.fillMaxWidth().background(SURFACE),
-                                            color = SURFACE
-                                        ) {
+                                        Surface(Modifier.fillMaxWidth().background(SURFACE), color = SURFACE) {
                                             Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .border(0.5.dp, Color.DarkGray, RectangleShape)
-                                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                                Modifier.fillMaxWidth().border(0.5.dp, Color.DarkGray, RectangleShape).padding(horizontal = 14.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                if (fav != null) {
-                                                    Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                } else {
-                                                    Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                                    }
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                                 }
                                                 Spacer(Modifier.width(8.dp))
                                                 Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -2053,11 +2045,7 @@ fun ContentLayer() {
                                     // Group box with tabs
                                     item(key = "$domain-tabs") {
                                         Surface(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 4.dp)
-                                                .padding(bottom = 12.dp)
-                                                .border(0.5.dp, Color.DarkGray, RectangleShape),
+                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = 12.dp).border(0.5.dp, Color.DarkGray, RectangleShape),
                                             color = Color.Transparent
                                         ) {
                                             Column {
@@ -2069,8 +2057,7 @@ fun ContentLayer() {
                                                     val tabFav = tabFavicons[tabDomain]
 
                                                     Surface(
-                                                        Modifier.fillMaxWidth()
-                                                            .clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
+                                                        Modifier.fillMaxWidth().clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
                                                         color = when { isPending -> DELETE_BG; isHighlighted -> Color.DarkGray; else -> Color.Transparent }
                                                     ) {
                                                         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2095,15 +2082,12 @@ fun ContentLayer() {
                         // ── Group chip carousel ─────────────────────
                         if (realTabs.isNotEmpty()) {
                             Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(chipScrollState)
-                                    .padding(vertical = 4.dp),
+                                Modifier.fillMaxWidth().horizontalScroll(chipScrollState).padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isCurrentTabGroup = domain == highlightDomain
-                                    val isHeaderVisible = domain in visibleHeaders.first
+                                    val isHeaderVisible = domain in visibleHeaderDomains
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
@@ -2112,9 +2096,7 @@ fun ContentLayer() {
                                     val borderCol = if (isHeaderVisible) WHITE else BORDER_SUBTLE
 
                                     Surface(
-                                        Modifier
-                                            .padding(horizontal = 4.dp)
-                                            .border(borderWidth, borderCol, RectangleShape),
+                                        Modifier.padding(horizontal = 4.dp).border(borderWidth, borderCol, RectangleShape),
                                         color = if (isCurrentTabGroup) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
