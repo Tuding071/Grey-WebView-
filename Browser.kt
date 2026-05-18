@@ -1935,25 +1935,35 @@ fun ContentLayer() {
                         val tabsToShow = if (selectedDomain.isBlank()) groupedTabs
                             else domainGroups[selectedDomain] ?: emptyList()
 
-                        // Scroll to current tab's group on open
+                        // Scroll to current tab's group on open (center if possible)
                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         LaunchedEffect(Unit) {
                             if (highlightDomain.isNotBlank()) {
-                                delay(300)
+                                delay(350)
                                 val domainIdx = displayOrder.indexOf(highlightDomain)
-                                if (domainIdx >= 0) tabListState.animateScrollToItem(domainIdx)
+                                if (domainIdx >= 0) {
+                                    val viewportHeight = tabListState.layoutInfo.viewportSize.height
+                                    val estimatedItemHeight = 150
+                                    val centeringOffset = (viewportHeight / 2) - (estimatedItemHeight / 2)
+                                    // Don't overscroll before first item
+                                    val safeOffset = if (domainIdx == 0) 0 else -centeringOffset.coerceAtMost(centeringOffset)
+                                    tabListState.animateScrollToItem(domainIdx, safeOffset)
+                                }
                             }
                         }
 
-                        // Scroll chip carousel to current tab's group on open
+                        // Scroll chip carousel to center current tab's group
                         val chipScrollState = rememberScrollState()
                         LaunchedEffect(Unit) {
                             if (highlightDomain.isNotBlank()) {
-                                delay(200)
+                                delay(250)
                                 val chipIdx = allSidebarItems.indexOf(highlightDomain)
                                 if (chipIdx >= 0) {
-                                    chipScrollState.animateScrollTo(chipIdx * 68)
+                                    val chipWidth = 68
+                                    val screenWidth = chipScrollState.viewportSize
+                                    val centerPosition = (chipIdx * chipWidth) - (screenWidth / 2) + (chipWidth / 2)
+                                    chipScrollState.animateScrollTo(centerPosition.coerceAtLeast(0))
                                 }
                             }
                         }
@@ -2254,7 +2264,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
