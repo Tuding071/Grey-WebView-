@@ -1867,7 +1867,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2002,30 +2001,32 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Simple header — favicon + domain + count, no background, no border
+                                    // Sticky header — BG background (opaque, blends with app bg, no pass-through)
                                     stickyHeader(key = domain) {
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                            else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                Text(domain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(domain, color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                            Spacer(Modifier.weight(1f))
-                                            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                                                Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
+                                        Surface(Modifier.fillMaxWidth(), color = BG) {
+                                            Row(
+                                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(18.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(domain, color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.weight(1f))
+                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                                                    Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
+                                                }
                                             }
                                         }
                                     }
 
-                                    // Tab box — EXACTLY like BookmarksUI
+                                    // Tab box — BookmarksUI style, 24dp group spacing
                                     item(key = "$domain-tabs") {
-                                        Column(Modifier.padding(bottom = 8.dp)) {
+                                        Column(Modifier.padding(bottom = 24.dp)) {
                                             groupTabs.forEach { tab ->
                                                 val tabIndex = tabs.indexOf(tab)
                                                 val isHighlighted = tabIndex == highlightedTabIndex
@@ -2155,6 +2156,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
