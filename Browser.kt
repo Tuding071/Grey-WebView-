@@ -1865,7 +1865,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1929,52 +1928,66 @@ fun ContentLayer() {
                         val tabsToShow = groupedTabs
                         val groupedForDisplay = tabsToShow.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
-                        val totalTabs = tabsToShow.size.coerceAtLeast(1)
+                        val domainCount = displayOrder.size
 
                         // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
+                        val coroutineScope = rememberCoroutineScope()
+                        val density = LocalDensity.current
 
-                        // Auto-scroll to current tab — center as possible, then sync chip
+                        // ── Derived: which domain group is currently at the top of the tab list
+                        // Layout in LazyColumn: [stickyHeader(idx*2), item(idx*2+1)] per domain
+                        val visibleDomainIndex by remember {
+                            derivedStateOf {
+                                val firstIdx = tabListState.firstVisibleItemIndex
+                                (firstIdx / 2).coerceIn(0, (domainCount - 1).coerceAtLeast(0))
+                            }
+                        }
+
+                        // ── On open: scroll to current tab, centered as possible ──────
                         LaunchedEffect(Unit) {
-                            if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
-                                delay(350)
-                                val targetUrl = tabs[highlightedTabIndex].url
-                                val idx = groupedTabs.indexOfFirst { it.url == targetUrl }
-                                if (idx >= 0) {
-                                    val viewportHeight = tabListState.layoutInfo.viewportSize.height
-                                    val estimatedTabHeight = 56
-                                    val centeringOffset = (viewportHeight / 2) - (estimatedTabHeight / 2)
-                                    val safeOffset = if (idx <= 2) 0 else -centeringOffset.coerceAtMost(centeringOffset)
-                                    tabListState.animateScrollToItem(idx, safeOffset)
-                                    // Sync chip after tab settles
-                                    delay(400)
-                                    val progress = idx.toFloat() / totalTabs.toFloat()
-                                    val chipMax = chipScrollState.maxValue.toFloat()
-                                    if (chipMax > 0) {
-                                        chipScrollState.animateScrollTo((progress * chipMax).toInt().coerceAtLeast(0))
-                                    }
-                                }
+                            if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
+                            delay(300)
+
+                            val targetUrl = tabs[highlightedTabIndex].url
+                            val targetDomain = getDomainName(targetUrl)
+                            val domainIdx = displayOrder.indexOf(targetDomain)
+                            if (domainIdx < 0) return@LaunchedEffect
+
+                            // Content item index (header = domainIdx*2, content = domainIdx*2+1)
+                            val contentItemIdx = domainIdx * 2 + 1
+                            val tabsInGroup = groupedForDisplay[targetDomain] ?: emptyList()
+                            val tabIdxInGroup = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
+
+                            // First pass: scroll to make the group visible so layoutInfo is populated
+                            tabListState.scrollToItem(domainIdx * 2)
+                            delay(80)
+
+                            // Calculate offset to center the specific tab within the content item.
+                            // Each tab row: vertical padding 10dp top + 10dp bottom + ~16dp icon = ~36dp.
+                            // Using 40dp as a safe estimate.
+                            val tabHeightPx = with(density) { 40.dp.toPx() }
+                            val viewportPx = tabListState.layoutInfo.viewportSize.height.toFloat()
+                            // Offset within the content item to bring this tab to mid-screen
+                            val tabMidInContent = tabIdxInGroup * tabHeightPx + tabHeightPx / 2f
+                            val scrollOffset = (tabMidInContent - viewportPx / 2f).toInt().coerceAtLeast(0)
+
+                            tabListState.animateScrollToItem(contentItemIdx, scrollOffset)
+
+                            // Sync chip to the current domain after settling
+                            delay(150)
+                            if (domainCount > 1) {
+                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
+                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
                             }
                         }
 
-                        // Tabs → Chip (percentage sync)
-                        LaunchedEffect(tabListState.firstVisibleItemIndex, tabListState.firstVisibleItemScrollOffset) {
-                            val currentIndex = tabListState.firstVisibleItemIndex.coerceIn(0, totalTabs - 1)
-                            val progress = currentIndex.toFloat() / totalTabs.toFloat()
-                            val chipMax = chipScrollState.maxValue.toFloat()
-                            if (chipMax > 0) {
-                                chipScrollState.animateScrollTo((progress * chipMax).toInt().coerceAtLeast(0))
-                            }
-                        }
-
-                        // Chip → Tabs (percentage sync)
-                        LaunchedEffect(chipScrollState.value) {
-                            val chipMax = chipScrollState.maxValue
-                            if (chipMax == 0) return@LaunchedEffect
-                            val progress = chipScrollState.value.toFloat() / chipMax.toFloat()
-                            val targetIndex = (progress * (totalTabs - 1)).toInt().coerceIn(0, totalTabs - 1)
-                            if (kotlin.math.abs(tabListState.firstVisibleItemIndex - targetIndex) > 1) {
-                                tabListState.scrollToItem(targetIndex)
+                        // ── Tabs → Chip sync (ONE-WAY, no feedback loop) ───────────
+                        // Fires only when the visible domain index changes (domain boundary crossed)
+                        LaunchedEffect(visibleDomainIndex) {
+                            if (domainCount > 1) {
+                                val progress = visibleDomainIndex.toFloat() / (domainCount - 1).toFloat()
+                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
                             }
                         }
 
@@ -2062,14 +2075,26 @@ fun ContentLayer() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 allSidebarItems.forEach { domain ->
-                                    val isCurrentTabGroup = domain == highlightDomain
+                                    // Highlight the chip whose domain is currently visible in the list
+                                    val isVisibleDomain = domain == (displayOrder.getOrElse(visibleDomainIndex) { highlightDomain })
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
 
                                     Surface(
-                                        Modifier.padding(horizontal = 4.dp).border(0.5.dp, BORDER_SUBTLE, RectangleShape),
-                                        color = if (isCurrentTabGroup) Color.DarkGray else Color.Transparent
+                                        Modifier
+                                            .padding(horizontal = 4.dp)
+                                            .border(0.5.dp, BORDER_SUBTLE, RectangleShape)
+                                            // Tapping a chip scrolls the tab list to that domain group
+                                            .clickable {
+                                                val domainIdx = displayOrder.indexOf(domain)
+                                                if (domainIdx >= 0) {
+                                                    coroutineScope.launch {
+                                                        tabListState.animateScrollToItem(domainIdx * 2)
+                                                    }
+                                                }
+                                            },
+                                        color = if (isVisibleDomain) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
@@ -2111,7 +2136,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
