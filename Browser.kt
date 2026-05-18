@@ -144,6 +144,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1867,11 +1868,28 @@ fun ContentLayer() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
+
+// ── Dominant-color extractor (place as a top-level private fun outside the Composable) ──
+private fun extractDominantColor(bitmap: android.graphics.Bitmap): Color {
+    val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 16, 16, true)
+    val pixels = IntArray(scaled.width * scaled.height)
+    scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
+    val colorCount = mutableMapOf<Int, Int>()
+    for (pixel in pixels) {
+        if (android.graphics.Color.alpha(pixel) < 128) continue
+        // Quantize channels to reduce noise
+        val r = (android.graphics.Color.red(pixel)   / 32) * 32
+        val g = (android.graphics.Color.green(pixel) / 32) * 32
+        val b = (android.graphics.Color.blue(pixel)  / 32) * 32
+        val q = android.graphics.Color.rgb(r, g, b)
+        colorCount[q] = (colorCount[q] ?: 0) + 1
+    }
+    val dominant = colorCount.maxByOrNull { it.value }?.key ?: return Color.DarkGray
+    return Color(dominant)
+}
 
         // ── Tab Manager ────────────────────────────────────────────
         if (showTabManager) {
@@ -1886,16 +1904,25 @@ fun ContentLayer() {
                 getDomainName(tabs[highlightedTabIndex].url)
             } else ""
 
-            // Build grouped tab list for display order
             val groupedTabs = buildList {
-                for (domain in sortedDomains) {
-                    addAll(domainGroups[domain] ?: emptyList())
-                }
+                for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) }
             }
 
-            // Preload all group favicons
             LaunchedEffect(Unit) {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
+            }
+
+            // ── Per-domain accent colors derived from favicons ──────────
+            val domainAccentColors = remember { mutableStateMapOf<String, Color>() }
+            LaunchedEffect(faviconBitmaps.size) {
+                withContext(Dispatchers.Default) {
+                    faviconBitmaps.forEach { (domain, bitmap) ->
+                        if (!domainAccentColors.containsKey(domain)) {
+                            val color = extractDominantColor(bitmap)
+                            withContext(Dispatchers.Main) { domainAccentColors[domain] = color }
+                        }
+                    }
+                }
             }
 
             Popup(
@@ -1913,10 +1940,7 @@ fun ContentLayer() {
                             Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(
-                                { showTabManager = false },
-                                modifier = Modifier.size(48.dp)
-                            ) {
+                            IconButton({ showTabManager = false }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Close, "Close", tint = WHITE)
                             }
                             Spacer(Modifier.width(4.dp))
@@ -1934,14 +1958,11 @@ fun ContentLayer() {
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         val domainCount = displayOrder.size
 
-                        // Chip carousel scroll state
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        // ── Derived: which domain group is at the top of the visible tab list
-                        // LazyColumn layout: [stickyHeader(domainIdx*2), item(domainIdx*2+1)] per domain
                         val visibleDomainIndex by remember {
                             derivedStateOf {
                                 val firstIdx = tabListState.firstVisibleItemIndex
@@ -1949,63 +1970,39 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── On open: scroll to center the current tab as much as possible ──
-                        //
-                        // Strategy:
-                        //   1. Jump to the domain header so the group is rendered and measured.
-                        //   2. After layout settles, read the ACTUAL pixel offset of the content
-                        //      item from the LazyListLayoutInfo (no guessing).
-                        //   3. Compute how far the target tab's center is from the viewport center.
-                        //   4. animateScrollBy(delta) — naturally clamps at the top boundary, so
-                        //      "scroll as much as possible toward center" is automatic.
-                        //   5. Sync the chip carousel to the domain.
+                        // ── On open: center current tab ──────────────
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
                             delay(250)
-
-                            val targetUrl   = tabs[highlightedTabIndex].url
+                            val targetUrl    = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            val domainIdx   = displayOrder.indexOf(targetDomain)
+                            val domainIdx    = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
 
-                            // content item is always one index after the header
                             val contentItemIdx = domainIdx * 2 + 1
                             val tabsInGroup    = groupedForDisplay[targetDomain] ?: emptyList()
                             val tabIdxInGroup  = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
 
-                            // Step 1 — jump to domain header so the group is in the layout tree
                             tabListState.scrollToItem(domainIdx * 2)
-                            delay(100) // wait one frame for layout measurement
+                            delay(100)
 
-                            // Step 2 — read the actual position of the content item
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 40.dp.toPx() } // each tab row ≈ 40 dp
+                            val tabHeightPx     = with(density) { 40.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
                                 .firstOrNull { it.index == contentItemIdx }
 
-                            // If the content item isn't in the visible window yet
-                            // (e.g. a very tall header pushed it off), fall back to a direct scroll.
                             if (contentItemInfo == null) {
                                 val fallbackOffset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f)
                                     .toInt().coerceAtLeast(0)
                                 tabListState.animateScrollToItem(contentItemIdx, fallbackOffset)
                             } else {
-                                // Step 3 — where is the target tab's center, relative to viewport top?
-                                //   contentItemInfo.offset  = px from viewport top to content item top
-                                //   tabIdxInGroup * tabHeightPx = px from content item top to this tab's top
                                 val tabCenterInViewport =
                                     contentItemInfo.offset.toFloat() +
                                     tabIdxInGroup * tabHeightPx +
                                     tabHeightPx / 2f
-
-                                // Step 4 — scroll by the difference; clamps naturally at boundaries
-                                //   positive delta → scroll down  (tab is above viewport center)
-                                //   negative delta → scroll up    (tab is below viewport center)
-                                val scrollDelta = tabCenterInViewport - viewportPx / 2f
-                                tabListState.animateScrollBy(scrollDelta)
+                                tabListState.animateScrollBy(tabCenterInViewport - viewportPx / 2f)
                             }
 
-                            // Step 5 — sync chip carousel to the current domain
                             delay(150)
                             if (domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
@@ -2013,8 +2010,7 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Tabs → Chip sync (ONE-WAY, no feedback loop) ───────────
-                        // Fires only when the visible domain index changes (domain boundary crossed)
+                        // ── Tabs → Chip sync (one-way) ───────────────
                         LaunchedEffect(visibleDomainIndex) {
                             if (domainCount > 1) {
                                 val progress = visibleDomainIndex.toFloat() / (domainCount - 1).toFloat()
@@ -2034,33 +2030,43 @@ fun ContentLayer() {
                             LazyColumn(
                                 state = tabListState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                                // Allows the last group header to scroll all the way to the top
-                                // regardless of how few tabs it contains
                                 contentPadding = PaddingValues(bottom = screenHeightDp)
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
-                                    val isPinned = pinnedDomains.contains(domain)
-                                    val tabCount = groupTabs.size
-                                    val fav = faviconBitmaps[domain]
+                                    val isPinned  = pinnedDomains.contains(domain)
+                                    val tabCount  = groupTabs.size
+                                    val fav       = faviconBitmaps[domain]
+
+                                    // Accent: favicon dominant color at 75% opacity, fallback DarkGray
+                                    val accentColor = (domainAccentColors[domain] ?: Color.DarkGray)
+                                        .copy(alpha = 0.75f)
 
                                     stickyHeader(key = domain) {
+                                        // Full-width Surface keeps the sticky background opaque
                                         Surface(Modifier.fillMaxWidth().background(SURFACE), color = SURFACE) {
-                                            Row(
-                                                Modifier.fillMaxWidth().border(0.5.dp, Color.DarkGray, RectangleShape).padding(horizontal = 14.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                Spacer(Modifier.weight(1f))
-                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
-                                                Spacer(Modifier.width(6.dp))
-                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                                                    Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
+                                            // Inner Box matches the horizontal indent of tab item boxes
+                                            Box(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                                                Row(
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .background(accentColor)          // favicon-tinted fill
+                                                        .border(2.dp, accentColor, RectangleShape)
+                                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(16.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                    else Box(Modifier.size(16.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(domain, color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                    Spacer(Modifier.weight(1f))
+                                                    if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(12.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Box(Modifier.background(Color.DarkGray).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                                                        Text(tabCount.toString(), color = WHITE, fontSize = 10.sp)
+                                                    }
                                                 }
                                             }
                                         }
@@ -2068,16 +2074,20 @@ fun ContentLayer() {
 
                                     item(key = "$domain-tabs") {
                                         Surface(
-                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = 12.dp).border(0.5.dp, Color.DarkGray, RectangleShape),
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 4.dp)
+                                                .padding(bottom = 18.dp)             // +50% spacing between groups
+                                                .border(2.dp, accentColor, RectangleShape),  // favicon-tinted border, 2dp
                                             color = Color.Transparent
                                         ) {
                                             Column {
                                                 groupTabs.forEach { tab ->
-                                                    val tabIndex = tabs.indexOf(tab)
+                                                    val tabIndex    = tabs.indexOf(tab)
                                                     val isHighlighted = tabIndex == highlightedTabIndex
-                                                    val isPending = pendingDeletions.containsKey(tabIndex)
-                                                    val tabDomain = getDomainName(tab.url)
-                                                    val tabFav = tabFavicons[tabDomain]
+                                                    val isPending   = pendingDeletions.containsKey(tabIndex)
+                                                    val tabDomain   = getDomainName(tab.url)
+                                                    val tabFav      = tabFavicons[tabDomain]
 
                                                     Surface(
                                                         Modifier.fillMaxWidth().clickable(enabled = !isPending, onClick = { currentTabIndex = tabIndex; showTabManager = false }),
@@ -2109,13 +2119,11 @@ fun ContentLayer() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 allSidebarItems.forEach { domain ->
-                                    // thick white border = scroll position indicator (where you're currently viewing)
                                     val isScrolledToDomain = domain == displayOrder.getOrElse(visibleDomainIndex) { "" }
-                                    // grey fill = active tab's domain (where your current tab lives)
-                                    val isActiveTabDomain = domain == highlightDomain
-                                    val isPinned = pinnedDomains.contains(domain)
-                                    val tabCount = domainGroups[domain]?.size ?: 0
-                                    val fav = faviconBitmaps[domain]
+                                    val isActiveTabDomain  = domain == highlightDomain
+                                    val isPinned   = pinnedDomains.contains(domain)
+                                    val tabCount   = domainGroups[domain]?.size ?: 0
+                                    val fav        = faviconBitmaps[domain]
 
                                     Surface(
                                         Modifier
@@ -2175,6 +2183,8 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
+
 
 
 
