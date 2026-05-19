@@ -2118,7 +2118,7 @@ fun ContentLayer() {
                                                     coroutineScope.launch { tabListState.animateScrollToItem(domainIdx * 2) }
                                                 }
                                             },
-                                        color = if (isScrolledToDomain && !isActiveTabDomain) Color.DarkGray else Color.Transparent
+                                        color = if (isScrolledToDomain) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
