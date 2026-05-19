@@ -1866,7 +1866,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2001,11 +2000,11 @@ fun ContentLayer() {
                                     val tabCount = groupTabs.size
                                     val fav = faviconBitmaps[domain]
 
-                                    // Sticky header — BG background (opaque, blends with app bg, no pass-through)
+                                    // Sticky header — Color.DarkGray bg, aligned width with tab row
                                     stickyHeader(key = domain) {
-                                        Surface(Modifier.fillMaxWidth(), color = BG) {
+                                        Surface(Modifier.fillMaxWidth(), color = Color.DarkGray) {
                                             Row(
-                                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(18.dp).clip(CircleShape), contentScale = ContentScale.Fit)
@@ -2035,14 +2034,17 @@ fun ContentLayer() {
                                                 LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                                 val tabFav = tabFavicons[tabDomain]
 
+                                                // Current tab: thick white border, transparent bg
+                                                // Other tabs: thin border, transparent bg
+                                                // Pending: thin border, red bg
                                                 Surface(
                                                     Modifier.fillMaxWidth().padding(vertical = 2.dp).padding(horizontal = 8.dp)
-                                                        .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                                    color = when {
-                                                        isPending -> DELETE_BG
-                                                        isHighlighted -> Color.DarkGray
-                                                        else -> Color.Transparent
-                                                    }
+                                                        .border(
+                                                            width = if (isHighlighted) 2.dp else 0.5.dp,
+                                                            color = if (isHighlighted) WHITE else Color.DarkGray,
+                                                            shape = RectangleShape
+                                                        ),
+                                                    color = if (isPending) DELETE_BG else Color.Transparent
                                                 ) {
                                                     Row(
                                                         Modifier.fillMaxWidth().padding(12.dp)
@@ -2060,7 +2062,7 @@ fun ContentLayer() {
                                                         Column(Modifier.weight(1f)) {
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
-                                                                color = if (isPending) WHITE else WHITE,
+                                                                color = WHITE,
                                                                 fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                                                             )
                                                             Text(
@@ -2094,8 +2096,10 @@ fun ContentLayer() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 allSidebarItems.forEach { domain ->
-                                    val isScrolledToDomain = domain == displayOrder.getOrElse(visibleDomainIndex) { "" }
+                                    // Current tab's domain → thick white border
                                     val isActiveTabDomain = domain == highlightDomain
+                                    // Scroll position → grey fill
+                                    val isScrolledToDomain = domain == displayOrder.getOrElse(visibleDomainIndex) { "" }
                                     val isPinned = pinnedDomains.contains(domain)
                                     val tabCount = domainGroups[domain]?.size ?: 0
                                     val fav = faviconBitmaps[domain]
@@ -2104,8 +2108,8 @@ fun ContentLayer() {
                                         Modifier
                                             .padding(horizontal = 4.dp)
                                             .border(
-                                                width = if (isScrolledToDomain) 2.dp else 0.5.dp,
-                                                color = if (isScrolledToDomain) WHITE else BORDER_SUBTLE,
+                                                width = if (isActiveTabDomain) 2.dp else 0.5.dp,
+                                                color = if (isActiveTabDomain) WHITE else BORDER_SUBTLE,
                                                 shape = RectangleShape
                                             )
                                             .clickable {
@@ -2114,7 +2118,7 @@ fun ContentLayer() {
                                                     coroutineScope.launch { tabListState.animateScrollToItem(domainIdx * 2) }
                                                 }
                                             },
-                                        color = if (isActiveTabDomain) Color.DarkGray else Color.Transparent
+                                        color = if (isScrolledToDomain && !isActiveTabDomain) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
