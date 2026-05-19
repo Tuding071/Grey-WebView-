@@ -147,6 +147,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.platform.LocalConfiguration
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -332,10 +333,8 @@ object FaviconCache {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v6] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -371,6 +370,12 @@ data class Filter(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class SavedTab(
+    val url: String,
+    val title: String,
+    val thumbnailBytes: ByteArray? = null
+)
+
 class TabState {
     var webView by mutableStateOf<WebView?>(null)
     var title by mutableStateOf("New Tab")
@@ -379,7 +384,8 @@ class TabState {
     var lastUpdated by mutableLongStateOf(System.currentTimeMillis())
     var isBlankTab by mutableStateOf(true)
     var isDiscarded by mutableStateOf(false)
-    var parentTabIndex by mutableIntStateOf(-1)  // -1 = created from homepage
+    var parentTabIndex by mutableIntStateOf(-1)
+    var thumbnailBytes by mutableStateOf<ByteArray?>(null)
 }
 
 fun saveTabsData(context: Context) {
@@ -563,10 +569,12 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+// ═══════════════════════════════════════════════════════════════════
+// === PART 4/10 — Utility Functions [UPDATED v8] ===
+// ═══════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v7] ===
-// ═══════════════════════════════════════════════════════════════════
+// ── Thumbnail Capture ─────────────────────────────────────────────
+const val THUMBNAIL_CAPTURE_PROGRESS = 40
 
 fun getDomainName(url: String): String {
     if (url == "about:blank" || url.isBlank()) return ""
@@ -662,7 +670,6 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     val trimmed = rule.trim()
     if (trimmed.isEmpty()) return false
 
-    // Host-anchored rule: ||domain.com^
     if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
         val domain = trimmed.removePrefix("||").removeSuffix("^")
         val cleanDomain = domain.substringBefore('$')
@@ -670,7 +677,6 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
         return false
     }
 
-    // Host-anchored without ^: ||domain.com
     if (trimmed.startsWith("||")) {
         val domain = trimmed.removePrefix("||")
         val cleanDomain = domain.substringBefore('$')
@@ -678,21 +684,53 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
         return false
     }
 
-    // Exact match: |url|
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
         val exact = trimmed.removePrefix("|").removeSuffix("|")
         return url == exact
     }
 
-    // Contains match for /path/ patterns
     if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
         return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
     }
 
-    // Simple contains
     if (url.contains(trimmed)) return true
 
     return false
+}
+
+// ── Thumbnail Capture Helper ─────────────────────────────────────────
+fun captureThumbnail(webView: WebView): ByteArray? {
+    return try {
+        val picture = webView.capturePicture()
+        val width = picture.width
+        val height = picture.height
+        if (width <= 0 || height <= 0) return null
+
+        val squareSize = minOf(width, height)
+        val outputSize = 96
+
+        val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val srcRect = android.graphics.Rect(0, 0, squareSize, squareSize)
+        val dstRect = android.graphics.Rect(0, 0, outputSize, outputSize)
+        canvas.drawPicture(picture, dstRect)
+        // Crop to top-left square by only drawing that portion
+        bitmap.recycle()
+        
+        // Redraw properly with source clipping
+        val croppedBitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
+        val croppedCanvas = android.graphics.Canvas(croppedBitmap)
+        val cropSrc = android.graphics.Rect(0, 0, squareSize, squareSize)
+        val cropDst = android.graphics.Rect(0, 0, outputSize, outputSize)
+        croppedCanvas.drawPicture(picture, cropDst)
+
+        val baos = java.io.ByteArrayOutputStream()
+        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos)
+        croppedBitmap.recycle()
+        baos.toByteArray()
+    } catch (e: Exception) {
+        null
+    }
 }
 
 // ── Auto-Backup Functions ────────────────────────────────────────────
@@ -723,6 +761,9 @@ fun exportBackup(
                 obj.put("url", tab.url)
                 obj.put("title", tab.title)
                 obj.put("parentTabIndex", tab.parentTabIndex)
+                tab.thumbnailBytes?.let { bytes ->
+                    obj.put("thumbnail", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                }
                 tabsArray.put(obj)
             }
         }
@@ -757,19 +798,26 @@ fun exportBackup(
     }
 }
 
-fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<HistoryItem>, List<Bookmark>>? {
+fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, List<Bookmark>>? {
     return try {
         val file = getBackupFile()
         if (!file.exists()) return null
 
         val root = JSONObject(file.readText())
 
-        val tabsList = mutableListOf<Pair<String, String>>()
+        val tabsList = mutableListOf<SavedTab>()
         val tabsArray = root.optJSONArray("tabs")
         if (tabsArray != null) {
             for (i in 0 until tabsArray.length()) {
                 val obj = tabsArray.getJSONObject(i)
-                tabsList.add(Pair(obj.getString("url"), obj.optString("title", obj.getString("url"))))
+                val url = obj.getString("url")
+                val title = obj.optString("title", url)
+                val thumbnailBytes: ByteArray? = if (obj.has("thumbnail") && obj.getString("thumbnail").isNotEmpty()) {
+                    try {
+                        android.util.Base64.decode(obj.getString("thumbnail"), android.util.Base64.NO_WRAP)
+                    } catch (e: Exception) { null }
+                } else null
+                tabsList.add(SavedTab(url = url, title = title, thumbnailBytes = thumbnailBytes))
             }
         }
 
@@ -806,14 +854,50 @@ fun importBackup(context: Context): Triple<List<Pair<String, String>>, List<Hist
     }
 }
 
+// ── Thumbnail assurance check ────────────────────────────────────────
+fun findExistingThumbnail(tabs: List<TabState>, url: String, backupFile: File): ByteArray? {
+    val cleanUrl = url.substringBefore("#")
+    val domain = getDomainName(url)
+    
+    // Check live tabs
+    for (tab in tabs) {
+        if (tab.thumbnailBytes != null && getDomainName(tab.url) == domain) {
+            return tab.thumbnailBytes
+        }
+    }
+    
+    // Check backup JSON
+    try {
+        if (backupFile.exists()) {
+            val root = JSONObject(backupFile.readText())
+            val tabsArray = root.optJSONArray("tabs")
+            if (tabsArray != null) {
+                for (i in 0 until tabsArray.length()) {
+                    val obj = tabsArray.getJSONObject(i)
+                    val backupUrl = obj.getString("url")
+                    if (backupUrl.substringBefore("#") == cleanUrl && obj.has("thumbnail")) {
+                        val b64 = obj.getString("thumbnail")
+                        if (b64.isNotEmpty()) {
+                            return try {
+                                android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
+                            } catch (e: Exception) { null }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e: Exception) { }
+    
+    return null
+}
+
 // END OF PART 4/10
 
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v22] ===
+// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v23] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -971,10 +1055,14 @@ fun GreyBrowser() {
             val backup = importBackup(context)
             if (backup != null) {
                 tabs.clear()
-                for ((url, title) in backup.first) {
+                for (savedTab in backup.first) {
                     tabs.add(TabState().apply {
-                        this.url = url; this.title = title; isBlankTab = false
-                        isDiscarded = true; webView = null
+                        this.url = savedTab.url
+                        this.title = savedTab.title
+                        this.thumbnailBytes = savedTab.thumbnailBytes
+                        isBlankTab = false
+                        isDiscarded = true
+                        webView = null
                     })
                 }
                 history.clear()
@@ -1049,16 +1137,12 @@ fun GreyBrowser() {
         }
     }
 
-    // END OF PART 5/10
+// END OF PART 5/10
 
 
 
-
-
-
-    
-    // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v24] ===
+// ═══════════════════════════════════════════════════════════════════
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v25] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1089,13 +1173,25 @@ fun GreyBrowser() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
+                
+                // ── Thumbnail capture at threshold ──────────────────
+                if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS && tabState.thumbnailBytes == null) {
+                    val existing = findExistingThumbnail(tabs, tabState.url, getBackupFile())
+                    if (existing != null) {
+                        tabState.thumbnailBytes = existing
+                    } else {
+                        val bytes = captureThumbnail(view)
+                        if (bytes != null && bytes.isNotEmpty()) {
+                            tabState.thumbnailBytes = bytes
+                        }
+                    }
+                }
             }
             override fun onReceivedTitle(view: WebView, title: String?) {
                 if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
                     tabState.title = title
                 }
             }
-            // Deny all permissions (location, camera, mic, notifications, etc.)
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 request.deny()
             }
@@ -1161,16 +1257,14 @@ fun GreyBrowser() {
 
                 for (filter in filters) {
                     if (!filter.enabled) continue
-                    // Check exception rules first (@@)
                     for (rule in filter.networkRules) {
                         if (rule.startsWith("@@")) {
                             val exceptionPattern = rule.removePrefix("@@")
                             if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) {
-                                return null // Exception — allow
+                                return null
                             }
                         }
                     }
-                    // Check blocking rules
                     for (rule in filter.networkRules) {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
@@ -1181,7 +1275,7 @@ fun GreyBrowser() {
                         }
                     }
                 }
-                return null // Allow
+                return null
             }
         }
 
@@ -1269,25 +1363,21 @@ fun GreyBrowser() {
     }
 
     // ── Create tabs ─────────────────────────────────────────────────
-    // insertAfterIndex = -1 means insert at top (from homepage)
-    // insertAfterIndex >= 0 means insert right below that tab (from long-press)
     fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
-        // Remove old duplicate if exists
         removeDuplicateTab(url)
-        // Calculate insertion point
         val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
-        // Capture parent before switching
         val parentIdx = if (insertAfterIndex >= 0) insertAfterIndex else -1
         val wv = createWebView(url)
-        tabs.add(insertIdx, TabState().apply {
+        val newTab = TabState().apply {
             webView = wv
             this.url = url
             isBlankTab = false
             isDiscarded = false
             lastUpdated = System.currentTimeMillis()
             parentTabIndex = parentIdx
-            setupDelegates(this)
-        })
+        }
+        tabs.add(insertIdx, newTab)
+        setupDelegates(newTab)
         currentTabIndex = insertIdx
         highlightedTabIndex = currentTabIndex
         manageTabLifecycle(currentTabIndex)
@@ -1307,13 +1397,11 @@ fun GreyBrowser() {
     // ── Favicon loading helpers ─────────────────────────────────────
     fun loadFavicon(domain: String) {
         if (domain.isBlank()) return
-        // Check memory cache first (instant, no disk I/O)
         val cached = FaviconMemoryCache.get(domain)
         if (cached != null) {
             faviconBitmaps[domain] = cached
             return
         }
-        // Fall back to disk + download (original behavior)
         if (!faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
             faviconLoading[domain] = true
             scope.launch {
@@ -1330,13 +1418,11 @@ fun GreyBrowser() {
 
     fun loadTabFavicon(domain: String) {
         if (domain.isBlank()) return
-        // Check memory cache first (instant, no disk I/O)
         val cached = FaviconMemoryCache.get(domain)
         if (cached != null) {
             tabFavicons[domain] = cached
             return
         }
-        // Fall back to disk + download (original behavior)
         if (!tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
             tabFaviconLoading[domain] = true
             scope.launch {
@@ -1362,7 +1448,6 @@ fun GreyBrowser() {
                 val tab = tabs.getOrNull(index) ?: continue
                 tab.webView?.destroy()
                 tabs.removeAt(index)
-                // Fix parent references
                 for (t in tabs) {
                     if (t.parentTabIndex == index) t.parentTabIndex = -1
                     else if (t.parentTabIndex > index) t.parentTabIndex--
@@ -1408,7 +1493,7 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-    
+
     
 
 
@@ -1871,8 +1956,9 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager ===
+// === PART 8f/10 — Tab Manager [UPDATED — Thumbnails] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -1894,6 +1980,26 @@ fun ContentLayer() {
 
             LaunchedEffect(Unit) {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
+            }
+
+            // ── Decoded thumbnail bitmap cache for display ──────────
+            val thumbnailBitmaps = remember { mutableStateMapOf<Int, Bitmap?>() }
+            LaunchedEffect(showTabManager) {
+                thumbnailBitmaps.clear()
+                realTabs.forEachIndexed { index, tab ->
+                    tab.thumbnailBytes?.let { bytes ->
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                withContext(Dispatchers.Main) {
+                                    thumbnailBitmaps[index] = bmp
+                                }
+                            } catch (e: Exception) {
+                                thumbnailBitmaps[index] = null
+                            }
+                        }
+                    }
+                }
             }
 
             Popup(
@@ -1959,7 +2065,6 @@ fun ContentLayer() {
                             tabListState.scrollToItem(domainIdx)
                             delay(100)
 
-                            // Row height: 12dp padding + 32dp favicon + 12dp padding = 56dp
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
                             val tabHeightPx     = with(density) { 56.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
@@ -2032,6 +2137,7 @@ fun ContentLayer() {
                                                 val tabDomain     = getDomainName(tab.url)
                                                 LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                                 val tabFav = tabFavicons[tabDomain]
+                                                val thumbBmp = thumbnailBitmaps[tabIndex]
 
                                                 Surface(
                                                     Modifier
@@ -2055,7 +2161,27 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Left: 32dp circular favicon ──────────
+                                                        // ── Thumbnail: 44dp square ──────────────
+                                                        if (thumbBmp != null) {
+                                                            Image(
+                                                                thumbBmp.asImageBitmap(),
+                                                                "Thumbnail",
+                                                                Modifier
+                                                                    .size(44.dp)
+                                                                    .clip(RectangleShape),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        } else {
+                                                            Box(
+                                                                Modifier
+                                                                    .size(44.dp)
+                                                                    .background(Color(0xFF121212), RectangleShape)
+                                                            )
+                                                        }
+
+                                                        Spacer(Modifier.width(10.dp))
+
+                                                        // ── Favicon: 32dp CircleShape ────────────
                                                         if (tabFav != null) {
                                                             Image(
                                                                 tabFav.asImageBitmap(), tabDomain,
@@ -2079,7 +2205,7 @@ fun ContentLayer() {
 
                                                         Spacer(Modifier.width(12.dp))
 
-                                                        // ── Middle: title + domain ────────────────
+                                                        // ── Title + domain ────────────────────────
                                                         Column(Modifier.weight(1f)) {
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
@@ -2098,7 +2224,7 @@ fun ContentLayer() {
                                                             )
                                                         }
 
-                                                        // ── Right: close / undo ───────────────────
+                                                        // ── Close / undo ──────────────────────────
                                                         if (isPending) {
                                                             IconButton({ undoDeleteTab(tabIndex) }) {
                                                                 Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
@@ -2189,6 +2315,9 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
+
+
 
 
 
