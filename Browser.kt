@@ -567,10 +567,8 @@ fun loadFilters(context: Context): List<Filter> {
 // END OF PART 3/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v8] ===
+// === PART 4/10 — Utility Functions [UPDATED v9] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -711,22 +709,18 @@ fun captureThumbnail(webView: WebView): ByteArray? {
 
         val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
-        val srcRect = android.graphics.Rect(0, 0, squareSize, squareSize)
-        val dstRect = android.graphics.Rect(0, 0, outputSize, outputSize)
-        canvas.drawPicture(picture, dstRect)
-        // Crop to top-left square by only drawing that portion
-        bitmap.recycle()
-        
-        // Redraw properly with source clipping
-        val croppedBitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
-        val croppedCanvas = android.graphics.Canvas(croppedBitmap)
-        val cropSrc = android.graphics.Rect(0, 0, squareSize, squareSize)
-        val cropDst = android.graphics.Rect(0, 0, outputSize, outputSize)
-        croppedCanvas.drawPicture(picture, cropDst)
+
+        // Clip to only the top square of the page, then scale
+        canvas.save()
+        canvas.clipRect(0f, 0f, squareSize.toFloat(), squareSize.toFloat())
+        val scale = outputSize.toFloat() / squareSize.toFloat()
+        canvas.scale(scale, scale)
+        canvas.drawPicture(picture)
+        canvas.restore()
 
         val baos = java.io.ByteArrayOutputStream()
-        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos)
-        croppedBitmap.recycle()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos)
+        bitmap.recycle()
         baos.toByteArray()
     } catch (e: Exception) {
         null
@@ -852,43 +846,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
     } catch (e: Exception) {
         null
     }
-}
-
-// ── Thumbnail assurance check ────────────────────────────────────────
-fun findExistingThumbnail(tabs: List<TabState>, url: String, backupFile: File): ByteArray? {
-    val cleanUrl = url.substringBefore("#")
-    val domain = getDomainName(url)
-    
-    // Check live tabs
-    for (tab in tabs) {
-        if (tab.thumbnailBytes != null && getDomainName(tab.url) == domain) {
-            return tab.thumbnailBytes
-        }
-    }
-    
-    // Check backup JSON
-    try {
-        if (backupFile.exists()) {
-            val root = JSONObject(backupFile.readText())
-            val tabsArray = root.optJSONArray("tabs")
-            if (tabsArray != null) {
-                for (i in 0 until tabsArray.length()) {
-                    val obj = tabsArray.getJSONObject(i)
-                    val backupUrl = obj.getString("url")
-                    if (backupUrl.substringBefore("#") == cleanUrl && obj.has("thumbnail")) {
-                        val b64 = obj.getString("thumbnail")
-                        if (b64.isNotEmpty()) {
-                            return try {
-                                android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
-                            } catch (e: Exception) { null }
-                        }
-                    }
-                }
-            }
-        }
-    } catch (e: Exception) { }
-    
-    return null
 }
 
 // END OF PART 4/10
@@ -1141,8 +1098,9 @@ fun GreyBrowser() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v25] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v26] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1174,16 +1132,11 @@ fun GreyBrowser() {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
                 
-                // ── Thumbnail capture at threshold ──────────────────
-                if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS && tabState.thumbnailBytes == null) {
-                    val existing = findExistingThumbnail(tabs, tabState.url, getBackupFile())
-                    if (existing != null) {
-                        tabState.thumbnailBytes = existing
-                    } else {
-                        val bytes = captureThumbnail(view)
-                        if (bytes != null && bytes.isNotEmpty()) {
-                            tabState.thumbnailBytes = bytes
-                        }
+                // ── Thumbnail capture at threshold (always fresh) ────
+                if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
+                    val bytes = captureThumbnail(view)
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        tabState.thumbnailBytes = bytes
                     }
                 }
             }
@@ -1494,7 +1447,7 @@ fun GreyBrowser() {
 
 // END OF PART 6/10
 
-    
+
 
 
 
@@ -1958,7 +1911,7 @@ fun ContentLayer() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — Thumbnails] ===
+// === PART 8f/10 — Tab Manager [UPDATED — 56dp Thumbnails] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -2065,8 +2018,9 @@ fun ContentLayer() {
                             tabListState.scrollToItem(domainIdx)
                             delay(100)
 
+                            // Row height: 14dp padding + 56dp thumbnail + 14dp padding = 84dp
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 56.dp.toPx() }
+                            val tabHeightPx     = with(density) { 84.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
                                 .firstOrNull { it.index == domainIdx }
 
@@ -2154,27 +2108,27 @@ fun ContentLayer() {
                                                     Row(
                                                         Modifier
                                                             .fillMaxWidth()
-                                                            .padding(12.dp)
+                                                            .padding(14.dp)
                                                             .clickable(enabled = !isPending) {
                                                                 currentTabIndex = tabIndex
                                                                 showTabManager = false
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 44dp square ──────────────
+                                                        // ── Thumbnail: 56dp square ──────────────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(44.dp)
+                                                                    .size(56.dp)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
                                                         } else {
                                                             Box(
                                                                 Modifier
-                                                                    .size(44.dp)
+                                                                    .size(56.dp)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2315,7 +2269,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
