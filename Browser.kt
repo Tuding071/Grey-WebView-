@@ -567,8 +567,10 @@ fun loadFilters(context: Context): List<Filter> {
 // END OF PART 3/10
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v9] ===
+// === PART 4/10 — Utility Functions [UPDATED v10] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -704,22 +706,31 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        val squareSize = minOf(width, height)
-        val outputSize = 96
+        // Keep top 75% of page height, full width
+        val cropHeight = (height * 0.75f).toInt()
+        val cropWidth = width
 
-        val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
+        // Output: landscape rectangle, higher resolution for detail
+        val outputWidth = 256
+        val outputHeight = 160
+
+        val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
 
-        // Clip to only the top square of the page, then scale
         canvas.save()
-        canvas.clipRect(0f, 0f, squareSize.toFloat(), squareSize.toFloat())
-        val scale = outputSize.toFloat() / squareSize.toFloat()
+        canvas.clipRect(0f, 0f, cropWidth.toFloat(), cropHeight.toFloat())
+        val scaleX = outputWidth.toFloat() / cropWidth.toFloat()
+        val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
+        val scale = minOf(scaleX, scaleY)
+        val offsetX = (outputWidth - cropWidth * scale) / 2f
+        val offsetY = (outputHeight - cropHeight * scale) / 2f
+        canvas.translate(offsetX, offsetY)
         canvas.scale(scale, scale)
         canvas.drawPicture(picture)
         canvas.restore()
 
         val baos = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
         bitmap.recycle()
         baos.toByteArray()
     } catch (e: Exception) {
@@ -849,6 +860,9 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
+
+
+
 
 
 
@@ -1911,7 +1925,7 @@ fun ContentLayer() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — 56dp Thumbnails] ===
+// === PART 8f/10 — Tab Manager [UPDATED — 120×72dp Thumbnails] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -2018,9 +2032,9 @@ fun ContentLayer() {
                             tabListState.scrollToItem(domainIdx)
                             delay(100)
 
-                            // Row height: 14dp padding + 56dp thumbnail + 14dp padding = 84dp
+                            // Row height: 10dp padding + 72dp thumbnail + 10dp padding = 92dp
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 84.dp.toPx() }
+                            val tabHeightPx     = with(density) { 92.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
                                 .firstOrNull { it.index == domainIdx }
 
@@ -2108,27 +2122,27 @@ fun ContentLayer() {
                                                     Row(
                                                         Modifier
                                                             .fillMaxWidth()
-                                                            .padding(14.dp)
+                                                            .padding(10.dp)
                                                             .clickable(enabled = !isPending) {
                                                                 currentTabIndex = tabIndex
                                                                 showTabManager = false
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 56dp square ──────────────
+                                                        // ── Thumbnail: 120×72dp landscape ────────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(56.dp)
+                                                                    .size(120.dp, 72.dp)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
                                                         } else {
                                                             Box(
                                                                 Modifier
-                                                                    .size(56.dp)
+                                                                    .size(120.dp, 72.dp)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2269,8 +2283,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
