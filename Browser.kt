@@ -1870,6 +1870,7 @@ fun ContentLayer() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8f/10 — Tab Manager ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1891,7 +1892,6 @@ fun ContentLayer() {
                 for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) }
             }
 
-            // Still needed for chip carousel favicons
             LaunchedEffect(Unit) {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
@@ -1925,7 +1925,6 @@ fun ContentLayer() {
                         // ── Scroll / layout state ────────────────────
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
-                        // No stickyHeader means each group is ONE item → index maps 1:1 to domain
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         val domainCount = displayOrder.size
 
@@ -1951,7 +1950,6 @@ fun ContentLayer() {
                             delay(250)
                             val targetUrl    = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            // With no stickyHeader: domain index == item index (1:1)
                             val domainIdx    = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
 
@@ -1961,8 +1959,9 @@ fun ContentLayer() {
                             tabListState.scrollToItem(domainIdx)
                             delay(100)
 
+                            // Row height: 12dp padding + 32dp favicon + 12dp padding = 56dp
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx     = with(density) { 72.dp.toPx() } // taller now: title + domain subtitle
+                            val tabHeightPx     = with(density) { 56.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
                                 .firstOrNull { it.index == domainIdx }
 
@@ -1995,8 +1994,6 @@ fun ContentLayer() {
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    // ── Live touch → chip sync ───────────────────────
-                                    // No stickyHeader means item.index == domain index directly
                                     .pointerInput(displayOrder.toList()) {
                                         fun domainAtY(y: Float): String {
                                             val item = tabListState.layoutInfo.visibleItemsInfo
@@ -2026,11 +2023,8 @@ fun ContentLayer() {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
                                     val isPinned  = pinnedDomains.contains(domain)
 
-                                    // One item per group — no stickyHeader
                                     item(key = domain) {
-                                        Column(
-                                            Modifier.padding(bottom = 48.dp) // doubled from 24dp
-                                        ) {
+                                        Column(Modifier.padding(bottom = 48.dp)) {
                                             groupTabs.forEach { tab ->
                                                 val tabIndex      = tabs.indexOf(tab)
                                                 val isHighlighted = tabIndex == highlightedTabIndex
@@ -2061,9 +2055,32 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Title + domain subtitle ──────────────
+                                                        // ── Left: 32dp circular favicon ──────────
+                                                        if (tabFav != null) {
+                                                            Image(
+                                                                tabFav.asImageBitmap(), tabDomain,
+                                                                Modifier.size(32.dp).clip(CircleShape),
+                                                                contentScale = ContentScale.Fit
+                                                            )
+                                                        } else {
+                                                            Box(
+                                                                Modifier.size(32.dp).clip(CircleShape)
+                                                                    .background(Color.DarkGray),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Text(
+                                                                    tabDomain.take(1).uppercase(),
+                                                                    color = WHITE,
+                                                                    fontSize = 14.sp,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                        }
+
+                                                        Spacer(Modifier.width(12.dp))
+
+                                                        // ── Middle: title + domain ────────────────
                                                         Column(Modifier.weight(1f)) {
-                                                            // Title
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
                                                                 color = WHITE,
@@ -2071,39 +2088,17 @@ fun ContentLayer() {
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Ellipsis
                                                             )
-                                                            Spacer(Modifier.height(4.dp))
-                                                            // Favicon + domain name as subtitle
-                                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                                if (tabFav != null) {
-                                                                    Image(
-                                                                        tabFav.asImageBitmap(), tabDomain,
-                                                                        Modifier.size(12.dp).clip(CircleShape),
-                                                                        contentScale = ContentScale.Fit
-                                                                    )
-                                                                } else {
-                                                                    Box(
-                                                                        Modifier.size(12.dp).clip(CircleShape).background(Color.DarkGray),
-                                                                        contentAlignment = Alignment.Center
-                                                                    ) {
-                                                                        Text(
-                                                                            tabDomain.take(1).uppercase(),
-                                                                            color = WHITE,
-                                                                            fontSize = 6.sp,
-                                                                            fontWeight = FontWeight.Bold
-                                                                        )
-                                                                    }
-                                                                }
-                                                                Spacer(Modifier.width(4.dp))
-                                                                Text(
-                                                                    tabDomain,
-                                                                    color = MUTED.copy(alpha = 0.7f),
-                                                                    fontSize = 11.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis
-                                                                )
-                                                            }
+                                                            Spacer(Modifier.height(2.dp))
+                                                            Text(
+                                                                tabDomain,
+                                                                color = MUTED.copy(alpha = 0.7f),
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
                                                         }
-                                                        // ── Close / undo ────────────────────────
+
+                                                        // ── Right: close / undo ───────────────────
                                                         if (isPending) {
                                                             IconButton({ undoDeleteTab(tabIndex) }) {
                                                                 Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
@@ -2194,7 +2189,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
 
 
 
