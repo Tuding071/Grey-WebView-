@@ -569,12 +569,13 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 4/10 — Utility Functions [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
-const val THUMBNAIL_CAPTURE_PROGRESS = 40
+const val THUMBNAIL_CAPTURE_PROGRESS = 65
 
 fun getDomainName(url: String): String {
     if (url == "about:blank" || url.isBlank()) return ""
@@ -706,11 +707,11 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Keep top 75% of page height, full width — portrait crop
+        // Keep top 75% of page height, full width
         val cropHeight = (height * 0.75f).toInt()
         val cropWidth = width
 
-        // Output: portrait rectangle, high resolution for detail
+        // Output: portrait rectangle, high resolution
         val outputWidth = 288
         val outputHeight = 384
 
@@ -721,10 +722,7 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         canvas.clipRect(0f, 0f, cropWidth.toFloat(), cropHeight.toFloat())
         val scaleX = outputWidth.toFloat() / cropWidth.toFloat()
         val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
-        val scale = minOf(scaleX, scaleY)
-        val offsetX = (outputWidth - cropWidth * scale) / 2f
-        val offsetY = (outputHeight - cropHeight * scale) / 2f
-        canvas.translate(offsetX, offsetY)
+        val scale = maxOf(scaleX, scaleY)  // Fill output, crop excess
         canvas.scale(scale, scale)
         canvas.drawPicture(picture)
         canvas.restore()
@@ -860,7 +858,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
