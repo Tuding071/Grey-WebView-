@@ -571,7 +571,7 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v13] ===
+// === PART 4/10 — Utility Functions [UPDATED v14] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -707,11 +707,14 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Keep top 75%, discard bottom 25%
-        val cropHeight = (height * 0.75f).toInt()
-        val cropWidth = width
+        // Cut top 10%, bottom 30% → keep middle 60%
+        val topCut = (height * 0.10f).toInt()
+        val bottomCut = (height * 0.30f).toInt()
+        val cropTop = topCut
+        val cropBottom = height - bottomCut
+        val cropHeight = cropBottom - cropTop
 
-        // Output: squish to fill
+        // Output: fill frame
         val outputWidth = 320
         val outputHeight = 288
 
@@ -719,10 +722,13 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val canvas = android.graphics.Canvas(bitmap)
 
         canvas.save()
-        canvas.clipRect(0f, 0f, cropWidth.toFloat(), cropHeight.toFloat())
-        val scaleX = outputWidth.toFloat() / cropWidth.toFloat()
+        // Shift so cropTop becomes origin, then clip to middle 60%
+        canvas.translate(0f, -cropTop.toFloat())
+        canvas.clipRect(0f, cropTop.toFloat(), width.toFloat(), cropBottom.toFloat())
+        val scaleX = outputWidth.toFloat() / width.toFloat()
         val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
-        canvas.scale(scaleX, scaleY)  // Independent axes — squish to fill
+        val scale = maxOf(scaleX, scaleY)
+        canvas.scale(scale, scale)
         canvas.drawPicture(picture)
         canvas.restore()
 
@@ -857,7 +863,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
