@@ -569,8 +569,9 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v21] ===
+// === PART 4/10 — Utility Functions [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -656,7 +657,12 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     for (line in rawText.lines()) {
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
-        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
+        // ## and #@# are the cosmetic/exception markers in AdBlock syntax.
+        // Must use contains() not startsWith() — domain-specific rules look
+        // like "youtube.com##.selector" and do NOT start with ##.
+        // Old startsWith("##") check silently dropped all domain rules into
+        // networkRules where they were never used for cosmetic hiding.
+        if (trimmed.contains("##") || trimmed.contains("#@#")) {
             cosmeticRules.add(trimmed)
         } else {
             networkRules.add(trimmed)
@@ -927,8 +933,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
-
 
 
 
