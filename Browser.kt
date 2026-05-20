@@ -569,8 +569,10 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v15] ===
+// === PART 4/10 — Utility Functions [UPDATED v16] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -706,25 +708,24 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Cut top 20%, bottom 40% → keep middle 40%
+        // Cut top 20%, bottom 35% → keep middle 45%
         val topCut = (height * 0.20f).toInt()
-        val bottomCut = (height * 0.40f).toInt()
+        val bottomCut = (height * 0.35f).toInt()
         val cropTop = topCut
         val cropBottom = height - bottomCut
         val cropHeight = cropBottom - cropTop
 
-        // Output
-        val outputWidth = 320
-        val outputHeight = 288
+        // Output: square
+        val outputSize = 288
 
-        val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
 
         canvas.save()
         canvas.translate(0f, -cropTop.toFloat())
         canvas.clipRect(0f, cropTop.toFloat(), width.toFloat(), cropBottom.toFloat())
-        val scaleX = outputWidth.toFloat() / width.toFloat()
-        val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
+        val scaleX = outputSize.toFloat() / width.toFloat()
+        val scaleY = outputSize.toFloat() / cropHeight.toFloat()
         val scale = minOf(scaleX, scaleY)
         canvas.scale(scale, scale)
         canvas.drawPicture(picture)
@@ -861,6 +862,9 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
+
+
+
 
 
 
