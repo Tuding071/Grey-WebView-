@@ -571,7 +571,7 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v11] ===
+// === PART 4/10 — Utility Functions [UPDATED v12] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -711,9 +711,9 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val cropHeight = (height * 0.75f).toInt()
         val cropWidth = width
 
-        // Output: portrait rectangle, high resolution
-        val outputWidth = 288
-        val outputHeight = 384
+        // Output: wider portrait, high resolution (80:72 ratio)
+        val outputWidth = 320
+        val outputHeight = 288
 
         val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
@@ -722,7 +722,7 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         canvas.clipRect(0f, 0f, cropWidth.toFloat(), cropHeight.toFloat())
         val scaleX = outputWidth.toFloat() / cropWidth.toFloat()
         val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
-        val scale = maxOf(scaleX, scaleY)  // Fill output, crop excess
+        val scale = maxOf(scaleX, scaleY)
         canvas.scale(scale, scale)
         canvas.drawPicture(picture)
         canvas.restore()
@@ -858,6 +858,9 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
+
+
+
 
 
 
@@ -1109,7 +1112,7 @@ fun GreyBrowser() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v26] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v27] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1166,6 +1169,30 @@ fun GreyBrowser() {
                 if (url != "about:blank") {
                     tabState.isBlankTab = false
                 }
+                
+                // ── Force dark mode preference ────────────────────
+                wv.evaluateJavascript("""
+                    (function() {
+                        var originalMatchMedia = window.matchMedia;
+                        window.matchMedia = function(query) {
+                            var result = originalMatchMedia(query);
+                            if (query.includes('prefers-color-scheme')) {
+                                return {
+                                    matches: true,
+                                    media: query,
+                                    onchange: null,
+                                    addListener: function(cb) { cb(this); },
+                                    removeListener: function() {},
+                                    addEventListener: function(type, cb) { if (type === 'change') cb(this); },
+                                    removeEventListener: function() {},
+                                    dispatchEvent: function() { return true; }
+                                };
+                            }
+                            return result;
+                        };
+                    })();
+                """.trimIndent(), null)
+                
                 // ── Inject document-start scripts ──────────────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1455,6 +1482,8 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
+
+
 
 
 
@@ -1917,9 +1946,8 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — 54×72dp Portrait Thumbnails] ===
+// === PART 8f/10 — Tab Manager [UPDATED — 80×72dp + 0.8dp border] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -2123,20 +2151,23 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 54×72dp portrait ───────────
+                                                        // ── Thumbnail: 80×72dp with 0.8dp border ──
+                                                        val thumbBorderColor = if (isHighlighted) WHITE else Color.DarkGray
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(54.dp, 72.dp)
+                                                                    .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, thumbBorderColor, RectangleShape)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
                                                         } else {
                                                             Box(
                                                                 Modifier
-                                                                    .size(54.dp, 72.dp)
+                                                                    .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, thumbBorderColor, RectangleShape)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2277,8 +2308,6 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
-
-
 
 
 
