@@ -2160,13 +2160,13 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 80×72dp, 0.8dp border ──────
+                                                        // ── Thumbnail: 120×120dp, 0.8dp border ──────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(80.dp, 72.dp)
+                                                                    .size(120.dp, 120.dp)
                                                                     .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
