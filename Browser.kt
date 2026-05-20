@@ -570,9 +570,8 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v16] ===
+// === PART 4/10 — Utility Functions [UPDATED v17] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -708,12 +707,10 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Cut top 20%, bottom 35% → keep middle 45%
-        val topCut = (height * 0.20f).toInt()
-        val bottomCut = (height * 0.35f).toInt()
-        val cropTop = topCut
-        val cropBottom = height - bottomCut
-        val cropHeight = cropBottom - cropTop
+        // Square crop: page width × page width, starting 20% down
+        val cropSize = width
+        val cropTop = (height * 0.20f).toInt()
+        val cropBottom = minOf(cropTop + cropSize, height)
 
         // Output: square
         val outputSize = 288
@@ -724,9 +721,7 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         canvas.save()
         canvas.translate(0f, -cropTop.toFloat())
         canvas.clipRect(0f, cropTop.toFloat(), width.toFloat(), cropBottom.toFloat())
-        val scaleX = outputSize.toFloat() / width.toFloat()
-        val scaleY = outputSize.toFloat() / cropHeight.toFloat()
-        val scale = minOf(scaleX, scaleY)
+        val scale = outputSize.toFloat() / cropSize.toFloat()
         canvas.scale(scale, scale)
         canvas.drawPicture(picture)
         canvas.restore()
@@ -862,7 +857,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
