@@ -570,7 +570,7 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v10] ===
+// === PART 4/10 — Utility Functions [UPDATED v11] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -706,13 +706,13 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Keep top 75% of page height, full width
+        // Keep top 75% of page height, full width — portrait crop
         val cropHeight = (height * 0.75f).toInt()
         val cropWidth = width
 
-        // Output: landscape rectangle, higher resolution for detail
-        val outputWidth = 256
-        val outputHeight = 160
+        // Output: portrait rectangle, high resolution for detail
+        val outputWidth = 288
+        val outputHeight = 384
 
         val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
@@ -860,8 +860,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
-
 
 
 
@@ -1923,9 +1921,8 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — 120×72dp Thumbnails] ===
+// === PART 8f/10 — Tab Manager [UPDATED — 54×72dp Portrait Thumbnails] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -2129,20 +2126,20 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 120×72dp landscape ────────
+                                                        // ── Thumbnail: 54×72dp portrait ───────────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(120.dp, 72.dp)
+                                                                    .size(54.dp, 72.dp)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
                                                         } else {
                                                             Box(
                                                                 Modifier
-                                                                    .size(120.dp, 72.dp)
+                                                                    .size(54.dp, 72.dp)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2283,6 +2280,7 @@ fun ContentLayer() {
         }
 
 // END OF PART 8f/10
+
 
 
 
