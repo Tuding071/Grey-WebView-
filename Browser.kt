@@ -567,10 +567,8 @@ fun loadFilters(context: Context): List<Filter> {
 // END OF PART 3/10
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v19] ===
+// === PART 4/10 — Utility Functions [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -701,16 +699,16 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
 //
 // Strategy:
-//   1. Draw the visible viewport to a full-size bitmap (no transform tricks)
-//   2. Skip top 15% — clears most site nav/headers
-//   3. Square crop = full viewport width starting from that offset
-//      (centered horizontally if width > remaining height)
-//   4. Scale down to 480×480 output
+//   1. Draw the full visible viewport to a bitmap
+//   2. Cut bottom 10% — removes bottom chrome/nav bar artifacts
+//   3. Squeeze the remaining full-width × 90%-height rectangle
+//      into a square — no side cropping, slight vertical compression
+//   4. Scale to 480×480 output
 //
-// Why draw-then-crop instead of canvas transforms:
-//   Canvas translate/clip/scale chains accumulate floating-point error
-//   and produce misaligned thumbnails. Drawing to a full bitmap first
-//   then doing a simple Bitmap.createBitmap() crop is pixel-perfect.
+// Trade-off vs square-crop approach:
+//   Full page width is always preserved. Video players that span
+//   the full width show completely. Height is compressed ~11%
+//   which is barely noticeable at thumbnail size.
 //
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
@@ -723,24 +721,21 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val fullCanvas = android.graphics.Canvas(fullBitmap)
         webView.draw(fullCanvas)
 
-        // ── Step 2: Header skip — 15% of viewport height ────────────
-        //    Typical nav bar: 56–80dp. 15% of an 800px screen = 120px.
-        //    Safely clears headers without cutting into video content.
-        val skipTop    = (viewportHeight * 0.15f).toInt()
-        val available  = viewportHeight - skipTop   // remaining height below header
+        // ── Step 2: Cut bottom 10% ───────────────────────────────────
+        //    Removes bottom nav bar, partial footer lines, system gesture
+        //    area that bleeds into the viewport on some devices.
+        val keepHeight = (viewportHeight * 0.90f).toInt()
 
-        // ── Step 3: Square crop — full width, centered ──────────────
-        val squareSize = minOf(viewportWidth, available)
-        val cropLeft   = (viewportWidth - squareSize) / 2  // center if width < available
-
-        val croppedBitmap = Bitmap.createBitmap(
-            fullBitmap, cropLeft, skipTop, squareSize, squareSize
-        )
+        // ── Step 3: Crop to kept region (full width × 90% height) ───
+        val croppedBitmap = Bitmap.createBitmap(fullBitmap, 0, 0, viewportWidth, keepHeight)
         fullBitmap.recycle()
 
-        // ── Step 4: Scale to output size ────────────────────────────
-        val outputSize    = 480
-        val scaledBitmap  = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
+        // ── Step 4: Squeeze to square ────────────────────────────────
+        //    createScaledBitmap stretches to outputSize × outputSize.
+        //    Full width preserved, height compressed to fit — slight
+        //    vertical squeeze, but full page content visible.
+        val outputSize   = 480
+        val scaledBitmap = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
         croppedBitmap.recycle()
 
         val baos = java.io.ByteArrayOutputStream()
