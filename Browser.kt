@@ -567,6 +567,9 @@ fun loadFilters(context: Context): List<Filter> {
 // END OF PART 3/10
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════
 // === PART 4/10 — Utility Functions [UPDATED v20] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -696,46 +699,94 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
+// ── Cosmetic Filter CSS Builder ──────────────────────────────────────
+fun buildCosmeticCSS(cosmeticRules: List<String>, currentUrl: String): String {
+    val selectors = mutableListOf<String>()
+    val currentDomain = getDomainName(currentUrl)
+    val currentHost = try { Uri.parse(currentUrl).host ?: "" } catch (e: Exception) { "" }
+
+    for (rule in cosmeticRules) {
+        val trimmed = rule.trim()
+        if (trimmed.isEmpty()) continue
+
+        when {
+            // Exception rule: #@#selector → remove matching selector
+            trimmed.startsWith("#@#") -> {
+                val selector = trimmed.removePrefix("#@#")
+                selectors.remove(selector)
+            }
+            // Scriptlet injection: ##+js(...) → skip for now
+            trimmed.startsWith("##+js") -> {
+                // Future: scriptlet engine support
+            }
+            // Domain-specific: domain.com##selector
+            trimmed.contains("##") && !trimmed.startsWith("##") -> {
+                val parts = trimmed.split("##", limit = 2)
+                if (parts.size < 2) continue
+                val domainsPart = parts[0]
+                val selector = parts[1]
+                if (selector.isBlank()) continue
+
+                val domains = domainsPart.split(",")
+                var applies = false
+                for (domain in domains) {
+                    val d = domain.trim()
+                    if (d.startsWith("~")) {
+                        // Exclude domain: ~example.com##selector
+                        val excluded = d.removePrefix("~")
+                        if (currentDomain == excluded || currentHost == excluded) {
+                            applies = false
+                            break
+                        }
+                        applies = true
+                    } else {
+                        // Include domain
+                        if (currentDomain == d || currentHost == d || currentHost?.endsWith(".$d") == true) {
+                            applies = true
+                        }
+                    }
+                }
+                if (applies && selector !in selectors) {
+                    selectors.add(selector)
+                }
+            }
+            // Universal: ##selector
+            trimmed.startsWith("##") -> {
+                val selector = trimmed.removePrefix("##")
+                if (selector.isNotBlank() && selector !in selectors) {
+                    selectors.add(selector)
+                }
+            }
+        }
+    }
+
+    if (selectors.isEmpty()) return ""
+    return selectors.joinToString(", ") { it } + " { display: none !important; }"
+}
+
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
-//
-// Strategy:
-//   1. Draw the full visible viewport to a bitmap
-//   2. Cut bottom 10% — removes bottom chrome/nav bar artifacts
-//   3. Squeeze the remaining full-width × 90%-height rectangle
-//      into a square — no side cropping, slight vertical compression
-//   4. Scale to 480×480 output
-//
-// Trade-off vs square-crop approach:
-//   Full page width is always preserved. Video players that span
-//   the full width show completely. Height is compressed ~11%
-//   which is barely noticeable at thumbnail size.
-//
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
         val viewportWidth  = webView.width
         val viewportHeight = webView.height
         if (viewportWidth <= 0 || viewportHeight <= 0) return null
 
-        // ── Step 1: Draw full visible viewport ──────────────────────
         val fullBitmap = Bitmap.createBitmap(viewportWidth, viewportHeight, Bitmap.Config.ARGB_8888)
         val fullCanvas = android.graphics.Canvas(fullBitmap)
         webView.draw(fullCanvas)
 
-        // ── Step 2: Cut bottom 10% ───────────────────────────────────
-        //    Removes bottom nav bar, partial footer lines, system gesture
-        //    area that bleeds into the viewport on some devices.
-        val keepHeight = (viewportHeight * 0.90f).toInt()
+        val skipTop    = (viewportHeight * 0.15f).toInt()
+        val available  = viewportHeight - skipTop
+        val squareSize = minOf(viewportWidth, available)
+        val cropLeft   = (viewportWidth - squareSize) / 2
 
-        // ── Step 3: Crop to kept region (full width × 90% height) ───
-        val croppedBitmap = Bitmap.createBitmap(fullBitmap, 0, 0, viewportWidth, keepHeight)
+        val croppedBitmap = Bitmap.createBitmap(
+            fullBitmap, cropLeft, skipTop, squareSize, squareSize
+        )
         fullBitmap.recycle()
 
-        // ── Step 4: Squeeze to square ────────────────────────────────
-        //    createScaledBitmap stretches to outputSize × outputSize.
-        //    Full width preserved, height compressed to fit — slight
-        //    vertical squeeze, but full page content visible.
-        val outputSize   = 480
-        val scaledBitmap = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
+        val outputSize    = 480
+        val scaledBitmap  = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
         croppedBitmap.recycle()
 
         val baos = java.io.ByteArrayOutputStream()
@@ -768,7 +819,6 @@ fun exportBackup(
     try {
         val root = JSONObject()
 
-        // Tabs
         val tabsArray = JSONArray()
         for (tab in tabs) {
             if (!tab.isBlankTab) {
@@ -784,7 +834,6 @@ fun exportBackup(
         }
         root.put("tabs", tabsArray)
 
-        // History
         val historyArray = JSONArray()
         for (h in history) {
             val obj = JSONObject()
@@ -795,7 +844,6 @@ fun exportBackup(
         }
         root.put("history", historyArray)
 
-        // Bookmarks
         val bookmarksArray = JSONArray()
         for (b in bookmarks) {
             val obj = JSONObject()
@@ -808,9 +856,7 @@ fun exportBackup(
         root.put("bookmarks", bookmarksArray)
 
         getBackupFile().writeText(root.toString(1))
-    } catch (e: Exception) {
-        // Silently fail — backup is non-critical
-    }
+    } catch (e: Exception) { }
 }
 
 fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, List<Bookmark>>? {
@@ -1121,8 +1167,11 @@ fun GreyBrowser() {
 
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v27] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v28] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1233,6 +1282,45 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
+                
+                // ── Cosmetic filter CSS injection ──────────────────
+                if (filtersEnabled) {
+                    val allCosmeticRules = filters
+                        .filter { it.enabled }
+                        .flatMap { it.cosmeticRules }
+                    val cosmeticCSS = buildCosmeticCSS(allCosmeticRules, url)
+                    if (cosmeticCSS.isNotEmpty()) {
+                        val escapedCSS = cosmeticCSS
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'")
+                            .replace("\n", " ")
+                        wv.evaluateJavascript("""
+                            (function() {
+                                var COSMETIC_CSS = '$escapedCSS';
+                                
+                                function injectCSS() {
+                                    var existing = document.getElementById('grey-cosmetic');
+                                    if (!existing) {
+                                        var style = document.createElement('style');
+                                        style.id = 'grey-cosmetic';
+                                        style.textContent = COSMETIC_CSS;
+                                        (document.head || document.documentElement).appendChild(style);
+                                    }
+                                }
+                                
+                                injectCSS();
+                                
+                                var debounceTimer = null;
+                                var observer = new MutationObserver(function() {
+                                    if (debounceTimer) clearTimeout(debounceTimer);
+                                    debounceTimer = setTimeout(injectCSS, 500);
+                                });
+                                observer.observe(document.documentElement, { childList: true, subtree: true });
+                            })();
+                        """.trimIndent(), null)
+                    }
+                }
+                
                 // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1318,12 +1406,10 @@ fun GreyBrowser() {
         if (oldIndex >= 0) {
             tabs[oldIndex].webView?.destroy()
             tabs.removeAt(oldIndex)
-            // Fix parent references
             for (t in tabs) {
                 if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
                 else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
             }
-            // Adjust indices
             if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
             if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
             val updated = mutableMapOf<Int, Long>()
@@ -1492,7 +1578,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
 
 
 
@@ -2160,13 +2245,13 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 120×120dp, 0.8dp border ──────
+                                                        // ── Thumbnail: 80×72dp, 0.8dp border ──────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
-                                                                    .size(120.dp, 120.dp)
+                                                                    .size(80.dp, 72.dp)
                                                                     .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
