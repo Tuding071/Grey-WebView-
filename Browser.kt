@@ -569,9 +569,8 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v17] ===
+// === PART 4/10 — Utility Functions [UPDATED v18] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -702,28 +701,33 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
-        val picture = webView.capturePicture()
-        val width = picture.width
-        val height = picture.height
-        if (width <= 0 || height <= 0) return null
+        val viewportWidth = webView.width
+        val viewportHeight = webView.height
+        if (viewportWidth <= 0 || viewportHeight <= 0) return null
 
-        // Square crop: page width × page width, starting 20% down
-        val cropSize = width
-        val cropTop = (height * 0.20f).toInt()
-        val cropBottom = minOf(cropTop + cropSize, height)
+        // Viewport-based crop: skip top 20%, bottom 35%, keep middle 45%
+        val stripTop = (viewportHeight * 0.20f).toInt()
+        val stripBottom = (viewportHeight * 0.65f).toInt()
+        val stripHeight = stripBottom - stripTop
 
-        // Output: square
+        // Square from the viewport strip
+        val cropSize = minOf(viewportWidth, stripHeight)
+        val cropLeft = (viewportWidth - cropSize) / 2
+
         val outputSize = 288
 
         val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
 
         canvas.save()
-        canvas.translate(0f, -cropTop.toFloat())
-        canvas.clipRect(0f, cropTop.toFloat(), width.toFloat(), cropBottom.toFloat())
+        canvas.translate(-cropLeft.toFloat(), -stripTop.toFloat())
+        canvas.clipRect(
+            cropLeft.toFloat(), stripTop.toFloat(),
+            (cropLeft + cropSize).toFloat(), stripBottom.toFloat()
+        )
         val scale = outputSize.toFloat() / cropSize.toFloat()
         canvas.scale(scale, scale)
-        canvas.drawPicture(picture)
+        webView.draw(canvas)
         canvas.restore()
 
         val baos = java.io.ByteArrayOutputStream()
