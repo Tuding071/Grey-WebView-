@@ -571,7 +571,7 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v12] ===
+// === PART 4/10 — Utility Functions [UPDATED v13] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -707,11 +707,11 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         val height = picture.height
         if (width <= 0 || height <= 0) return null
 
-        // Keep top 75% of page height, full width
+        // Keep top 75%, discard bottom 25%
         val cropHeight = (height * 0.75f).toInt()
         val cropWidth = width
 
-        // Output: wider portrait, high resolution (80:72 ratio)
+        // Output: squish to fill
         val outputWidth = 320
         val outputHeight = 288
 
@@ -722,8 +722,7 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         canvas.clipRect(0f, 0f, cropWidth.toFloat(), cropHeight.toFloat())
         val scaleX = outputWidth.toFloat() / cropWidth.toFloat()
         val scaleY = outputHeight.toFloat() / cropHeight.toFloat()
-        val scale = maxOf(scaleX, scaleY)
-        canvas.scale(scale, scale)
+        canvas.scale(scaleX, scaleY)  // Independent axes — squish to fill
         canvas.drawPicture(picture)
         canvas.restore()
 
@@ -858,7 +857,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
@@ -1945,9 +1943,8 @@ fun ContentLayer() {
 // END OF PART 8e/10
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — 80×72dp + 0.8dp border] ===
+// === PART 8f/10 — Tab Manager [UPDATED — uniform thumbnail border] ===
 // ═══════════════════════════════════════════════════════════════════
 
         // ── Tab Manager ────────────────────────────────────────────
@@ -2151,15 +2148,14 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 80×72dp with 0.8dp border ──
-                                                        val thumbBorderColor = if (isHighlighted) WHITE else Color.DarkGray
+                                                        // ── Thumbnail: 80×72dp, 0.8dp border ──────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
                                                                 "Thumbnail",
                                                                 Modifier
                                                                     .size(80.dp, 72.dp)
-                                                                    .border(0.8.dp, thumbBorderColor, RectangleShape)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
@@ -2167,7 +2163,7 @@ fun ContentLayer() {
                                                             Box(
                                                                 Modifier
                                                                     .size(80.dp, 72.dp)
-                                                                    .border(0.8.dp, thumbBorderColor, RectangleShape)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
