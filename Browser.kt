@@ -570,7 +570,7 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v18] ===
+// === PART 4/10 — Utility Functions [UPDATED v19] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -699,41 +699,55 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
 }
 
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
+//
+// Strategy:
+//   1. Draw the visible viewport to a full-size bitmap (no transform tricks)
+//   2. Skip top 15% — clears most site nav/headers
+//   3. Square crop = full viewport width starting from that offset
+//      (centered horizontally if width > remaining height)
+//   4. Scale down to 480×480 output
+//
+// Why draw-then-crop instead of canvas transforms:
+//   Canvas translate/clip/scale chains accumulate floating-point error
+//   and produce misaligned thumbnails. Drawing to a full bitmap first
+//   then doing a simple Bitmap.createBitmap() crop is pixel-perfect.
+//
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
-        val viewportWidth = webView.width
+        val viewportWidth  = webView.width
         val viewportHeight = webView.height
         if (viewportWidth <= 0 || viewportHeight <= 0) return null
 
-        // Viewport-based crop: skip top 20%, bottom 35%, keep middle 45%
-        val stripTop = (viewportHeight * 0.20f).toInt()
-        val stripBottom = (viewportHeight * 0.65f).toInt()
-        val stripHeight = stripBottom - stripTop
+        // ── Step 1: Draw full visible viewport ──────────────────────
+        val fullBitmap = Bitmap.createBitmap(viewportWidth, viewportHeight, Bitmap.Config.ARGB_8888)
+        val fullCanvas = android.graphics.Canvas(fullBitmap)
+        webView.draw(fullCanvas)
 
-        // Square from the viewport strip
-        val cropSize = minOf(viewportWidth, stripHeight)
-        val cropLeft = (viewportWidth - cropSize) / 2
+        // ── Step 2: Header skip — 15% of viewport height ────────────
+        //    Typical nav bar: 56–80dp. 15% of an 800px screen = 120px.
+        //    Safely clears headers without cutting into video content.
+        val skipTop    = (viewportHeight * 0.15f).toInt()
+        val available  = viewportHeight - skipTop   // remaining height below header
 
-        val outputSize = 288
+        // ── Step 3: Square crop — full width, centered ──────────────
+        val squareSize = minOf(viewportWidth, available)
+        val cropLeft   = (viewportWidth - squareSize) / 2  // center if width < available
 
-        val bitmap = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(bitmap)
-
-        canvas.save()
-        canvas.translate(-cropLeft.toFloat(), -stripTop.toFloat())
-        canvas.clipRect(
-            cropLeft.toFloat(), stripTop.toFloat(),
-            (cropLeft + cropSize).toFloat(), stripBottom.toFloat()
+        val croppedBitmap = Bitmap.createBitmap(
+            fullBitmap, cropLeft, skipTop, squareSize, squareSize
         )
-        val scale = outputSize.toFloat() / cropSize.toFloat()
-        canvas.scale(scale, scale)
-        webView.draw(canvas)
-        canvas.restore()
+        fullBitmap.recycle()
+
+        // ── Step 4: Scale to output size ────────────────────────────
+        val outputSize    = 480
+        val scaledBitmap  = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
+        croppedBitmap.recycle()
 
         val baos = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
-        bitmap.recycle()
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+        scaledBitmap.recycle()
         baos.toByteArray()
+
     } catch (e: Exception) {
         null
     }
