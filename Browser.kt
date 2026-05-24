@@ -333,10 +333,8 @@ object FaviconCache {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v8] ===
+// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v7] ===
 // ═══════════════════════════════════════════════════════════════════
 
 data class Bookmark(
@@ -570,8 +568,9 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v23] ===
+// === PART 4/10 — Utility Functions [UPDATED v21] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -657,10 +656,16 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     for (line in rawText.lines()) {
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
-        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js") || trimmed.contains("##")) {
-            cosmeticRules.add(trimmed)
-        } else {
-            networkRules.add(trimmed)
+        when {
+            // Scriptlets — skip (complex, needs JS engine)
+            trimmed.startsWith("##+js") || trimmed.contains("##+js") -> continue
+            // Exception cosmetic, global cosmetic, domain cosmetic
+            trimmed.startsWith("#@#") ||
+            trimmed.startsWith("##") ||
+            trimmed.contains("##") ||
+            trimmed.contains("#@#") -> cosmeticRules.add(trimmed)
+            // Everything else = network rule
+            else -> networkRules.add(trimmed)
         }
     }
     return Pair(networkRules, cosmeticRules)
@@ -699,81 +704,15 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
-// ── Procedural Selector Detection ────────────────────────────────────
-fun isProceduralSelector(selector: String): Boolean {
-    val proceduralTokens = listOf(
-        ":has-text(", ":upward(", ":xpath(", ":min-text-length(",
-        ":matches-css(", ":remove(", ":style("
-    )
-    for (token in proceduralTokens) {
-        if (token in selector) return true
-    }
-    return false
-}
-
-// ── Cosmetic Filter CSS Builder ──────────────────────────────────────
-fun buildCosmeticCSS(cosmeticRules: List<String>, currentUrl: String): String {
-    val selectors = mutableListOf<String>()
-    val currentDomain = getDomainName(currentUrl)
-    val currentHost = try { Uri.parse(currentUrl).host ?: "" } catch (e: Exception) { "" }
-
-    for (rule in cosmeticRules) {
-        val trimmed = rule.trim()
-        if (trimmed.isEmpty()) continue
-
-        when {
-            // Exception rule: #@#selector → remove matching selector
-            trimmed.startsWith("#@#") -> {
-                val selector = trimmed.removePrefix("#@#")
-                selectors.remove(selector)
-            }
-            // Scriptlet injection: ##+js(...) → skip
-            trimmed.startsWith("##+js") -> { }
-            // Domain-specific: domain.com##selector
-            trimmed.contains("##") && !trimmed.startsWith("##") -> {
-                val parts = trimmed.split("##", limit = 2)
-                if (parts.size < 2) continue
-                val domainsPart = parts[0]
-                val selector = parts[1]
-                if (selector.isBlank()) continue
-                if (isProceduralSelector(selector)) continue
-
-                val domains = domainsPart.split(",")
-                var applies = false
-                for (domain in domains) {
-                    val d = domain.trim()
-                    if (d.startsWith("~")) {
-                        val excluded = d.removePrefix("~")
-                        if (currentDomain == excluded || currentHost == excluded) {
-                            applies = false
-                            break
-                        }
-                        applies = true
-                    } else {
-                        if (currentDomain == d || currentHost == d || currentHost?.endsWith(".$d") == true) {
-                            applies = true
-                        }
-                    }
-                }
-                if (applies && selector !in selectors) {
-                    selectors.add(selector)
-                }
-            }
-            // Universal: ##selector
-            trimmed.startsWith("##") -> {
-                val selector = trimmed.removePrefix("##")
-                if (selector.isNotBlank() && !isProceduralSelector(selector) && selector !in selectors) {
-                    selectors.add(selector)
-                }
-            }
-        }
-    }
-
-    if (selectors.isEmpty()) return ""
-    return selectors.joinToString(", ") { it } + " { display: none !important; }"
-}
-
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
+//
+// Strategy:
+//   1. Draw the full visible viewport to a bitmap
+//   2. Cut bottom 10% — removes bottom chrome/nav bar artifacts
+//   3. Squeeze the remaining full-width × 90%-height rectangle
+//      into a square — no side cropping, slight vertical compression
+//   4. Scale to 480×480 output
+//
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
         val viewportWidth  = webView.width
@@ -796,6 +735,7 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
         scaledBitmap.recycle()
         baos.toByteArray()
+
     } catch (e: Exception) {
         null
     }
@@ -918,7 +858,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
@@ -1168,10 +1107,8 @@ fun GreyBrowser() {
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v29] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v28] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1202,7 +1139,7 @@ fun GreyBrowser() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
-
+                
                 // ── Thumbnail capture at threshold (always fresh) ────
                 if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
                     val bytes = captureThumbnail(view)
@@ -1228,7 +1165,7 @@ fun GreyBrowser() {
                 if (url != "about:blank") {
                     tabState.isBlankTab = false
                 }
-
+                
                 // ── Force dark mode preference ────────────────────
                 wv.evaluateJavascript("""
                     (function() {
@@ -1251,7 +1188,7 @@ fun GreyBrowser() {
                         };
                     })();
                 """.trimIndent(), null)
-
+                
                 // ── Inject document-start scripts ──────────────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1282,39 +1219,64 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
+                
+                // ── Inject cosmetic filter rules ──────────────────
+                if (filtersEnabled && url != "about:blank") {
+                    val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
+                    val selectors = mutableListOf<String>()
+                    val exceptions = mutableSetOf<String>()
 
-                // ── Cosmetic filter CSS injection ──────────────────
-                if (filtersEnabled) {
-                    val allCosmeticRules = filters
-                        .filter { it.enabled }
-                        .flatMap { it.cosmeticRules }
-                    val cosmeticCSS = buildCosmeticCSS(allCosmeticRules, url)
-                    if (cosmeticCSS.isNotEmpty()) {
-                        val b64 = android.util.Base64.encodeToString(
-                            cosmeticCSS.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.NO_WRAP
-                        )
-                        wv.evaluateJavascript("""
-                            (function() {
-                                var css = atob('$b64');
-                                var STYLE_ID = 'veil-cosmetic';
-                                function injectCSS() {
-                                    if (!document.getElementById(STYLE_ID)) {
-                                        var s = document.createElement('style');
-                                        s.id = STYLE_ID;
-                                        s.textContent = css;
-                                        (document.head || document.documentElement).appendChild(s);
+                    for (filter in filters) {
+                        if (!filter.enabled) continue
+                        for (rule in filter.cosmeticRules) {
+                            val t = rule.trim()
+                            when {
+                                // Global exception: #@#selector
+                                t.startsWith("#@#") -> exceptions.add(t.removePrefix("#@#").trim())
+                                // Domain exception: example.com#@#selector
+                                t.contains("#@#") -> exceptions.add(t.substringAfter("#@#").trim())
+                                // Global cosmetic: ##selector
+                                t.startsWith("##") -> selectors.add(t.removePrefix("##").trim())
+                                // Domain cosmetic: example.com##selector
+                                t.contains("##") -> {
+                                    val domain = t.substringBefore("##").trim()
+                                        .split(",")
+                                        .map { it.trim().removePrefix("~").removePrefix("www.") }
+                                    val sel = t.substringAfter("##").trim()
+                                    if (domain.any { d -> pageHost == d || pageHost.endsWith(".$d") }) {
+                                        selectors.add(sel)
                                     }
                                 }
-                                injectCSS();
-                                new MutationObserver(function() {
-                                    if (!document.getElementById(STYLE_ID)) injectCSS();
-                                }).observe(document.documentElement, { childList: true, subtree: true });
+                            }
+                        }
+                    }
+
+                    selectors.removeAll { it in exceptions }
+
+                    if (selectors.isNotEmpty()) {
+                        val css = selectors
+                            .filter { it.isNotBlank() }
+                            .joinToString(",\n") +
+                            "\n{ display:none!important; visibility:hidden!important; }"
+                        
+                        val escaped = css
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'")
+                            .replace("\n", "\\n")
+                        
+                        wv.evaluateJavascript("""
+                            (function() {
+                                var existing = document.getElementById('grey-cosm');
+                                if (existing) existing.remove();
+                                var s = document.createElement('style');
+                                s.id = 'grey-cosm';
+                                s.textContent = '$escaped';
+                                (document.head || document.documentElement).appendChild(s);
                             })();
                         """.trimIndent(), null)
                     }
                 }
-
+                
                 // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1572,7 +1534,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
 
 
 
@@ -3869,10 +3830,8 @@ for debugging via remote DevTools.
 
 
 
-
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 13/13 — Filters Manager + Import Dialog ===
+// === PART 13/13 — Filters Manager + Import Dialog [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
 
 @Composable
@@ -3899,7 +3858,7 @@ fun FiltersManagerScreen(
                 Column {
                     Text(f.name, color = WHITE, fontSize = 14.sp)
                     Text("${f.networkRuleCount} network rules", color = MUTED, fontSize = 12.sp)
-                    Text("${f.cosmeticRuleCount} cosmetic (skipped)", color = MUTED, fontSize = 12.sp)
+                    Text("${f.cosmeticRuleCount} cosmetic rules", color = MUTED, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("This cannot be undone.", color = MUTED, fontSize = 14.sp)
                 }
@@ -4037,7 +3996,7 @@ fun FiltersManagerScreen(
                                                 fontSize = 11.sp
                                             )
                                             Text(
-                                                "${filter.cosmeticRuleCount} cosmetic (skipped)",
+                                                "${filter.cosmeticRuleCount} cosmetic rules",
                                                 color = MUTED.copy(alpha = 0.7f),
                                                 fontSize = 11.sp
                                             )
@@ -4199,3 +4158,6 @@ fun FilterImportDialog(
 }
 
 // END OF PART 13/13
+
+
+
