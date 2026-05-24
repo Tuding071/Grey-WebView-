@@ -2443,7 +2443,6 @@ fun ContentLayer() {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 8g/10 — Main Layout, Top Bar, ContentLayer, Toast [UPDATED] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -2610,7 +2609,6 @@ fun ContentLayer() {
                                         showElementHider = !showElementHider
                                         val wv = currentTab?.webView
                                         if (showElementHider && wv != null) {
-                                            // Inject element picker JS
                                             wv.evaluateJavascript("""
                                                 (function() {
                                                     if (window.__GREY_PICKER__) return;
@@ -2618,16 +2616,17 @@ fun ContentLayer() {
                                                     
                                                     var current = document.body;
                                                     var highlight = null;
+                                                    var currentView = 'picker';
                                                     
                                                     function createHighlight() {
                                                         var h = document.createElement('div');
                                                         h.id = 'gp-highlight';
                                                         Object.assign(h.style, {
-                                                            position: 'fixed', pointerEvents: 'none',
+                                                            position: 'absolute', pointerEvents: 'none',
                                                             zIndex: '2147483646', border: '2px solid #FF4444',
                                                             background: 'rgba(255,68,68,0.25)',
                                                             borderRadius: '0px', transition: 'all 0.12s ease',
-                                                            boxSizing: 'border-box'
+                                                            boxSizing: 'border-box', top: '0', left: '0'
                                                         });
                                                         document.body.appendChild(h);
                                                         return h;
@@ -2638,8 +2637,10 @@ fun ContentLayer() {
                                                         if (!highlight) highlight = createHighlight();
                                                         var r = el.getBoundingClientRect();
                                                         Object.assign(highlight.style, {
-                                                            top: r.top + 'px', left: r.left + 'px',
-                                                            width: r.width + 'px', height: r.height + 'px',
+                                                            top: (r.top + window.scrollY) + 'px',
+                                                            left: (r.left + window.scrollX) + 'px',
+                                                            width: r.width + 'px',
+                                                            height: r.height + 'px',
                                                             display: 'block'
                                                         });
                                                     }
@@ -2681,77 +2682,198 @@ fun ContentLayer() {
                                                         if (ruleEl) ruleEl.textContent = buildRule(el);
                                                     }
                                                     
+                                                    function showPickerView() {
+                                                        currentView = 'picker';
+                                                        document.getElementById('gp-panel-body').innerHTML = 
+                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
+                                                            '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
+                                                            '<button id="gp-child" class="gp-btn">Child ▶</button>' +
+                                                            '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
+                                                            '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
+                                                            '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
+                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
+                                                            '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
+                                                            '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
+                                                            '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
+                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
+                                                            '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
+                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
+                                                            '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
+                                                            '<button id="gp-rules-btn" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
+                                                            '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
+                                                        bindPickerEvents();
+                                                        update(current);
+                                                    }
+                                                    
+                                                    function showRulesView(rules) {
+                                                        currentView = 'rules';
+                                                        var html = '<div style="max-height:350px;overflow-y:auto;margin-bottom:8px">';
+                                                        var domains = {};
+                                                        rules.forEach(function(r) {
+                                                            if (!domains[r.domain]) domains[r.domain] = [];
+                                                            domains[r.domain].push(r);
+                                                        });
+                                                        var sortedDomains = Object.keys(domains).sort(function(a, b) {
+                                                            var aMax = Math.max.apply(null, domains[a].map(function(r) { return r.timestamp || 0; }));
+                                                            var bMax = Math.max.apply(null, domains[b].map(function(r) { return r.timestamp || 0; }));
+                                                            return bMax - aMax;
+                                                        });
+                                                        if (sortedDomains.length === 0) {
+                                                            html += '<div style="color:#888;text-align:center;padding:20px">No rules saved yet</div>';
+                                                        } else {
+                                                            sortedDomains.forEach(function(domain) {
+                                                                html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
+                                                                var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+                                                                domainRules.forEach(function(r) {
+                                                                    var checked = r.enabled ? 'checked' : '';
+                                                                    var color = r.enabled ? '#FFF' : '#666';
+                                                                    html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
+                                                                        '<input type="checkbox" ' + checked + ' style="accent-color:#4ADE80;margin-right:8px;cursor:pointer" onchange="GreyPicker.onToggleRule(\'' + r.id + '\', this.checked)">' +
+                                                                        '<span style="color:' + color + ';flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
+                                                                        '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
+                                                                        '</div>';
+                                                                });
+                                                            });
+                                                        }
+                                                        html += '</div>' +
+                                                            '<button id="gp-back" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;width:100%">← Back to Picker</button>';
+                                                        document.getElementById('gp-panel-body').innerHTML = html;
+                                                        document.getElementById('gp-back').addEventListener('click', function() {
+                                                            showPickerView();
+                                                        });
+                                                    }
+                                                    
+                                                    function bindPickerEvents() {
+                                                        document.getElementById('gp-parent').addEventListener('click', function() {
+                                                            var p = current.parentElement;
+                                                            if (validEl(p) && p !== document.documentElement) update(p);
+                                                        });
+                                                        document.getElementById('gp-child').addEventListener('click', function() {
+                                                            var c = current.firstElementChild;
+                                                            if (validEl(c)) update(c);
+                                                        });
+                                                        document.getElementById('gp-prev').addEventListener('click', function() {
+                                                            var s = current.previousElementSibling;
+                                                            while (s && !validEl(s)) s = s.previousElementSibling;
+                                                            if (s) update(s);
+                                                        });
+                                                        document.getElementById('gp-next').addEventListener('click', function() {
+                                                            var s = current.nextElementSibling;
+                                                            while (s && !validEl(s)) s = s.nextElementSibling;
+                                                            if (s) update(s);
+                                                        });
+                                                        document.getElementById('gp-save').addEventListener('click', function() {
+                                                            var rule = buildRule(current);
+                                                            if (rule) {
+                                                                GreyPicker.onRuleGenerated(rule);
+                                                                document.getElementById('gp-msg').textContent = '✓ Saved!';
+                                                            }
+                                                        });
+                                                        document.getElementById('gp-rules-btn').addEventListener('click', function() {
+                                                            GreyPicker.onShowRules();
+                                                        });
+                                                    }
+                                                    
+                                                    // Create panel
                                                     var panel = document.createElement('div');
                                                     panel.id = 'gp-panel';
                                                     Object.assign(panel.style, {
                                                         position: 'fixed', bottom: '16px', right: '12px',
                                                         background: '#1E1E1E', color: '#FFFFFF',
-                                                        padding: '12px', borderRadius: '0px',
-                                                        zIndex: '2147483647', fontSize: '11px',
-                                                        fontFamily: 'monospace', width: '290px',
-                                                        boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
+                                                        borderRadius: '0px', zIndex: '2147483647',
+                                                        fontSize: '11px', fontFamily: 'monospace',
+                                                        width: '290px', boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
                                                         userSelect: 'none', border: '1px solid #333333'
                                                     });
                                                     
-                                                    panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-                                                        '<span style="font-weight:bold;color:#FF4444;font-size:13px">⬡ Element Picker</span>' +
+                                                    panel.innerHTML = 
+                                                        '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
+                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span>' +
                                                         '<button id="gp-close" style="background:transparent;border:none;color:#888;font-size:16px;cursor:pointer;padding:0 2px">✕</button></div>' +
-                                                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
-                                                        '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
-                                                        '<button id="gp-child" class="gp-btn">Child ▶</button>' +
-                                                        '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
-                                                        '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
-                                                        '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
-                                                        '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
-                                                        '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
-                                                        '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
-                                                        '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
-                                                        '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
-                                                        '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
-                                                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
-                                                        '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
-                                                        '<button id="gp-rules" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
-                                                        '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
-                                                    
-                                                    document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
+                                                        '<div id="gp-panel-body" style="padding:12px"></div>';
                                                     document.body.appendChild(panel);
                                                     
+                                                    document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
+                                                    
+                                                    // Draggable header
+                                                    var header = document.getElementById('gp-header');
+                                                    var isDragging = false;
+                                                    var startX, startY, panelLeft, panelTop;
+                                                    
+                                                    header.addEventListener('touchstart', function(e) {
+                                                        if (e.target === document.getElementById('gp-close')) return;
+                                                        isDragging = true;
+                                                        startX = e.touches[0].clientX;
+                                                        startY = e.touches[0].clientY;
+                                                        panelLeft = panel.offsetLeft;
+                                                        panelTop = panel.offsetTop;
+                                                        header.style.cursor = 'grabbing';
+                                                        e.preventDefault();
+                                                    });
+                                                    
+                                                    header.addEventListener('mousedown', function(e) {
+                                                        if (e.target === document.getElementById('gp-close')) return;
+                                                        isDragging = true;
+                                                        startX = e.clientX;
+                                                        startY = e.clientY;
+                                                        panelLeft = panel.offsetLeft;
+                                                        panelTop = panel.offsetTop;
+                                                        header.style.cursor = 'grabbing';
+                                                        e.preventDefault();
+                                                    });
+                                                    
+                                                    window.addEventListener('touchmove', function(e) {
+                                                        if (!isDragging) return;
+                                                        var dx = e.touches[0].clientX - startX;
+                                                        var dy = e.touches[0].clientY - startY;
+                                                        panel.style.right = 'auto';
+                                                        panel.style.bottom = 'auto';
+                                                        panel.style.left = (panelLeft + dx) + 'px';
+                                                        panel.style.top = (panelTop + dy) + 'px';
+                                                    });
+                                                    
+                                                    window.addEventListener('mousemove', function(e) {
+                                                        if (!isDragging) return;
+                                                        var dx = e.clientX - startX;
+                                                        var dy = e.clientY - startY;
+                                                        panel.style.right = 'auto';
+                                                        panel.style.bottom = 'auto';
+                                                        panel.style.left = (panelLeft + dx) + 'px';
+                                                        panel.style.top = (panelTop + dy) + 'px';
+                                                    });
+                                                    
+                                                    window.addEventListener('touchend', function() {
+                                                        isDragging = false;
+                                                        header.style.cursor = 'grab';
+                                                    });
+                                                    
+                                                    window.addEventListener('mouseup', function() {
+                                                        isDragging = false;
+                                                        header.style.cursor = 'grab';
+                                                    });
+                                                    
+                                                    // Scroll/resize follow
+                                                    window.addEventListener('scroll', function() {
+                                                        if (current && currentView === 'picker') moveHighlight(current);
+                                                    }, true);
+                                                    window.addEventListener('resize', function() {
+                                                        if (current && currentView === 'picker') moveHighlight(current);
+                                                    });
+                                                    
+                                                    // Init picker view
+                                                    showPickerView();
                                                     update(document.body.firstElementChild || document.body);
                                                     
-                                                    document.getElementById('gp-parent').addEventListener('click', function() {
-                                                        var p = current.parentElement;
-                                                        if (validEl(p) && p !== document.documentElement) update(p);
-                                                    });
-                                                    document.getElementById('gp-child').addEventListener('click', function() {
-                                                        var c = current.firstElementChild;
-                                                        if (validEl(c)) update(c);
-                                                    });
-                                                    document.getElementById('gp-prev').addEventListener('click', function() {
-                                                        var s = current.previousElementSibling;
-                                                        while (s && !validEl(s)) s = s.previousElementSibling;
-                                                        if (s) update(s);
-                                                    });
-                                                    document.getElementById('gp-next').addEventListener('click', function() {
-                                                        var s = current.nextElementSibling;
-                                                        while (s && !validEl(s)) s = s.nextElementSibling;
-                                                        if (s) update(s);
-                                                    });
-                                                    
+                                                    // Tap to select
                                                     document.addEventListener('click', function(e) {
+                                                        if (currentView !== 'picker') return;
                                                         if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
                                                         e.preventDefault();
                                                         e.stopPropagation();
                                                         update(e.target);
                                                     }, true);
                                                     
-                                                    document.getElementById('gp-save').addEventListener('click', function() {
-                                                        var rule = buildRule(current);
-                                                        if (rule) {
-                                                            GreyPicker.onRuleGenerated(rule);
-                                                            document.getElementById('gp-msg').textContent = '✓ Saved!';
-                                                        }
-                                                    });
-                                                    
+                                                    // Close button
                                                     document.getElementById('gp-close').addEventListener('click', function() {
                                                         panel.remove();
                                                         if (highlight) highlight.remove();
@@ -2759,9 +2881,11 @@ fun ContentLayer() {
                                                         GreyPicker.onPickerClosed();
                                                     });
                                                     
-                                                    document.getElementById('gp-rules').addEventListener('click', function() {
-                                                        GreyPicker.onShowRules();
-                                                    });
+                                                    // Expose for Kotlin
+                                                    window.__GREY_SHOW_RULES__ = function(rules) {
+                                                        document.getElementById('gp-title').textContent = '⬡ My Rules';
+                                                        showRulesView(rules);
+                                                    };
                                                 })();
                                             """.trimIndent(), null)
                                         } else if (!showElementHider && wv != null) {
@@ -2772,6 +2896,7 @@ fun ContentLayer() {
                                                     if (panel) panel.remove();
                                                     if (hl) hl.remove();
                                                     delete window.__GREY_PICKER__;
+                                                    delete window.__GREY_SHOW_RULES__;
                                                 })();
                                             """.trimIndent(), null)
                                         }
@@ -2845,7 +2970,41 @@ fun ContentLayer() {
 
             @android.webkit.JavascriptInterface
             fun onShowRules() {
-                // Rules list placeholder
+                scope.launch(Dispatchers.Main) {
+                    val wv = currentTab?.webView ?: return@launch
+                    val rulesJson = JSONArray()
+                    for (rule in customHideRules) {
+                        val obj = JSONObject()
+                        obj.put("id", rule.id)
+                        obj.put("domain", rule.domain)
+                        obj.put("selector", rule.selector)
+                        obj.put("enabled", rule.enabled)
+                        obj.put("timestamp", rule.timestamp)
+                        rulesJson.put(obj)
+                    }
+                    wv.evaluateJavascript(
+                        "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
+                        null
+                    )
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onToggleRule(ruleId: String, enabled: Boolean) {
+                scope.launch(Dispatchers.Main) {
+                    val index = customHideRules.indexOfFirst { it.id == ruleId }
+                    if (index >= 0) {
+                        customHideRules[index] = customHideRules[index].copy(enabled = enabled)
+                    }
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onDeleteRule(ruleId: String) {
+                scope.launch(Dispatchers.Main) {
+                    customHideRules.removeAll { it.id == ruleId }
+                    showToast("Rule deleted")
+                }
             }
         }, "GreyPicker")
     }
@@ -2873,6 +3032,7 @@ fun ContentLayer() {
 }
 
 // END OF PART 8g/10
+
 
 
 
