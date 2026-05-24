@@ -568,9 +568,8 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v21] ===
+// === PART 4/10 — Utility Functions [UPDATED v22] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -656,11 +655,7 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     for (line in rawText.lines()) {
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
-        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
-            cosmeticRules.add(trimmed)
-        } else {
-            networkRules.add(trimmed)
-        }
+        networkRules.add(trimmed)
     }
     return Pair(networkRules, cosmeticRules)
 }
@@ -696,82 +691,6 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     if (url.contains(trimmed)) return true
 
     return false
-}
-
-// ── Procedural Selector Detection ────────────────────────────────────
-fun isProceduralSelector(selector: String): Boolean {
-    val proceduralTokens = listOf(
-        ":has-text(", ":upward(", ":xpath(", ":min-text-length(",
-        ":matches-css(", ":remove(", ":style("
-    )
-    for (token in proceduralTokens) {
-        if (token in selector) return true
-    }
-    return false
-}
-
-// ── Cosmetic Filter CSS Builder ──────────────────────────────────────
-fun buildCosmeticCSS(cosmeticRules: List<String>, currentUrl: String): String {
-    val selectors = mutableListOf<String>()
-    val currentDomain = getDomainName(currentUrl)
-    val currentHost = try { Uri.parse(currentUrl).host ?: "" } catch (e: Exception) { "" }
-
-    for (rule in cosmeticRules) {
-        val trimmed = rule.trim()
-        if (trimmed.isEmpty()) continue
-
-        when {
-            // Exception rule: #@#selector → remove matching selector
-            trimmed.startsWith("#@#") -> {
-                val selector = trimmed.removePrefix("#@#")
-                selectors.remove(selector)
-            }
-            // Scriptlet injection: ##+js(...) → skip
-            trimmed.startsWith("##+js") -> {
-                // Future: scriptlet engine support
-            }
-            // Domain-specific: domain.com##selector
-            trimmed.contains("##") && !trimmed.startsWith("##") -> {
-                val parts = trimmed.split("##", limit = 2)
-                if (parts.size < 2) continue
-                val domainsPart = parts[0]
-                val selector = parts[1]
-                if (selector.isBlank()) continue
-                if (isProceduralSelector(selector)) continue
-
-                val domains = domainsPart.split(",")
-                var applies = false
-                for (domain in domains) {
-                    val d = domain.trim()
-                    if (d.startsWith("~")) {
-                        val excluded = d.removePrefix("~")
-                        if (currentDomain == excluded || currentHost == excluded) {
-                            applies = false
-                            break
-                        }
-                        applies = true
-                    } else {
-                        if (currentDomain == d || currentHost == d || currentHost?.endsWith(".$d") == true) {
-                            applies = true
-                        }
-                    }
-                }
-                if (applies && selector !in selectors) {
-                    selectors.add(selector)
-                }
-            }
-            // Universal: ##selector
-            trimmed.startsWith("##") -> {
-                val selector = trimmed.removePrefix("##")
-                if (selector.isNotBlank() && !isProceduralSelector(selector) && selector !in selectors) {
-                    selectors.add(selector)
-                }
-            }
-        }
-    }
-
-    if (selectors.isEmpty()) return ""
-    return selectors.joinToString(", ") { it } + " { display: none !important; }"
 }
 
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
@@ -919,7 +838,6 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
 }
 
 // END OF PART 4/10
-
 
 
 
@@ -1169,8 +1087,9 @@ fun GreyBrowser() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v29] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v27] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1281,45 +1200,6 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
-                
-                // ── Cosmetic filter CSS injection ──────────────────
-                if (filtersEnabled) {
-                    val allCosmeticRules = filters
-                        .filter { it.enabled }
-                        .flatMap { it.cosmeticRules }
-                    val cosmeticCSS = buildCosmeticCSS(allCosmeticRules, url)
-                    if (cosmeticCSS.isNotEmpty()) {
-                        val escapedCSS = cosmeticCSS
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                            .replace("\n", " ")
-                        wv.evaluateJavascript("""
-                            (function() {
-                                var COSMETIC_CSS = '$escapedCSS';
-                                
-                                function injectCSS() {
-                                    var existing = document.getElementById('grey-cosmetic');
-                                    if (!existing) {
-                                        var style = document.createElement('style');
-                                        style.id = 'grey-cosmetic';
-                                        style.textContent = COSMETIC_CSS;
-                                        (document.head || document.documentElement).appendChild(style);
-                                    }
-                                }
-                                
-                                injectCSS();
-                                
-                                var debounceTimer = null;
-                                var observer = new MutationObserver(function() {
-                                    if (debounceTimer) clearTimeout(debounceTimer);
-                                    debounceTimer = setTimeout(injectCSS, 500);
-                                });
-                                observer.observe(document.documentElement, { childList: true, subtree: true });
-                            })();
-                        """.trimIndent(), null)
-                    }
-                }
-                
                 // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1405,10 +1285,12 @@ fun GreyBrowser() {
         if (oldIndex >= 0) {
             tabs[oldIndex].webView?.destroy()
             tabs.removeAt(oldIndex)
+            // Fix parent references
             for (t in tabs) {
                 if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
                 else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
             }
+            // Adjust indices
             if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
             if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
             val updated = mutableMapOf<Int, Long>()
@@ -1577,6 +1459,8 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
+
+
 
 
 
