@@ -1168,8 +1168,10 @@ fun GreyBrowser() {
 
 
 
+
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v28] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v29] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1200,7 +1202,7 @@ fun GreyBrowser() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
-                
+
                 // ── Thumbnail capture at threshold (always fresh) ────
                 if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
                     val bytes = captureThumbnail(view)
@@ -1226,7 +1228,7 @@ fun GreyBrowser() {
                 if (url != "about:blank") {
                     tabState.isBlankTab = false
                 }
-                
+
                 // ── Force dark mode preference ────────────────────
                 wv.evaluateJavascript("""
                     (function() {
@@ -1249,7 +1251,7 @@ fun GreyBrowser() {
                         };
                     })();
                 """.trimIndent(), null)
-                
+
                 // ── Inject document-start scripts ──────────────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1280,7 +1282,7 @@ fun GreyBrowser() {
                         history.removeAt(0)
                     }
                 }
-                
+
                 // ── Cosmetic filter CSS injection ──────────────────
                 if (filtersEnabled) {
                     val allCosmeticRules = filters
@@ -1288,37 +1290,31 @@ fun GreyBrowser() {
                         .flatMap { it.cosmeticRules }
                     val cosmeticCSS = buildCosmeticCSS(allCosmeticRules, url)
                     if (cosmeticCSS.isNotEmpty()) {
-                        val escapedCSS = cosmeticCSS
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                            .replace("\n", " ")
+                        val b64 = android.util.Base64.encodeToString(
+                            cosmeticCSS.toByteArray(Charsets.UTF_8),
+                            android.util.Base64.NO_WRAP
+                        )
                         wv.evaluateJavascript("""
                             (function() {
-                                var COSMETIC_CSS = '$escapedCSS';
-                                
+                                var css = atob('$b64');
+                                var STYLE_ID = 'veil-cosmetic';
                                 function injectCSS() {
-                                    var existing = document.getElementById('grey-cosmetic');
-                                    if (!existing) {
-                                        var style = document.createElement('style');
-                                        style.id = 'grey-cosmetic';
-                                        style.textContent = COSMETIC_CSS;
-                                        (document.head || document.documentElement).appendChild(style);
+                                    if (!document.getElementById(STYLE_ID)) {
+                                        var s = document.createElement('style');
+                                        s.id = STYLE_ID;
+                                        s.textContent = css;
+                                        (document.head || document.documentElement).appendChild(s);
                                     }
                                 }
-                                
                                 injectCSS();
-                                
-                                var debounceTimer = null;
-                                var observer = new MutationObserver(function() {
-                                    if (debounceTimer) clearTimeout(debounceTimer);
-                                    debounceTimer = setTimeout(injectCSS, 500);
-                                });
-                                observer.observe(document.documentElement, { childList: true, subtree: true });
+                                new MutationObserver(function() {
+                                    if (!document.getElementById(STYLE_ID)) injectCSS();
+                                }).observe(document.documentElement, { childList: true, subtree: true });
                             })();
                         """.trimIndent(), null)
                     }
                 }
-                
+
                 // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
@@ -1576,6 +1572,7 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
+
 
 
 
