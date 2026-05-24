@@ -1107,8 +1107,9 @@ fun GreyBrowser() {
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v28] ===
+// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v29] ===
 // ═══════════════════════════════════════════════════════════════════
 
     // ── WebView creation helper ──────────────────────────────────────
@@ -1220,7 +1221,7 @@ fun GreyBrowser() {
                     }
                 }
                 
-                // ── Inject cosmetic filter rules ──────────────────
+                // ── Inject cosmetic filter rules (JS element hiding) ──
                 if (filtersEnabled && url != "about:blank") {
                     val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
                     val selectors = mutableListOf<String>()
@@ -1231,13 +1232,9 @@ fun GreyBrowser() {
                         for (rule in filter.cosmeticRules) {
                             val t = rule.trim()
                             when {
-                                // Global exception: #@#selector
                                 t.startsWith("#@#") -> exceptions.add(t.removePrefix("#@#").trim())
-                                // Domain exception: example.com#@#selector
                                 t.contains("#@#") -> exceptions.add(t.substringAfter("#@#").trim())
-                                // Global cosmetic: ##selector
                                 t.startsWith("##") -> selectors.add(t.removePrefix("##").trim())
-                                // Domain cosmetic: example.com##selector
                                 t.contains("##") -> {
                                     val domain = t.substringBefore("##").trim()
                                         .split(",")
@@ -1254,24 +1251,31 @@ fun GreyBrowser() {
                     selectors.removeAll { it in exceptions }
 
                     if (selectors.isNotEmpty()) {
-                        val css = selectors
-                            .filter { it.isNotBlank() }
-                            .joinToString(",\n") +
-                            "\n{ display:none!important; visibility:hidden!important; }"
-                        
-                        val escaped = css
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                            .replace("\n", "\\n")
+                        val selectorsJson = JSONArray()
+                        selectors.filter { it.isNotBlank() }.forEach { selectorsJson.put(it) }
+                        val selectorsJs = selectorsJson.toString()
                         
                         wv.evaluateJavascript("""
                             (function() {
-                                var existing = document.getElementById('grey-cosm');
-                                if (existing) existing.remove();
-                                var s = document.createElement('style');
-                                s.id = 'grey-cosm';
-                                s.textContent = '$escaped';
-                                (document.head || document.documentElement).appendChild(s);
+                                var selectors = $selectorsJs;
+                                
+                                function hideElements() {
+                                    selectors.forEach(function(sel) {
+                                        try {
+                                            document.querySelectorAll(sel).forEach(function(el) {
+                                                el.style.setProperty('display', 'none', 'important');
+                                            });
+                                        } catch(e) {}
+                                    });
+                                }
+                                
+                                hideElements();
+                                
+                                var timer = null;
+                                new MutationObserver(function() {
+                                    if (timer) clearTimeout(timer);
+                                    timer = setTimeout(hideElements, 500);
+                                }).observe(document.documentElement, { childList: true, subtree: true });
                             })();
                         """.trimIndent(), null)
                     }
@@ -1534,7 +1538,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
 
 
 
