@@ -569,9 +569,8 @@ fun loadFilters(context: Context): List<Filter> {
 
 
 
-
 // ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v22] ===
+// === PART 4/10 — Utility Functions [UPDATED v21] ===
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Thumbnail Capture ─────────────────────────────────────────────
@@ -657,12 +656,7 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     for (line in rawText.lines()) {
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
-        // ## and #@# are the cosmetic/exception markers in AdBlock syntax.
-        // Must use contains() not startsWith() — domain-specific rules look
-        // like "youtube.com##.selector" and do NOT start with ##.
-        // Old startsWith("##") check silently dropped all domain rules into
-        // networkRules where they were never used for cosmetic hiding.
-        if (trimmed.contains("##") || trimmed.contains("#@#")) {
+        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
             cosmeticRules.add(trimmed)
         } else {
             networkRules.add(trimmed)
@@ -704,47 +698,52 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
-// ── Cosmetic Selector Extractor ──────────────────────────────────────
-//
-// Returns a plain List<String> of CSS selectors for the current URL.
-// Caller builds CSS or passes selectors to JS — no string escaping here.
-//
-// Replaces the old buildCosmeticCSS() which embedded selectors inside
-// a JS string literal and broke on any selector containing quotes,
-// backslashes, or other special characters.
-//
-fun getCosmeticSelectors(cosmeticRules: List<String>, currentUrl: String): List<String> {
+// ── Procedural Selector Detection ────────────────────────────────────
+fun isProceduralSelector(selector: String): Boolean {
+    val proceduralTokens = listOf(
+        ":has-text(", ":upward(", ":xpath(", ":min-text-length(",
+        ":matches-css(", ":remove(", ":style("
+    )
+    for (token in proceduralTokens) {
+        if (token in selector) return true
+    }
+    return false
+}
+
+// ── Cosmetic Filter CSS Builder ──────────────────────────────────────
+fun buildCosmeticCSS(cosmeticRules: List<String>, currentUrl: String): String {
     val selectors = mutableListOf<String>()
     val currentDomain = getDomainName(currentUrl)
-    val currentHost   = try { Uri.parse(currentUrl).host ?: "" } catch (e: Exception) { "" }
+    val currentHost = try { Uri.parse(currentUrl).host ?: "" } catch (e: Exception) { "" }
 
     for (rule in cosmeticRules) {
         val trimmed = rule.trim()
         if (trimmed.isEmpty()) continue
 
         when {
-            // ── Exception: #@#selector — remove from list ──────────
+            // Exception rule: #@#selector → remove matching selector
             trimmed.startsWith("#@#") -> {
                 val selector = trimmed.removePrefix("#@#")
                 selectors.remove(selector)
             }
-
-            // ── Scriptlet: ##+js(...) — skip, not supported ─────────
-            trimmed.startsWith("##+js") -> { /* future: scriptlet engine */ }
-
-            // ── Domain-specific: domain.com##selector ───────────────
+            // Scriptlet injection: ##+js(...) → skip
+            trimmed.startsWith("##+js") -> {
+                // Future: scriptlet engine support
+            }
+            // Domain-specific: domain.com##selector
             trimmed.contains("##") && !trimmed.startsWith("##") -> {
-                val parts    = trimmed.split("##", limit = 2)
+                val parts = trimmed.split("##", limit = 2)
                 if (parts.size < 2) continue
+                val domainsPart = parts[0]
                 val selector = parts[1]
                 if (selector.isBlank()) continue
+                if (isProceduralSelector(selector)) continue
 
-                val domains = parts[0].split(",")
+                val domains = domainsPart.split(",")
                 var applies = false
                 for (domain in domains) {
                     val d = domain.trim()
                     if (d.startsWith("~")) {
-                        // Exclusion — if current domain matches, skip this rule entirely
                         val excluded = d.removePrefix("~")
                         if (currentDomain == excluded || currentHost == excluded) {
                             applies = false
@@ -752,56 +751,44 @@ fun getCosmeticSelectors(cosmeticRules: List<String>, currentUrl: String): List<
                         }
                         applies = true
                     } else {
-                        if (currentDomain == d ||
-                            currentHost == d ||
-                            currentHost.endsWith(".$d")
-                        ) {
+                        if (currentDomain == d || currentHost == d || currentHost?.endsWith(".$d") == true) {
                             applies = true
                         }
                     }
                 }
-                if (applies && selector !in selectors) selectors.add(selector)
+                if (applies && selector !in selectors) {
+                    selectors.add(selector)
+                }
             }
-
-            // ── Universal: ##selector ────────────────────────────────
+            // Universal: ##selector
             trimmed.startsWith("##") -> {
                 val selector = trimmed.removePrefix("##")
-                if (selector.isNotBlank() && selector !in selectors) selectors.add(selector)
+                if (selector.isNotBlank() && !isProceduralSelector(selector) && selector !in selectors) {
+                    selectors.add(selector)
+                }
             }
         }
     }
 
-    return selectors
+    if (selectors.isEmpty()) return ""
+    return selectors.joinToString(", ") { it } + " { display: none !important; }"
 }
 
 // ── Thumbnail Capture Helper ─────────────────────────────────────────
-//
-// Strategy:
-//   1. Draw the full visible viewport to a bitmap
-//   2. Cut bottom 10% — removes bottom chrome/nav bar artifacts
-//   3. Squeeze the remaining full-width × 90%-height rectangle
-//      into a square — no side cropping, slight vertical compression
-//   4. Scale to 480×480 output
-//
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
         val viewportWidth  = webView.width
         val viewportHeight = webView.height
         if (viewportWidth <= 0 || viewportHeight <= 0) return null
 
-        // ── Step 1: Draw full visible viewport ──────────────────────
         val fullBitmap = Bitmap.createBitmap(viewportWidth, viewportHeight, Bitmap.Config.ARGB_8888)
         val fullCanvas = android.graphics.Canvas(fullBitmap)
         webView.draw(fullCanvas)
 
-        // ── Step 2: Cut bottom 10% ───────────────────────────────────
         val keepHeight = (viewportHeight * 0.90f).toInt()
-
-        // ── Step 3: Crop to kept region (full width × 90% height) ───
         val croppedBitmap = Bitmap.createBitmap(fullBitmap, 0, 0, viewportWidth, keepHeight)
         fullBitmap.recycle()
 
-        // ── Step 4: Squeeze to square ────────────────────────────────
         val outputSize   = 480
         val scaledBitmap = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
         croppedBitmap.recycle()
@@ -810,7 +797,6 @@ fun captureThumbnail(webView: WebView): ByteArray? {
         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
         scaledBitmap.recycle()
         baos.toByteArray()
-
     } catch (e: Exception) {
         null
     }
@@ -1183,10 +1169,6 @@ fun GreyBrowser() {
 
 
 
-
-
-
-
 // ═══════════════════════════════════════════════════════════════════
 // === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v29] ===
 // ═══════════════════════════════════════════════════════════════════
@@ -1219,8 +1201,8 @@ fun GreyBrowser() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
-
-                // ── Thumbnail capture at threshold ───────────────────
+                
+                // ── Thumbnail capture at threshold (always fresh) ────
                 if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
                     val bytes = captureThumbnail(view)
                     if (bytes != null && bytes.isNotEmpty()) {
@@ -1242,42 +1224,45 @@ fun GreyBrowser() {
                 tabState.url = url
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") tabState.isBlankTab = false
-
-                // ── Force dark mode preference ────────────────────────
+                if (url != "about:blank") {
+                    tabState.isBlankTab = false
+                }
+                
+                // ── Force dark mode preference ────────────────────
                 wv.evaluateJavascript("""
                     (function() {
-                        var orig = window.matchMedia;
+                        var originalMatchMedia = window.matchMedia;
                         window.matchMedia = function(query) {
-                            var r = orig(query);
+                            var result = originalMatchMedia(query);
                             if (query.includes('prefers-color-scheme')) {
                                 return {
-                                    matches: true, media: query, onchange: null,
+                                    matches: true,
+                                    media: query,
+                                    onchange: null,
                                     addListener: function(cb) { cb(this); },
                                     removeListener: function() {},
-                                    addEventListener: function(t, cb) { if (t === 'change') cb(this); },
+                                    addEventListener: function(type, cb) { if (type === 'change') cb(this); },
                                     removeEventListener: function() {},
                                     dispatchEvent: function() { return true; }
                                 };
                             }
-                            return r;
+                            return result;
                         };
                     })();
                 """.trimIndent(), null)
-
-                // ── Inject document-start scripts ─────────────────────
+                
+                // ── Inject document-start scripts ──────────────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
-                    val meta  = parseScriptHeader(script.code)
+                    val meta = parseScriptHeader(script.code)
                     val runAt = meta["run-at"] ?: "document-end"
                     if (runAt == "document-start") {
-                        val body    = getScriptBody(script.code)
+                        val body = getScriptBody(script.code)
                         val wrapped = "try { (function() { $body })(); } catch(e) { }"
                         wv.evaluateJavascript(wrapped, null)
                     }
                 }
             }
-
             override fun onPageFinished(view: WebView, url: String) {
                 tabState.progress = 100
                 tabState.url = url
@@ -1288,139 +1273,76 @@ fun GreyBrowser() {
                     if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                         highlightedTabIndex = currentTabIndex
                     }
-                    // ── Log to history ────────────────────────────────
+                    // ── Log to history ──────────────────────────────
                     val cleanUrl = url.substringBefore("#")
                     history.removeAll { it.url.substringBefore("#") == cleanUrl }
                     history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
-                    if (history.size > MAX_HISTORY_ITEMS) history.removeAt(0)
+                    if (history.size > MAX_HISTORY_ITEMS) {
+                        history.removeAt(0)
+                    }
                 }
-
-                // ── Cosmetic filter injection ──────────────────────────
-                //
-                // Fix summary vs old approach:
-                //
-                //   OLD: CSS embedded in a JS '...' string literal
-                //        → broke silently on any selector with quotes,
-                //          backslashes, combinators, attribute selectors
-                //
-                //   NEW: Both CSS and selectors array are base64-encoded
-                //        in Kotlin, decoded in JS via atob() — no string
-                //        escaping issues possible.
-                //
-                //        Two-layer injection:
-                //          1. <style> tag — fast, catches everything not
-                //             blocked by site CSP
-                //          2. Per-element style.setProperty() — fallback
-                //             that works even when CSP blocks <style>
-                //
-                //        MutationObserver debounce reduced 500ms → 150ms
-                //        so dynamically added ad elements are hidden faster.
-                //
-                if (filtersEnabled && url != "about:blank") {
+                
+                // ── Cosmetic filter CSS injection ──────────────────
+                if (filtersEnabled) {
                     val allCosmeticRules = filters
                         .filter { it.enabled }
                         .flatMap { it.cosmeticRules }
-                    val selectors = getCosmeticSelectors(allCosmeticRules, url)
-
-                    if (selectors.isNotEmpty()) {
-                        // Build CSS string from selectors list
-                        val css = selectors.joinToString(",\n") + " { display: none !important; }"
-
-                        // Base64-encode both CSS and selectors JSON —
-                        // completely sidesteps JS string escaping
-                        val b64CSS = android.util.Base64.encodeToString(
-                            css.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.NO_WRAP
-                        )
-                        val selectorsJson = JSONArray(selectors).toString()
-                        val b64Selectors  = android.util.Base64.encodeToString(
-                            selectorsJson.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.NO_WRAP
-                        )
-
+                    val cosmeticCSS = buildCosmeticCSS(allCosmeticRules, url)
+                    if (cosmeticCSS.isNotEmpty()) {
+                        val escapedCSS = cosmeticCSS
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'")
+                            .replace("\n", " ")
                         wv.evaluateJavascript("""
                             (function() {
-                                // Decode base64 — no escaping issues regardless of selector content
-                                var css = '';
-                                var selectors = [];
-                                try { css = atob('$b64CSS'); } catch(e) {}
-                                try { selectors = JSON.parse(atob('$b64Selectors')); } catch(e) {}
-                                if (!css && selectors.length === 0) return;
-
-                                // ── Layer 1: <style> tag injection ────────────────────
-                                // Fast, covers all selectors at once.
-                                // May be blocked by strict site CSP (style-src 'self').
-                                function injectStyle() {
-                                    if (!css) return;
-                                    var el = document.getElementById('grey-cosmetic');
-                                    if (!el) {
-                                        el = document.createElement('style');
-                                        el.id = 'grey-cosmetic';
-                                        (document.head || document.documentElement).appendChild(el);
+                                var COSMETIC_CSS = '$escapedCSS';
+                                
+                                function injectCSS() {
+                                    var existing = document.getElementById('grey-cosmetic');
+                                    if (!existing) {
+                                        var style = document.createElement('style');
+                                        style.id = 'grey-cosmetic';
+                                        style.textContent = COSMETIC_CSS;
+                                        (document.head || document.documentElement).appendChild(style);
                                     }
-                                    el.textContent = css;
                                 }
-
-                                // ── Layer 2: per-element inline style ─────────────────
-                                // CSP-proof: sets style directly on each matched element.
-                                // Works even when <style> injection is blocked.
-                                function hideElements() {
-                                    selectors.forEach(function(sel) {
-                                        try {
-                                            document.querySelectorAll(sel).forEach(function(el) {
-                                                el.style.setProperty('display', 'none', 'important');
-                                            });
-                                        } catch(e) {}
-                                    });
-                                }
-
-                                // Run both on page load
-                                injectStyle();
-                                hideElements();
-
-                                // Re-run on DOM changes (SPAs, lazy-loaded ads)
-                                // 150ms debounce — fast enough to catch dynamic ads
-                                var debounce = null;
-                                new MutationObserver(function() {
-                                    if (debounce) clearTimeout(debounce);
-                                    debounce = setTimeout(function() {
-                                        injectStyle();
-                                        hideElements();
-                                    }, 150);
-                                }).observe(document.documentElement, {
-                                    childList: true,
-                                    subtree: true
+                                
+                                injectCSS();
+                                
+                                var debounceTimer = null;
+                                var observer = new MutationObserver(function() {
+                                    if (debounceTimer) clearTimeout(debounceTimer);
+                                    debounceTimer = setTimeout(injectCSS, 500);
                                 });
+                                observer.observe(document.documentElement, { childList: true, subtree: true });
                             })();
                         """.trimIndent(), null)
                     }
                 }
-
-                // ── Inject document-end scripts ───────────────────────
+                
+                // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
-                    val meta  = parseScriptHeader(script.code)
+                    val meta = parseScriptHeader(script.code)
                     val runAt = meta["run-at"] ?: "document-end"
                     if (runAt == "document-end" || runAt == "document-idle") {
-                        val body    = getScriptBody(script.code)
+                        val body = getScriptBody(script.code)
                         val wrapped = "try { (function() { $body })(); } catch(e) { }"
                         wv.evaluateJavascript(wrapped, null)
                     }
                 }
             }
-
-            // ── Network ad/filter blocking ────────────────────────────
+            // ── Ad/Filter blocking ───────────────────────────────────
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: android.webkit.WebResourceRequest
             ): android.webkit.WebResourceResponse? {
                 if (!filtersEnabled) return null
-                val requestUrl  = request.url.toString()
+                val requestUrl = request.url.toString()
                 val requestHost = request.url.host ?: return null
 
                 for (filter in filters) {
                     if (!filter.enabled) continue
-                    // Exception rules first
                     for (rule in filter.networkRules) {
                         if (rule.startsWith("@@")) {
                             val exceptionPattern = rule.removePrefix("@@")
@@ -1429,14 +1351,12 @@ fun GreyBrowser() {
                             }
                         }
                     }
-                    // Block rules
                     for (rule in filter.networkRules) {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
                             totalBlocked++
                             return android.webkit.WebResourceResponse(
-                                "text/plain", "UTF-8",
-                                java.io.ByteArrayInputStream(ByteArray(0))
+                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
                             )
                         }
                     }
@@ -1445,7 +1365,7 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Track touch coordinates ───────────────────────────────────
+        // ── Track touch coordinates (scaled for page content) ────────
         var lastTouchX = 0f
         var lastTouchY = 0f
         wv.setOnTouchListener { _, event ->
@@ -1455,7 +1375,7 @@ fun GreyBrowser() {
             false
         }
 
-        // ── Long-press: find nearest link via JS ──────────────────────
+        // ── Long-press: use JS to find the nearest link ──────────────
         wv.setOnLongClickListener {
             wv.evaluateJavascript(
                 "(function(){" +
@@ -1476,7 +1396,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Remove duplicate tab if exists, adjust indices ──────────────
+    // ── Remove duplicate tab if exists, adjust indices ─────────────
     fun removeDuplicateTab(url: String) {
         val cleanUrl = url.substringBefore("#")
         val oldIndex = tabs.indexOfFirst {
@@ -1501,7 +1421,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Tab lifecycle management ─────────────────────────────────────
+    // ── Tab lifecycle management ────────────────────────────────────
     fun manageTabLifecycle(activeIndex: Int) {
         if (activeIndex < 0 || activeIndex >= tabs.size) return
         val activeTab = tabs[activeIndex]
@@ -1516,8 +1436,7 @@ fun GreyBrowser() {
             i != activeIndex && !t.isDiscarded && t.webView != null
         }
         if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
-            val toDiscard = warmTabs.sortedBy { it.lastUpdated }
-                .take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
+            val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
             for (tab in toDiscard) {
                 tab.webView?.destroy()
                 tab.webView = null
@@ -1527,7 +1446,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Create tabs ──────────────────────────────────────────────────
+    // ── Create tabs ─────────────────────────────────────────────────
     fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
         removeDuplicateTab(url)
         val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
@@ -1548,7 +1467,7 @@ fun GreyBrowser() {
         manageTabLifecycle(currentTabIndex)
     }
 
-    // ── Delete with undo ─────────────────────────────────────────────
+    // ── Delete with undo ────────────────────────────────────────────
     fun requestDeleteTab(index: Int) {
         if (index >= 0 && index < tabs.size) {
             pendingDeletions[index] = System.currentTimeMillis()
@@ -1559,17 +1478,22 @@ fun GreyBrowser() {
         pendingDeletions.remove(index)
     }
 
-    // ── Favicon loading helpers ──────────────────────────────────────
+    // ── Favicon loading helpers ─────────────────────────────────────
     fun loadFavicon(domain: String) {
         if (domain.isBlank()) return
         val cached = FaviconMemoryCache.get(domain)
-        if (cached != null) { faviconBitmaps[domain] = cached; return }
+        if (cached != null) {
+            faviconBitmaps[domain] = cached
+            return
+        }
         if (!faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
             faviconLoading[domain] = true
             scope.launch {
                 val bitmap = FaviconCache.getFaviconBitmap(context, domain)
                     ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
+                if (bitmap != null) {
+                    FaviconMemoryCache.put(domain, bitmap)
+                }
                 faviconBitmaps[domain] = bitmap
                 faviconLoading[domain] = false
             }
@@ -1579,24 +1503,29 @@ fun GreyBrowser() {
     fun loadTabFavicon(domain: String) {
         if (domain.isBlank()) return
         val cached = FaviconMemoryCache.get(domain)
-        if (cached != null) { tabFavicons[domain] = cached; return }
+        if (cached != null) {
+            tabFavicons[domain] = cached
+            return
+        }
         if (!tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
             tabFaviconLoading[domain] = true
             scope.launch {
                 val bitmap = FaviconCache.getFaviconBitmap(context, domain)
                     ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
+                if (bitmap != null) {
+                    FaviconMemoryCache.put(domain, bitmap)
+                }
                 tabFavicons[domain] = bitmap
                 tabFaviconLoading[domain] = false
             }
         }
     }
 
-    // ── Process pending deletions (undo timer) ───────────────────────
+    // ── Process pending deletions (undo timer) ──────────────────────
     LaunchedEffect(pendingDeletions.toMap()) {
         while (pendingDeletions.isNotEmpty()) {
             delay(1000)
-            val now      = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
             val toRemove = pendingDeletions.filter { now - it.value >= UNDO_DELAY_MS }.keys.toList()
             for (index in toRemove.sortedDescending()) {
                 pendingDeletions.remove(index)
@@ -1607,6 +1536,7 @@ fun GreyBrowser() {
                     if (t.parentTabIndex == index) t.parentTabIndex = -1
                     else if (t.parentTabIndex > index) t.parentTabIndex--
                 }
+
                 val updated = mutableMapOf<Int, Long>()
                 for ((oldIdx, time) in pendingDeletions) {
                     updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
@@ -1616,7 +1546,7 @@ fun GreyBrowser() {
 
                 if (tabs.isEmpty()) {
                     currentTabIndex = -1
-                    selectedDomain  = ""
+                    selectedDomain = ""
                 } else if (currentTabIndex > index) {
                     currentTabIndex--
                 } else if (currentTabIndex == index && tabs.isNotEmpty()) {
@@ -1632,7 +1562,7 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Pause WebViews when Tab Manager is open ──────────────────────
+    // ── Pause WebViews when Tab Manager is open ─────────────────────
     LaunchedEffect(showTabManager, currentTabIndex) {
         if (showTabManager) {
             tabs.forEach { it.webView?.onPause() }
@@ -1647,10 +1577,6 @@ fun GreyBrowser() {
     }
 
 // END OF PART 6/10
-
-
-
-
 
 
 
