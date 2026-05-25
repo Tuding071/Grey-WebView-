@@ -923,13 +923,8 @@ fun GreyBrowser() {
         mutableStateListOf<CustomHideRule>().apply {
             val fromPrefs = loadCustomFilters(context)
             val fromTxt = loadCustomFiltersFromTxt()
-            val fromBackup = importCustomFiltersFromBackup(context)
             val merged = mutableMapOf<String, CustomHideRule>()
             for (r in fromPrefs) merged["${r.domain}##${r.selector}"] = r
-            for (r in fromBackup) {
-                val key = "${r.domain}##${r.selector}"
-                if (key !in merged) merged[key] = r
-            }
             for (r in fromTxt) {
                 val key = "${r.domain}##${r.selector}"
                 if (key !in merged) merged[key] = r
@@ -1058,6 +1053,16 @@ fun GreyBrowser() {
                 history.addAll(backup.second)
                 bookmarks.clear()
                 bookmarks.addAll(backup.third)
+                // Load custom filters from backup
+                val backupFilters = importCustomFiltersFromBackup(context)
+                val merged = mutableMapOf<String, CustomHideRule>()
+                for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
+                for (r in backupFilters) {
+                    val key = "${r.domain}##${r.selector}"
+                    if (key !in merged) merged[key] = r
+                }
+                customHideRules.clear()
+                customHideRules.addAll(merged.values.sortedByDescending { it.timestamp })
                 saveBookmarks(context, bookmarks)
                 saveHistory(context, history)
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
@@ -1183,6 +1188,8 @@ fun GreyBrowser() {
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
                 if (url != "about:blank") tabState.isBlankTab = false
+                // Reset element hider on navigation
+                if (showElementHider) showElementHider = false
                 wv.evaluateJavascript("""
                     (function() {
                         var originalMatchMedia = window.matchMedia;
