@@ -86,10 +86,10 @@ jobs:
 
               buildTypes {
                   release {
-                      isMinifyEnabled = true
-                      isShrinkResources = true
+                      isMinifyEnabled = false    // Disabled ProGuard/R8
+                      isShrinkResources = false   // Disabled resource shrinking
                       signingConfig  = signingConfigs.getByName("release")
-                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                      // Removed proguardFiles line
                   }
               }
 
@@ -132,23 +132,6 @@ jobs:
           org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC
           kotlin.code.style=official
           android.suppressUnsupportedCompileSdk=36
-          EOF
-
-          cat > app/proguard-rules.pro << 'EOF'
-          -keep class androidx.compose.** { *; }
-          -keepclassmembers class * {
-              @androidx.compose.runtime.Composable <methods>;
-          }
-          -keep class kotlin.** { *; }
-          -keepclassmembers class kotlin.Metadata {
-              public <methods>;
-          }
-          -keep class android.webkit.** { *; }
-          -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
-          -optimizationpasses 5
-          -dontusemixedcaseclassnames
-          -dontskipnonpubliclibraryclasses
-          -verbose
           EOF
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
@@ -302,7 +285,7 @@ jobs:
           Timestamp:  $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           Signed:     Yes (dummy keys)
           APK Size:   $APK_SIZE
-          Optimized:  Yes (R8 + resource shrinking)
+          Optimized:  No (ProGuard/R8 disabled)
           EOF
 
       - name: Upload artifact
