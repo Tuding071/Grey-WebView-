@@ -1,8 +1,5 @@
-// ═══════════════════════════════════════════════════════════════════
-// Grey Browser - V4.0 (WebView Multi-Tab)
-// ═══════════════════════════════════════════════════════════════════
-// === PART 0/10 — Theme Specification ===
-// ═══════════════════════════════════════════════════════════════════
+//PART 0 START
+// Grey Browser - V4.0 — Theme Specification
 //
 // THEME: Dark Grey + White Accents — No Round Corners
 //
@@ -49,13 +46,9 @@
 //   Icon button size:   48dp (in top bar)
 //   Small icons:        18dp (close, undo in tab list)
 //   Favicon size:       16dp (tab list), 20dp (bookmarks/history), 24dp (sidebar)
-// ═══════════════════════════════════════════════════════════════════
+//PART 0 END
 
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 1/10 — Package, Imports, MainActivity [UPDATED v14] ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 1 START
 package com.grey.browser
 
 import android.content.Context
@@ -173,15 +166,9 @@ class MainActivity : ComponentActivity() {
     override fun onPause() { super.onPause(); saveTabsData(this) }
     override fun onDestroy() { super.onDestroy(); saveTabsData(this) }
 }
+//PART 1 END
 
-// END OF PART 1/10
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 2/10 — Constants, FaviconCache [UPDATED v7] ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 2 START
 private const val PREFS_NAME = "browser_tabs"
 private const val KEY_TABS = "saved_tabs"
 private const val KEY_PINNED = "pinned_domains"
@@ -197,12 +184,10 @@ const val MAX_WARM_WEBVIEWS = 20
 const val UNDO_DELAY_MS = 2000L
 const val MAX_HISTORY_ITEMS = 500
 
-// ── Auto-Backup ─────────────────────────────────────────────────────
 const val BACKUP_DIR = "Grey"
 const val BACKUP_FILE = "Grey-backup.json"
 const val CUSTOM_FILTERS_FILE = "CustomFilters.txt"
 
-// ── Theme Colours ──────────────────────────────────────────────────
 private val BG            = Color(0xFF121212)
 private val SURFACE       = Color(0xFF1E1E1E)
 private val WHITE         = Color(0xFFFFFFFF)
@@ -213,7 +198,6 @@ private val DELETE_BG     = Color.Red.copy(alpha = 0.3f)
 private val TOAST_BG      = Color.White.copy(alpha = 0.9f)
 private val TOAST_TEXT    = Color.Black
 
-// ── In-Memory Favicon Cache ─────────────────────────────────────────
 object FaviconMemoryCache {
     private const val MAX_MEMORY_FAVICONS = 100
     private val cache = object : LinkedHashMap<String, Bitmap>(
@@ -225,15 +209,10 @@ object FaviconMemoryCache {
     }
 
     fun get(domain: String): Bitmap? = cache[domain]
-
-    fun put(domain: String, bitmap: Bitmap) {
-        cache[domain] = bitmap
-    }
-
+    fun put(domain: String, bitmap: Bitmap) { cache[domain] = bitmap }
     fun clear() = cache.clear()
 }
 
-// ── FaviconCache (Disk) ─────────────────────────────────────────────
 object FaviconCache {
     private const val MAX_FAVICONS = 50
     private const val FAVICON_DIR = "favicons"
@@ -329,15 +308,9 @@ object FaviconCache {
         bitmap
     }
 }
+//PART 2 END
 
-// END OF PART 2/10
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 3/10 — Data Classes, Save/Load Functions [UPDATED v8] ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 3 START
 data class Bookmark(
     val id: String = UUID.randomUUID().toString(),
     val url: String,
@@ -397,9 +370,7 @@ class TabState {
     var thumbnailBytes by mutableStateOf<ByteArray?>(null)
 }
 
-fun saveTabsData(context: Context) {
-    // Called from onPause/onDestroy — actual save is done reactively via LaunchedEffect
-}
+fun saveTabsData(context: Context) {}
 
 fun saveTabsDataNow(context: Context, tabs: List<TabState>, pinnedDomains: List<String>, lastActiveUrl: String) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -605,15 +576,9 @@ fun loadCustomFilters(context: Context): List<CustomHideRule> {
         }
     } catch (e: Exception) { emptyList() }
 }
+//PART 3 END
 
-// END OF PART 3/10
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 4/10 — Utility Functions [UPDATED v21] ===
-// ═══════════════════════════════════════════════════════════════════
-
-// ── Thumbnail Capture ─────────────────────────────────────────────
+//PART 4 START
 const val THUMBNAIL_CAPTURE_PROGRESS = 65
 
 fun getDomainName(url: String): String {
@@ -633,12 +598,10 @@ fun resolveUrl(input: String): String {
     return "https://www.google.com/search?q=${Uri.encode(input)}"
 }
 
-// ── Script Header Parser ─────────────────────────────────────────────
 fun parseScriptHeader(code: String): Map<String, String> {
     val meta = mutableMapOf<String, String>()
     val headerRegex = Regex("""/\*\s*==UserScript==\s*(.*?)\s*==/UserScript==\s*\*/""", RegexOption.DOT_MATCHES_ALL)
     val headerMatch = headerRegex.find(code) ?: return meta
-
     val header = headerMatch.groupValues[1]
     val fieldRegex = Regex("""@(\w+)\s+(.+)""")
     for (line in header.lines()) {
@@ -678,7 +641,6 @@ fun shouldInjectScript(script: Script, url: String): Boolean {
     val meta = parseScriptHeader(script.code)
     val matchPatterns = meta["match"]?.split("||") ?: listOf("*://*/*")
     val excludePatterns = meta["exclude"]?.split("||") ?: emptyList()
-
     for (pattern in excludePatterns) {
         if (urlMatchesPattern(url, pattern)) return false
     }
@@ -688,11 +650,9 @@ fun shouldInjectScript(script: Script, url: String): Boolean {
     return false
 }
 
-// ── Filter Rule Parser ───────────────────────────────────────────────
 fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     val networkRules = mutableListOf<String>()
     val cosmeticRules = mutableListOf<String>()
-
     for (line in rawText.lines()) {
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
@@ -705,40 +665,32 @@ fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
     return Pair(networkRules, cosmeticRules)
 }
 
-// ── Ad Block Rule Matching ───────────────────────────────────────────
 fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     val trimmed = rule.trim()
     if (trimmed.isEmpty()) return false
-
     if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
         val domain = trimmed.removePrefix("||").removeSuffix("^")
         val cleanDomain = domain.substringBefore('$')
         if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
         return false
     }
-
     if (trimmed.startsWith("||")) {
         val domain = trimmed.removePrefix("||")
         val cleanDomain = domain.substringBefore('$')
         if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
         return false
     }
-
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
         val exact = trimmed.removePrefix("|").removeSuffix("|")
         return url == exact
     }
-
     if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
         return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
     }
-
     if (url.contains(trimmed)) return true
-
     return false
 }
 
-// ── Custom Filter Functions ─────────────────────────────────────────
 fun getCustomFiltersFile(): File {
     val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
     if (!dir.exists()) dir.mkdirs()
@@ -796,54 +748,44 @@ fun loadCustomFiltersFromTxt(): List<CustomHideRule> {
     } catch (e: Exception) { emptyList() }
 }
 
-// ── Thumbnail Capture Helper ─────────────────────────────────────────
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
         val viewportWidth  = webView.width
         val viewportHeight = webView.height
         if (viewportWidth <= 0 || viewportHeight <= 0) return null
-
         val fullBitmap = Bitmap.createBitmap(viewportWidth, viewportHeight, Bitmap.Config.ARGB_8888)
         val fullCanvas = android.graphics.Canvas(fullBitmap)
         webView.draw(fullCanvas)
-
         val keepHeight = (viewportHeight * 0.90f).toInt()
         val croppedBitmap = Bitmap.createBitmap(fullBitmap, 0, 0, viewportWidth, keepHeight)
         fullBitmap.recycle()
-
-        val outputSize   = 480
+        val outputSize = 480
         val scaledBitmap = Bitmap.createScaledBitmap(croppedBitmap, outputSize, outputSize, true)
         croppedBitmap.recycle()
-
         val baos = java.io.ByteArrayOutputStream()
         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
         scaledBitmap.recycle()
         baos.toByteArray()
-    } catch (e: Exception) {
-        null
-    }
+    } catch (e: Exception) { null }
 }
 
-// ── Auto-Backup Functions ────────────────────────────────────────────
 fun getBackupDir(): File {
     val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
     if (!dir.exists()) dir.mkdirs()
     return dir
 }
 
-fun getBackupFile(): File {
-    return File(getBackupDir(), BACKUP_FILE)
-}
+fun getBackupFile(): File = File(getBackupDir(), BACKUP_FILE)
 
 fun exportBackup(
     context: Context,
     tabs: List<TabState>,
     history: List<HistoryItem>,
-    bookmarks: List<Bookmark>
+    bookmarks: List<Bookmark>,
+    customFilters: List<CustomHideRule>
 ) {
     try {
         val root = JSONObject()
-
         val tabsArray = JSONArray()
         for (tab in tabs) {
             if (!tab.isBlankTab) {
@@ -858,7 +800,6 @@ fun exportBackup(
             }
         }
         root.put("tabs", tabsArray)
-
         val historyArray = JSONArray()
         for (h in history) {
             val obj = JSONObject()
@@ -868,7 +809,6 @@ fun exportBackup(
             historyArray.put(obj)
         }
         root.put("history", historyArray)
-
         val bookmarksArray = JSONArray()
         for (b in bookmarks) {
             val obj = JSONObject()
@@ -879,7 +819,11 @@ fun exportBackup(
             bookmarksArray.put(obj)
         }
         root.put("bookmarks", bookmarksArray)
-
+        val customFiltersArray = JSONArray()
+        for (cf in customFilters) {
+            customFiltersArray.put("${cf.domain}##${cf.selector}")
+        }
+        root.put("customFilters", customFiltersArray)
         getBackupFile().writeText(root.toString(1))
     } catch (e: Exception) { }
 }
@@ -888,9 +832,7 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
     return try {
         val file = getBackupFile()
         if (!file.exists()) return null
-
         val root = JSONObject(file.readText())
-
         val tabsList = mutableListOf<SavedTab>()
         val tabsArray = root.optJSONArray("tabs")
         if (tabsArray != null) {
@@ -899,55 +841,53 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
                 val url = obj.getString("url")
                 val title = obj.optString("title", url)
                 val thumbnailBytes: ByteArray? = if (obj.has("thumbnail") && obj.getString("thumbnail").isNotEmpty()) {
-                    try {
-                        android.util.Base64.decode(obj.getString("thumbnail"), android.util.Base64.NO_WRAP)
-                    } catch (e: Exception) { null }
+                    try { android.util.Base64.decode(obj.getString("thumbnail"), android.util.Base64.NO_WRAP) }
+                    catch (e: Exception) { null }
                 } else null
                 tabsList.add(SavedTab(url = url, title = title, thumbnailBytes = thumbnailBytes))
             }
         }
-
         val historyList = mutableListOf<HistoryItem>()
         val historyArray = root.optJSONArray("history")
         if (historyArray != null) {
             for (i in 0 until historyArray.length()) {
                 val obj = historyArray.getJSONObject(i)
-                historyList.add(HistoryItem(
-                    obj.getString("url"),
-                    obj.getString("title"),
-                    obj.getLong("timestamp")
-                ))
+                historyList.add(HistoryItem(obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
-
         val bookmarksList = mutableListOf<Bookmark>()
         val bookmarksArray = root.optJSONArray("bookmarks")
         if (bookmarksArray != null) {
             for (i in 0 until bookmarksArray.length()) {
                 val obj = bookmarksArray.getJSONObject(i)
-                bookmarksList.add(Bookmark(
-                    obj.getString("id"),
-                    obj.getString("url"),
-                    obj.getString("title"),
-                    obj.getLong("timestamp")
-                ))
+                bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
-
         Triple(tabsList, historyList, bookmarksList)
-    } catch (e: Exception) {
-        null
-    }
+    } catch (e: Exception) { null }
 }
 
-// END OF PART 4/10
+fun importCustomFiltersFromBackup(context: Context): List<CustomHideRule> {
+    return try {
+        val file = getBackupFile()
+        if (!file.exists()) return emptyList()
+        val root = JSONObject(file.readText())
+        val arr = root.optJSONArray("customFilters") ?: return emptyList()
+        val rules = mutableListOf<CustomHideRule>()
+        for (i in 0 until arr.length()) {
+            val str = arr.getString(i)
+            if (str.contains("##")) {
+                val domain = str.substringBefore("##").trim()
+                val selector = str.substringAfter("##").trim()
+                rules.add(CustomHideRule(domain = domain, selector = selector))
+            }
+        }
+        rules
+    } catch (e: Exception) { emptyList() }
+}
+//PART 4 END
 
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 5/10 — GreyBrowser() State Declarations [UPDATED v24] ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 5 START
 @Composable
 fun GreyBrowser() {
     val context = LocalContext.current
@@ -956,24 +896,19 @@ fun GreyBrowser() {
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
-    // ── Gate flags ──────────────────────────────────────────────────
     var backupLoaded by remember { mutableStateOf(false) }
 
-    // ── Bookmarks State ──────────────────────────────────────────────
     val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
     var showBookmarks by remember { mutableStateOf(false) }
 
-    // ── History State ────────────────────────────────────────────────
     val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
     var showHistory by remember { mutableStateOf(false) }
 
-    // ── Scripts State ────────────────────────────────────────────────
     val scripts = remember { mutableStateListOf<Script>().apply { addAll(loadScripts(context)) } }
     var showScripts by remember { mutableStateOf(false) }
     var showScriptEditor by remember { mutableStateOf(false) }
     var editingScript by remember { mutableStateOf<Script?>(null) }
 
-    // ── Filters State ────────────────────────────────────────────────
     val filters = remember { mutableStateListOf<Filter>().apply { addAll(loadFilters(context)) } }
     var showFilters by remember { mutableStateOf(false) }
     var filtersEnabled by remember {
@@ -984,22 +919,26 @@ fun GreyBrowser() {
     }
     var totalBlocked by remember { mutableIntStateOf(0) }
 
-    // ── Custom Hide Rules State ──────────────────────────────────────
     val customHideRules = remember {
         mutableStateListOf<CustomHideRule>().apply {
             val fromPrefs = loadCustomFilters(context)
             val fromTxt = loadCustomFiltersFromTxt()
-            val txtMap = fromTxt.associateBy { "${it.domain}##${it.selector}" }
-            val prefsMap = fromPrefs.associateBy { "${it.domain}##${it.selector}" }
-            addAll(fromPrefs)
-            for ((key, rule) in txtMap) {
-                if (key !in prefsMap) add(rule)
+            val fromBackup = importCustomFiltersFromBackup(context)
+            val merged = mutableMapOf<String, CustomHideRule>()
+            for (r in fromPrefs) merged["${r.domain}##${r.selector}"] = r
+            for (r in fromBackup) {
+                val key = "${r.domain}##${r.selector}"
+                if (key !in merged) merged[key] = r
             }
+            for (r in fromTxt) {
+                val key = "${r.domain}##${r.selector}"
+                if (key !in merged) merged[key] = r
+            }
+            addAll(merged.values.sortedByDescending { it.timestamp })
         }
     }
     var showElementHider by remember { mutableStateOf(false) }
 
-    // ── Toast State ──────────────────────────────────────────────────
     var toastMessage by remember { mutableStateOf("") }
     var showToast by remember { mutableStateOf(false) }
 
@@ -1008,7 +947,6 @@ fun GreyBrowser() {
         showToast = true
     }
 
-    // ── Base WebView — always exists, never destroyed ───────────────
     val baseWebView = remember {
         WebView(context).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#121212"))
@@ -1029,7 +967,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Stable container — AndroidView always renders this ──────────
     val webViewContainer = remember {
         android.widget.FrameLayout(context).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -1040,7 +977,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Load saved tabs ──────────────────────────────────────────────
     val (savedTabs, savedPinned, savedLastActiveUrl) = remember { loadTabsData(context) }
     val tabs = remember {
         mutableStateListOf<TabState>().apply {
@@ -1053,7 +989,6 @@ fun GreyBrowser() {
         }
     }
 
-    // currentTabIndex = -1 means homepage (neutral ground)
     var currentTabIndex by remember { mutableIntStateOf(-1) }
     var highlightedTabIndex by remember {
         mutableIntStateOf(
@@ -1082,25 +1017,18 @@ fun GreyBrowser() {
     var confirmTitle by remember { mutableStateOf("") }
     var confirmMessage by remember { mutableStateOf("") }
 
-    // ── Link context menu state ─────────────────────────────────────
     var showLinkMenu by remember { mutableStateOf(false) }
     var linkMenuUrl by remember { mutableStateOf<String?>(null) }
 
-    // ── URL field focus state (used by ContentLayer overlay) ────────
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // ── Poll for permission then load backup (dialog shown once) ────
     LaunchedEffect(Unit) {
         var permissionRequested = false
-
         while (!backupLoaded) {
             val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 android.os.Environment.isExternalStorageManager()
-            } else {
-                true
-            }
-
+            } else { true }
             if (!hasPermission) {
                 if (!permissionRequested) {
                     val intent = android.content.Intent(
@@ -1113,8 +1041,6 @@ fun GreyBrowser() {
                 delay(500)
                 continue
             }
-
-            // Permission granted — load backup
             val backup = importBackup(context)
             if (backup != null) {
                 tabs.clear()
@@ -1132,16 +1058,14 @@ fun GreyBrowser() {
                 history.addAll(backup.second)
                 bookmarks.clear()
                 bookmarks.addAll(backup.third)
-
                 saveBookmarks(context, bookmarks)
                 saveHistory(context, history)
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
             } else {
                 withContext(Dispatchers.IO) {
-                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
                 }
             }
-
             backupLoaded = true
         }
     }
@@ -1150,7 +1074,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
             }
         }
     }
@@ -1158,7 +1082,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
             }
         }
     }
@@ -1166,7 +1090,7 @@ fun GreyBrowser() {
         saveBookmarks(context, bookmarks)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
             }
         }
     }
@@ -1174,7 +1098,7 @@ fun GreyBrowser() {
         saveHistory(context, history)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
             }
         }
     }
@@ -1183,6 +1107,11 @@ fun GreyBrowser() {
     LaunchedEffect(customHideRules.toList()) {
         saveCustomFilters(context, customHideRules)
         saveCustomFiltersToTxt(customHideRules)
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+            }
+        }
     }
 
     LaunchedEffect(filtersEnabled) {
@@ -1203,16 +1132,9 @@ fun GreyBrowser() {
             showToast = false
         }
     }
+//PART 5 END
 
-// END OF PART 5/10
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 6/10 — Tab Functions (Create, Delete, Lifecycle, Delegates) [UPDATED v28] ===
-// ═══════════════════════════════════════════════════════════════════
-
-    // ── WebView creation helper ──────────────────────────────────────
+//PART 6 START
     fun createWebView(url: String): WebView {
         return WebView(context).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#121212"))
@@ -1233,15 +1155,12 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Attach delegates to a tab's WebView ─────────────────────────
     fun setupDelegates(tabState: TabState) {
         val wv = tabState.webView ?: return
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
                 tabState.lastUpdated = System.currentTimeMillis()
-                
-                // ── Thumbnail capture at threshold (always fresh) ────
                 if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
                     val bytes = captureThumbnail(view)
                     if (bytes != null && bytes.isNotEmpty()) {
@@ -1263,11 +1182,7 @@ fun GreyBrowser() {
                 tabState.url = url
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") {
-                    tabState.isBlankTab = false
-                }
-                
-                // ── Force dark mode preference ────────────────────
+                if (url != "about:blank") tabState.isBlankTab = false
                 wv.evaluateJavascript("""
                     (function() {
                         var originalMatchMedia = window.matchMedia;
@@ -1289,8 +1204,6 @@ fun GreyBrowser() {
                         };
                     })();
                 """.trimIndent(), null)
-                
-                // ── Inject document-start scripts ──────────────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
                     val meta = parseScriptHeader(script.code)
@@ -1312,16 +1225,11 @@ fun GreyBrowser() {
                     if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                         highlightedTabIndex = currentTabIndex
                     }
-                    // ── Log to history ──────────────────────────────
                     val cleanUrl = url.substringBefore("#")
                     history.removeAll { it.url.substringBefore("#") == cleanUrl }
                     history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
-                    if (history.size > MAX_HISTORY_ITEMS) {
-                        history.removeAt(0)
-                    }
+                    if (history.size > MAX_HISTORY_ITEMS) history.removeAt(0)
                 }
-                
-                // ── Inject custom hide rules (JS element hiding) ────
                 if (url != "about:blank") {
                     val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
                     val selectors = mutableListOf<String>()
@@ -1357,8 +1265,6 @@ fun GreyBrowser() {
                         """.trimIndent(), null)
                     }
                 }
-                
-                // ── Inject document-end scripts (default) ───────────
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
                     val meta = parseScriptHeader(script.code)
@@ -1370,7 +1276,6 @@ fun GreyBrowser() {
                     }
                 }
             }
-            // ── Ad/Filter blocking ───────────────────────────────────
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: android.webkit.WebResourceRequest
@@ -1378,15 +1283,12 @@ fun GreyBrowser() {
                 if (!filtersEnabled) return null
                 val requestUrl = request.url.toString()
                 val requestHost = request.url.host ?: return null
-
                 for (filter in filters) {
                     if (!filter.enabled) continue
                     for (rule in filter.networkRules) {
                         if (rule.startsWith("@@")) {
                             val exceptionPattern = rule.removePrefix("@@")
-                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) {
-                                return null
-                            }
+                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) return null
                         }
                     }
                     for (rule in filter.networkRules) {
@@ -1403,7 +1305,6 @@ fun GreyBrowser() {
             }
         }
 
-        // ── Track touch coordinates (scaled for page content) ────────
         var lastTouchX = 0f
         var lastTouchY = 0f
         wv.setOnTouchListener { _, event ->
@@ -1413,7 +1314,6 @@ fun GreyBrowser() {
             false
         }
 
-        // ── Long-press: use JS to find the nearest link ──────────────
         wv.setOnLongClickListener {
             wv.evaluateJavascript(
                 "(function(){" +
@@ -1434,7 +1334,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Remove duplicate tab if exists, adjust indices ─────────────
     fun removeDuplicateTab(url: String) {
         val cleanUrl = url.substringBefore("#")
         val oldIndex = tabs.indexOfFirst {
@@ -1459,7 +1358,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Tab lifecycle management ────────────────────────────────────
     fun manageTabLifecycle(activeIndex: Int) {
         if (activeIndex < 0 || activeIndex >= tabs.size) return
         val activeTab = tabs[activeIndex]
@@ -1469,7 +1367,6 @@ fun GreyBrowser() {
             setupDelegates(activeTab)
             activeTab.lastUpdated = System.currentTimeMillis()
         }
-
         val warmTabs = tabs.filterIndexed { i, t ->
             i != activeIndex && !t.isDiscarded && t.webView != null
         }
@@ -1484,7 +1381,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Create tabs ─────────────────────────────────────────────────
     fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
         removeDuplicateTab(url)
         val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
@@ -1505,7 +1401,6 @@ fun GreyBrowser() {
         manageTabLifecycle(currentTabIndex)
     }
 
-    // ── Delete with undo ────────────────────────────────────────────
     fun requestDeleteTab(index: Int) {
         if (index >= 0 && index < tabs.size) {
             pendingDeletions[index] = System.currentTimeMillis()
@@ -1516,22 +1411,16 @@ fun GreyBrowser() {
         pendingDeletions.remove(index)
     }
 
-    // ── Favicon loading helpers ─────────────────────────────────────
     fun loadFavicon(domain: String) {
         if (domain.isBlank()) return
         val cached = FaviconMemoryCache.get(domain)
-        if (cached != null) {
-            faviconBitmaps[domain] = cached
-            return
-        }
+        if (cached != null) { faviconBitmaps[domain] = cached; return }
         if (!faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
             faviconLoading[domain] = true
             scope.launch {
                 val bitmap = FaviconCache.getFaviconBitmap(context, domain)
                     ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                if (bitmap != null) {
-                    FaviconMemoryCache.put(domain, bitmap)
-                }
+                if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
                 faviconBitmaps[domain] = bitmap
                 faviconLoading[domain] = false
             }
@@ -1541,25 +1430,19 @@ fun GreyBrowser() {
     fun loadTabFavicon(domain: String) {
         if (domain.isBlank()) return
         val cached = FaviconMemoryCache.get(domain)
-        if (cached != null) {
-            tabFavicons[domain] = cached
-            return
-        }
+        if (cached != null) { tabFavicons[domain] = cached; return }
         if (!tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
             tabFaviconLoading[domain] = true
             scope.launch {
                 val bitmap = FaviconCache.getFaviconBitmap(context, domain)
                     ?: FaviconCache.downloadAndCacheFavicon(context, domain)
-                if (bitmap != null) {
-                    FaviconMemoryCache.put(domain, bitmap)
-                }
+                if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
                 tabFavicons[domain] = bitmap
                 tabFaviconLoading[domain] = false
             }
         }
     }
 
-    // ── Process pending deletions (undo timer) ──────────────────────
     LaunchedEffect(pendingDeletions.toMap()) {
         while (pendingDeletions.isNotEmpty()) {
             delay(1000)
@@ -1574,14 +1457,12 @@ fun GreyBrowser() {
                     if (t.parentTabIndex == index) t.parentTabIndex = -1
                     else if (t.parentTabIndex > index) t.parentTabIndex--
                 }
-
                 val updated = mutableMapOf<Int, Long>()
                 for ((oldIdx, time) in pendingDeletions) {
                     updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
                 }
                 pendingDeletions.clear()
                 pendingDeletions.putAll(updated)
-
                 if (tabs.isEmpty()) {
                     currentTabIndex = -1
                     selectedDomain = ""
@@ -1600,7 +1481,6 @@ fun GreyBrowser() {
         }
     }
 
-    // ── Pause WebViews when Tab Manager is open ─────────────────────
     LaunchedEffect(showTabManager, currentTabIndex) {
         if (showTabManager) {
             tabs.forEach { it.webView?.onPause() }
@@ -1613,20 +1493,9 @@ fun GreyBrowser() {
             }
         }
     }
+//PART 6 END
 
-// END OF PART 6/10
-
-
-
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 7/10 — BackHandler, ContentLayer Composable [UPDATED v22] ===
-// ═══════════════════════════════════════════════════════════════════
-
-// ── Helper: close a tab immediately and fix parent references ───
+//PART 7 START
 fun closeTabAndFixParents(index: Int) {
     if (index < 0 || index >= tabs.size) return
     tabs[index].webView?.destroy()
@@ -1639,29 +1508,22 @@ fun closeTabAndFixParents(index: Int) {
 
 BackHandler {
     when {
-        // Close overlays first
         showTabManager -> showTabManager = false
         showBookmarks -> showBookmarks = false
         showHistory -> showHistory = false
         showMenu -> showMenu = false
         showConfirmDialog -> { showConfirmDialog = false; confirmAction = null }
         showLinkMenu -> { showLinkMenu = false; linkMenuUrl = null }
-        // On homepage (neutral ground) — do nothing, user exits via home/recents
         currentTabIndex == -1 -> { }
-        // On a real tab
         currentTabIndex >= 0 -> {
             val tab = tabs.getOrNull(currentTabIndex)
             if (tab?.webView?.canGoBack() == true) {
-                // WebView has history → go back in page
                 tab.webView?.goBack()
             } else {
-                // No WebView history → close tab and go to parent
                 val parentIdx = tab?.parentTabIndex ?: -1
                 val closingIdx = currentTabIndex
-                // Adjust indices
                 if (highlightedTabIndex == closingIdx) highlightedTabIndex = -1
                 else if (highlightedTabIndex > closingIdx) highlightedTabIndex--
-                // Remove from pending deletions
                 pendingDeletions.remove(closingIdx)
                 val updated = mutableMapOf<Int, Long>()
                 for ((idx, time) in pendingDeletions) {
@@ -1669,9 +1531,7 @@ BackHandler {
                 }
                 pendingDeletions.clear()
                 pendingDeletions.putAll(updated)
-                // Close the tab
                 closeTabAndFixParents(closingIdx)
-                // Navigate to parent or homepage
                 if (parentIdx >= 0 && parentIdx < tabs.size) {
                     currentTabIndex = parentIdx
                 } else {
@@ -1689,7 +1549,6 @@ BackHandler {
 @Composable
 fun ContentLayer() {
     Box(Modifier.fillMaxSize().background(BG)) {
-        // ONE AndroidView — factory never changes, container always exists
         AndroidView(
             factory = { webViewContainer },
             update = { container ->
@@ -1699,7 +1558,6 @@ fun ContentLayer() {
                     tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
                 }
                 if (container.childCount == 0 || container.getChildAt(0) != target) {
-                    // Pause the old WebView if it exists
                     val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
                     old?.onPause()
                     container.removeAllViews()
@@ -1709,8 +1567,6 @@ fun ContentLayer() {
             },
             modifier = Modifier.fillMaxSize()
         )
-
-        // Grey overlay only on homepage
         if (currentTabIndex == -1) {
             Box(
                 Modifier.fillMaxSize(),
@@ -1724,8 +1580,6 @@ fun ContentLayer() {
                 )
             }
         }
-
-        // Transparent overlay to dismiss keyboard when tapping WebView area
         if (isUrlFocused) {
             Box(
                 Modifier
@@ -1740,14 +1594,9 @@ fun ContentLayer() {
         }
     }
 }
+//PART 7 END
 
-// END OF PART 7/10
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8a/10 — URL Sync, Pattern Lock State, Launch Check ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 8.1 START
     var urlInput by remember {
         mutableStateOf(
             TextFieldValue(
@@ -1757,7 +1606,6 @@ fun ContentLayer() {
         )
     }
 
-    // ── URL sync — SideEffect runs on every recomposition ──────────
     SideEffect {
         if (!isUrlFocused && currentTabIndex >= 0) {
             val tabUrl = currentTab?.url ?: ""
@@ -1770,11 +1618,9 @@ fun ContentLayer() {
         }
     }
 
-    // ── Pattern Lock state ──────────────────────────────────────────
     var showAppLockSettings by remember { mutableStateOf(false) }
     var patternDrawMode by remember { mutableStateOf("") }
 
-    // ── Launch check: if lock enabled, show unlock screen ───────────
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
         val lockEnabled = prefs.getBoolean("lock_enabled", false)
@@ -1784,17 +1630,10 @@ fun ContentLayer() {
         }
     }
 
-    // ── Everything wrapped in a Box so overlays layer correctly ─────
     Box(Modifier.fillMaxSize()) {
+//PART 8.1 END
 
-// END OF PART 8a/10
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8b/10 — Pattern Unlock, Confirm Dialog, App Lock ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Pattern Unlock Screen (app launch) ──────────────────────
+//PART 8.2 START
         if (patternDrawMode == "unlock") {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val savedHash = prefs.getString("pattern_hash", null)
@@ -1808,7 +1647,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── Confirm dialog ──────────────────────────────────────────
         if (showConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false; confirmAction = null },
@@ -1832,7 +1670,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── App Lock Settings Screen ────────────────────────────────
         if (showAppLockSettings) {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val lockEnabled = prefs.getBoolean("lock_enabled", false)
@@ -1862,7 +1699,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── Pattern Draw Screen (set / change / toggle_off) ─────────
         if (patternDrawMode in listOf("set", "change_verify", "change_set", "toggle_off")) {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val savedHash = prefs.getString("pattern_hash", null)
@@ -1870,9 +1706,7 @@ fun ContentLayer() {
             PatternDrawScreen(
                 mode = patternDrawMode,
                 savedHash = savedHash,
-                onDismiss = {
-                    patternDrawMode = ""
-                },
+                onDismiss = { patternDrawMode = "" },
                 onPatternVerified = {
                     when (patternDrawMode) {
                         "change_verify" -> patternDrawMode = "change_set"
@@ -1892,16 +1726,9 @@ fun ContentLayer() {
                 onPatternRemoved = {}
             )
         }
+//PART 8.2 END
 
-// END OF PART 8b/10
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8c/10 — Scripts Manager, Script Editor ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Scripts Manager ─────────────────────────────────────────
+//PART 8.3 START
         if (showScripts) {
             ScriptsManagerScreen(
                 scripts = scripts,
@@ -1927,7 +1754,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── Script Editor ───────────────────────────────────────────
         if (showScriptEditor) {
             ScriptEditorScreen(
                 script = editingScript,
@@ -1959,17 +1785,9 @@ fun ContentLayer() {
                 }
             )
         }
+//PART 8.3 END
 
-// END OF PART 8c/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8d/10 — Filters Manager ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Filters Manager ─────────────────────────────────────────
+//PART 8.4 START
         if (showFilters) {
             FiltersManagerScreen(
                 filters = filters,
@@ -2001,17 +1819,9 @@ fun ContentLayer() {
                 }
             )
         }
+//PART 8.4 END
 
-// END OF PART 8d/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8e/10 — Bookmarks, History, Link Menu ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Bookmarks UI ────────────────────────────────────────────
+//PART 8.5 START
         if (showBookmarks) {
             BookmarksUI(
                 bookmarks = bookmarks,
@@ -2026,7 +1836,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── History UI ──────────────────────────────────────────────
         if (showHistory) {
             HistoryUI(
                 history = history,
@@ -2037,7 +1846,6 @@ fun ContentLayer() {
             )
         }
 
-        // ── Link Context Menu ───────────────────────────────────────
         if (showLinkMenu && linkMenuUrl != null) {
             Popup(
                 alignment = Alignment.Center,
@@ -2074,15 +1882,10 @@ fun ContentLayer() {
                 }
             }
         }
+//PART 8.5 END
 
-// END OF PART 8e/10
 
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8f/10 — Tab Manager [UPDATED — uniform thumbnail border] ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Tab Manager ────────────────────────────────────────────
+//PART 8.6 START
         if (showTabManager) {
             val realTabs = tabs.toList()
             val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
@@ -2103,7 +1906,6 @@ fun ContentLayer() {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
-            // ── Decoded thumbnail bitmap cache for display ──────────
             val thumbnailBitmaps = remember { mutableStateMapOf<Int, Bitmap?>() }
             LaunchedEffect(showTabManager) {
                 thumbnailBitmaps.clear()
@@ -2133,7 +1935,6 @@ fun ContentLayer() {
                     color = SURFACE
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        // ── Header ───────────────────────────────────
                         Row(
                             Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -2149,7 +1950,6 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Scroll / layout state ────────────────────
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
@@ -2160,7 +1960,6 @@ fun ContentLayer() {
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        // ── Touch-driven chip selection ───────────────
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
                         LaunchedEffect(selectedChipDomain) {
@@ -2171,7 +1970,6 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── On open: scroll to center the current tab ──
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
                             delay(250)
@@ -2186,7 +1984,6 @@ fun ContentLayer() {
                             tabListState.scrollToItem(domainIdx)
                             delay(100)
 
-                            // Row height: 10dp padding + 72dp thumbnail + 10dp padding = 92dp
                             val viewportPx      = tabListState.layoutInfo.viewportSize.height.toFloat()
                             val tabHeightPx     = with(density) { 92.dp.toPx() }
                             val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo
@@ -2283,7 +2080,6 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // ── Thumbnail: 80×72dp, 0.8dp border ──────
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
@@ -2305,7 +2101,6 @@ fun ContentLayer() {
 
                                                         Spacer(Modifier.width(10.dp))
 
-                                                        // ── Favicon: 32dp CircleShape ────────────
                                                         if (tabFav != null) {
                                                             Image(
                                                                 tabFav.asImageBitmap(), tabDomain,
@@ -2329,7 +2124,6 @@ fun ContentLayer() {
 
                                                         Spacer(Modifier.width(12.dp))
 
-                                                        // ── Title + domain ────────────────────────
                                                         Column(Modifier.weight(1f)) {
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
@@ -2348,7 +2142,6 @@ fun ContentLayer() {
                                                             )
                                                         }
 
-                                                        // ── Close / undo ──────────────────────────
                                                         if (isPending) {
                                                             IconButton({ undoDeleteTab(tabIndex) }) {
                                                                 Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
@@ -2367,7 +2160,6 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Group chip carousel ─────────────────────
                         if (realTabs.isNotEmpty()) {
                             Row(
                                 Modifier.fillMaxWidth().horizontalScroll(chipScrollState).padding(vertical = 4.dp),
@@ -2417,7 +2209,6 @@ fun ContentLayer() {
                             }
                         }
 
-                        // ── Footer ───────────────────────────────────
                         Row(
                             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2437,17 +2228,9 @@ fun ContentLayer() {
                 }
             }
         }
+//PART 8.6 END
 
-// END OF PART 8f/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 8g/10 — Main Layout, Top Bar, ContentLayer, Toast [UPDATED] ===
-// ═══════════════════════════════════════════════════════════════════
-
-        // ── Main layout ─────────────────────────────────────────────
+//PART 8.7 START
         Column(
             Modifier.fillMaxSize().systemBarsPadding().background(BG)
         ) {
@@ -2774,7 +2557,6 @@ fun ContentLayer() {
                                                         });
                                                     }
                                                     
-                                                    // Create panel
                                                     var panel = document.createElement('div');
                                                     panel.id = 'gp-panel';
                                                     Object.assign(panel.style, {
@@ -2788,20 +2570,17 @@ fun ContentLayer() {
                                                     
                                                     panel.innerHTML = 
                                                         '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
-                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span>' +
-                                                        '<button id="gp-close" style="background:transparent;border:none;color:#888;font-size:16px;cursor:pointer;padding:0 2px">✕</button></div>' +
+                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span></div>' +
                                                         '<div id="gp-panel-body" style="padding:12px"></div>';
                                                     document.body.appendChild(panel);
                                                     
                                                     document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
                                                     
-                                                    // Draggable header
                                                     var header = document.getElementById('gp-header');
                                                     var isDragging = false;
                                                     var startX, startY, panelLeft, panelTop;
                                                     
                                                     header.addEventListener('touchstart', function(e) {
-                                                        if (e.target === document.getElementById('gp-close')) return;
                                                         isDragging = true;
                                                         startX = e.touches[0].clientX;
                                                         startY = e.touches[0].clientY;
@@ -2812,7 +2591,6 @@ fun ContentLayer() {
                                                     });
                                                     
                                                     header.addEventListener('mousedown', function(e) {
-                                                        if (e.target === document.getElementById('gp-close')) return;
                                                         isDragging = true;
                                                         startX = e.clientX;
                                                         startY = e.clientY;
@@ -2852,7 +2630,6 @@ fun ContentLayer() {
                                                         header.style.cursor = 'grab';
                                                     });
                                                     
-                                                    // Scroll/resize follow
                                                     window.addEventListener('scroll', function() {
                                                         if (current && currentView === 'picker') moveHighlight(current);
                                                     }, true);
@@ -2860,11 +2637,9 @@ fun ContentLayer() {
                                                         if (current && currentView === 'picker') moveHighlight(current);
                                                     });
                                                     
-                                                    // Init picker view
                                                     showPickerView();
                                                     update(document.body.firstElementChild || document.body);
                                                     
-                                                    // Tap to select
                                                     document.addEventListener('click', function(e) {
                                                         if (currentView !== 'picker') return;
                                                         if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
@@ -2873,15 +2648,6 @@ fun ContentLayer() {
                                                         update(e.target);
                                                     }, true);
                                                     
-                                                    // Close button
-                                                    document.getElementById('gp-close').addEventListener('click', function() {
-                                                        panel.remove();
-                                                        if (highlight) highlight.remove();
-                                                        delete window.__GREY_PICKER__;
-                                                        GreyPicker.onPickerClosed();
-                                                    });
-                                                    
-                                                    // Expose for Kotlin
                                                     window.__GREY_SHOW_RULES__ = function(rules) {
                                                         document.getElementById('gp-title').textContent = '⬡ My Rules';
                                                         showRulesView(rules);
@@ -2913,24 +2679,15 @@ fun ContentLayer() {
                             )
                             DropdownMenuItem(
                                 text = { Text("Scripts", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    showScripts = true
-                                }
+                                onClick = { showMenu = false; showScripts = true }
                             )
                             DropdownMenuItem(
                                 text = { Text("Filters", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    showFilters = true
-                                }
+                                onClick = { showMenu = false; showFilters = true }
                             )
                             DropdownMenuItem(
                                 text = { Text("App Lock", color = WHITE) },
-                                onClick = {
-                                    showMenu = false
-                                    showAppLockSettings = true
-                                }
+                                onClick = { showMenu = false; showAppLockSettings = true }
                             )
                         }
                     }
@@ -2943,7 +2700,6 @@ fun ContentLayer() {
         }
     }
 
-    // ── JavascriptInterface for element picker ────────────────────
     val currentWebView = currentTab?.webView
     LaunchedEffect(currentWebView) {
         currentWebView?.addJavascriptInterface(object {
@@ -2957,6 +2713,14 @@ fun ContentLayer() {
                         customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
                         appendCustomFilterToTxt(domain, selector)
                         showToast("Saved: $rule")
+                        // Instant hide
+                        currentWebView?.evaluateJavascript("""
+                            try {
+                                document.querySelectorAll('$selector').forEach(function(el) {
+                                    el.style.setProperty('display', 'none', 'important');
+                                });
+                            } catch(e) {}
+                        """.trimIndent(), null)
                     }
                 }
             }
@@ -3009,7 +2773,6 @@ fun ContentLayer() {
         }, "GreyPicker")
     }
 
-    // ── Toast ────────────────────────────────────────────────────
     if (showToast) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -3030,16 +2793,9 @@ fun ContentLayer() {
         }
     }
 }
+//PART 8.7 END
 
-// END OF PART 8g/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 9/10 — BookmarksUI Composable ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 9 START
 @Composable
 fun BookmarksUI(
     bookmarks: List<Bookmark>,
@@ -3187,17 +2943,9 @@ fun BookmarksUI(
         }
     }
 }
+//PART 9 END
 
-// END OF PART 9/10
-
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 10/10 — Helper Composables (Chips, HistoryUI) [UPDATED v3] ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 10 START
 @Composable
 fun AllGroupChip(isSelected: Boolean, tabCount: Int, onClick: () -> Unit) {
     Surface(
@@ -3249,7 +2997,6 @@ fun SidebarGroupChip(
 ) {
     LaunchedEffect(domain) { onAppear() }
 
-    // ── Blink animation ──────────────────────────────────────────
     val blinkAlpha by rememberInfiniteTransition().animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
@@ -3368,7 +3115,6 @@ fun HistoryUI(
                     LazyColumn(
                         Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
                     ) {
-                        // Most recent first (history is stored most-recent-last, so we reverse)
                         items(history.reversed()) { item ->
                             val domain = getDomainName(item.url)
                             LaunchedEffect(item.url) { loadFavicon(domain) }
@@ -3432,23 +3178,15 @@ fun HistoryUI(
         }
     }
 }
+//PART 10 END
 
-// END OF PART 10/10
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 11/11 — App Lock Settings + Pattern Draw Screen ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 11 START
 fun hashPattern(pattern: String): String {
     val digest = MessageDigest.getInstance("SHA-256")
     val hashBytes = digest.digest(pattern.toByteArray())
     return hashBytes.joinToString("") { "%02x".format(it) }
 }
 
-// ── App Lock Settings Screen ─────────────────────────────────────────
 @Composable
 fun AppLockSettingsScreen(
     lockEnabled: Boolean,
@@ -3469,7 +3207,6 @@ fun AppLockSettingsScreen(
             color = SURFACE
         ) {
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3483,7 +3220,6 @@ fun AppLockSettingsScreen(
 
                 Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
-                // ── Enable/Disable Toggle ──────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -3513,7 +3249,6 @@ fun AppLockSettingsScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ── Set / Change Pattern Button ────────────────────
                 if (toggleChecked) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -3556,7 +3291,6 @@ fun AppLockSettingsScreen(
     }
 }
 
-// ── Pattern Draw Screen (shared by unlock, set, change, toggle_off) ──
 @Composable
 fun PatternDrawScreen(
     mode: String,
@@ -3579,11 +3313,9 @@ fun PatternDrawScreen(
     var promptText by remember { mutableStateOf("") }
     var step by remember { mutableStateOf(0) }
 
-    // Pre-compute pixel values once
     val spacingPx = remember { with(density) { dotSpacing.toPx() } }
     val sizePx = remember { with(density) { dotSize.toPx() } }
 
-    // ── Initialize prompt ─────────────────────────────────────────
     LaunchedEffect(mode) {
         selectedDots.clear()
         errorState = false
@@ -3600,7 +3332,6 @@ fun PatternDrawScreen(
         }
     }
 
-    // ── Error shake animation ─────────────────────────────────────
     val shakeOffset by animateFloatAsState(
         targetValue = if (showError) 10f else 0f,
         animationSpec = if (showError) {
@@ -3610,7 +3341,6 @@ fun PatternDrawScreen(
         }
     )
 
-    // ── Error auto-clear ──────────────────────────────────────────
     LaunchedEffect(showError) {
         if (showError) {
             delay(600)
@@ -3619,10 +3349,8 @@ fun PatternDrawScreen(
         }
     }
 
-    // ── Helper: check if a pixel position hits a dot ──────────────
     fun hitDotAt(px: Float, py: Float): Int? {
         val hitRadius = spacingPx * 0.6f
-
         for (row in 0 until gridRows) {
             for (col in 0 until gridColumns) {
                 val cx = col * spacingPx + sizePx / 2
@@ -3636,13 +3364,11 @@ fun PatternDrawScreen(
         return null
     }
 
-    // ── Helper: handle pattern completion ─────────────────────────
     fun handleComplete() {
         val patternStr = selectedDots.joinToString(",")
         val dotCount = selectedDots.size
         val hash = hashPattern(patternStr)
 
-        // Dot 9 master key (tiny drag from dot 9)
         if (dotCount == 1 && patternStr == "9") {
             when (mode) {
                 "unlock", "change_verify", "toggle_off" -> {
@@ -3740,7 +3466,6 @@ fun PatternDrawScreen(
                 Modifier.fillMaxSize().navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3765,7 +3490,6 @@ fun PatternDrawScreen(
 
                 Spacer(Modifier.weight(0.3f))
 
-                // ── Pattern grid (centered) ────────────────────────
                 Box(
                     Modifier
                         .size(dotSpacing * 2 + dotSize)
@@ -3796,7 +3520,6 @@ fun PatternDrawScreen(
                             )
                         }
                 ) {
-                    // ── Draw lines between connected dots ─────────
                     Canvas(Modifier.fillMaxSize()) {
                         if (selectedDots.size >= 2) {
                             val path = Path()
@@ -3825,7 +3548,6 @@ fun PatternDrawScreen(
                         }
                     }
 
-                    // ── Draw dots (all solid white, always) ───────
                     for (row in 0 until gridRows) {
                         for (col in 0 until gridColumns) {
                             Box(
@@ -3840,7 +3562,6 @@ fun PatternDrawScreen(
 
                 Spacer(Modifier.height(32.dp))
 
-                // ── Prompt text ─────────────────────────────────────
                 Text(
                     promptText,
                     color = if (errorState) DELETE_BG else MUTED,
@@ -3849,7 +3570,6 @@ fun PatternDrawScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ── Reset button ────────────────────────────────────
                 if (mode != "unlock") {
                     OutlinedButton(
                         onClick = {
@@ -3879,16 +3599,9 @@ fun PatternDrawScreen(
         }
     }
 }
+//PART 11 END
 
-// END OF PART 11/11
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 12/12 — Scripts Manager + Script Editor + Script Guide ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 12 START
 @Composable
 fun ScriptsManagerScreen(
     scripts: List<Script>,
@@ -3942,7 +3655,6 @@ fun ScriptsManagerScreen(
             color = SURFACE
         ) {
             Column(Modifier.fillMaxSize()) {
-                // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3968,7 +3680,6 @@ fun ScriptsManagerScreen(
                     }
                 }
 
-                // ── Script List ────────────────────────────────────
                 if (scripts.isEmpty()) {
                     Box(
                         Modifier.weight(1f).fillMaxWidth(),
@@ -4027,7 +3738,6 @@ fun ScriptsManagerScreen(
                     }
                 }
 
-                // ── Footer ─────────────────────────────────────────
                 Surface(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
@@ -4058,7 +3768,6 @@ fun ScriptEditorScreen(
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
 
-    // AlertDialog — same style as Filter Import, but larger for code editing
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -4079,7 +3788,6 @@ fun ScriptEditorScreen(
         },
         text = {
             Column {
-                // Title field
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -4099,11 +3807,9 @@ fun ScriptEditorScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // Code label
                 Text("Code", color = MUTED, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
 
-                // Code field — fixed height, internally scrollable
                 OutlinedTextField(
                     value = code,
                     onValueChange = { code = it },
@@ -4275,17 +3981,9 @@ for debugging via remote DevTools.
         }
     }
 }
+//PART 12 END
 
-// END OF PART 12/12
-
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// === PART 13/13 — Filters Manager + Import Dialog ===
-// ═══════════════════════════════════════════════════════════════════
-
+//PART 13 START
 @Composable
 fun FiltersManagerScreen(
     filters: List<Filter>,
@@ -4356,7 +4054,6 @@ fun FiltersManagerScreen(
             color = SURFACE
         ) {
             Column(Modifier.fillMaxSize()) {
-                // ── Header ─────────────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -4370,7 +4067,6 @@ fun FiltersManagerScreen(
 
                 Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
-                // ── Master Toggle ──────────────────────────────────
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -4404,7 +4100,6 @@ fun FiltersManagerScreen(
 
                 Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
-                // ── Filter List ────────────────────────────────────
                 if (filters.isEmpty()) {
                     Box(
                         Modifier.weight(1f).fillMaxWidth(),
@@ -4481,7 +4176,6 @@ fun FiltersManagerScreen(
                     }
                 }
 
-                // ── Footer ─────────────────────────────────────────
                 Surface(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
@@ -4522,7 +4216,6 @@ fun FilterImportDialog(
                 val content = inputStream?.bufferedReader()?.readText() ?: ""
                 inputStream?.close()
                 fileContent = content
-                // Extract filename from URI
                 val cursor = context.contentResolver.query(uri, null, null, null, null)
                 cursor?.use {
                     if (it.moveToFirst()) {
@@ -4536,9 +4229,7 @@ fun FilterImportDialog(
                 if (filterName.isEmpty()) {
                     filterName = selectedFileName.removeSuffix(".txt")
                 }
-            } catch (e: Exception) {
-                // File read failed
-            }
+            } catch (e: Exception) { }
         }
     }
 
@@ -4608,5 +4299,4 @@ fun FilterImportDialog(
         tonalElevation = 0.dp
     )
 }
-
-// END OF PART 13/13
+//PART 13 END
