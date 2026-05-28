@@ -163,12 +163,12 @@ class MainActivity : ComponentActivity() {
         )
         setContent { GreyBrowser() }
     }
-    override fun onPause() { super.onPause() }
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onPause() {
+        super.onPause()
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
         getSharedPreferences("pattern_lock", Context.MODE_PRIVATE).edit().clear().apply()
     }
+    override fun onDestroy() { super.onDestroy() }
 }
 //PART 1 END
 
@@ -841,10 +841,12 @@ fun exportBackup(
     tabs: List<TabState>,
     history: List<HistoryItem>,
     bookmarks: List<Bookmark>,
-    customFilters: List<CustomHideRule>
+    customFilters: List<CustomHideRule>,
+    lastActiveUrl: String
 ) {
     try {
         val root = JSONObject()
+        root.put("lastActiveUrl", lastActiveUrl)
         val tabsArray = JSONArray()
         for (tab in tabs) {
             if (!tab.isBlankTab) {
@@ -888,11 +890,19 @@ fun exportBackup(
     } catch (e: Exception) { }
 }
 
-fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, List<Bookmark>>? {
+data class BackupData(
+    val tabs: List<SavedTab>,
+    val history: List<HistoryItem>,
+    val bookmarks: List<Bookmark>,
+    val lastActiveUrl: String
+)
+
+fun importBackup(context: Context): BackupData? {
     return try {
         val file = getBackupFile()
         if (!file.exists()) return null
         val root = JSONObject(file.readText())
+        val lastActiveUrl = root.optString("lastActiveUrl", "")
         val tabsList = mutableListOf<SavedTab>()
         val tabsArray = root.optJSONArray("tabs")
         if (tabsArray != null) {
@@ -923,12 +933,11 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
                 bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
-        // Restore cookies
         val cookieJson = root.optJSONArray("cookies")
         if (cookieJson != null) {
             importCookies(cookieJson)
         }
-        Triple(tabsList, historyList, bookmarksList)
+        BackupData(tabsList, historyList, bookmarksList, lastActiveUrl)
     } catch (e: Exception) { null }
 }
 
@@ -1104,7 +1113,7 @@ fun GreyBrowser() {
             val backup = importBackup(context)
             if (backup != null) {
                 tabs.clear()
-                for (savedTab in backup.first) {
+                for (savedTab in backup.tabs) {
                     tabs.add(TabState().apply {
                         this.url = savedTab.url
                         this.title = savedTab.title
@@ -1115,9 +1124,18 @@ fun GreyBrowser() {
                     })
                 }
                 history.clear()
-                history.addAll(backup.second)
+                history.addAll(backup.history)
                 bookmarks.clear()
-                bookmarks.addAll(backup.third)
+                bookmarks.addAll(backup.bookmarks)
+                // Restore last active tab
+                val backupLastUrl = backup.lastActiveUrl
+                val lastIndex = tabs.indexOfFirst {
+                    it.url.substringBefore("#") == backupLastUrl.substringBefore("#")
+                }
+                currentTabIndex = if (lastIndex >= 0) lastIndex else if (tabs.isNotEmpty()) 0 else -1
+                highlightedTabIndex = currentTabIndex
+                if (backupLastUrl.isNotEmpty()) lastActiveUrl = backupLastUrl
+                // Merge custom filters from backup
                 val backupFilters = importCustomFiltersFromBackup(context)
                 val merged = mutableMapOf<String, CustomHideRule>()
                 for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
@@ -1132,7 +1150,7 @@ fun GreyBrowser() {
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
             } else {
                 withContext(Dispatchers.IO) {
-                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
                 }
             }
             backupLoaded = true
@@ -1143,7 +1161,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
             }
         }
     }
@@ -1151,7 +1169,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
             }
         }
     }
@@ -1159,7 +1177,7 @@ fun GreyBrowser() {
         saveBookmarks(context, bookmarks)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
             }
         }
     }
@@ -1167,7 +1185,7 @@ fun GreyBrowser() {
         saveHistory(context, history)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
             }
         }
     }
@@ -1178,7 +1196,7 @@ fun GreyBrowser() {
         saveCustomFiltersToTxt(customHideRules)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList())
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
             }
         }
     }
