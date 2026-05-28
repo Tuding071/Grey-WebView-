@@ -777,6 +777,61 @@ fun getBackupDir(): File {
 
 fun getBackupFile(): File = File(getBackupDir(), BACKUP_FILE)
 
+fun collectAllDomains(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: List<Bookmark>): Set<String> {
+    val domains = mutableSetOf<String>()
+    for (tab in tabs) {
+        if (!tab.isBlankTab) {
+            val host = try { Uri.parse(tab.url).host } catch (e: Exception) { null }
+            if (host != null) domains.add(host)
+        }
+    }
+    for (item in history) {
+        val host = try { Uri.parse(item.url).host } catch (e: Exception) { null }
+        if (host != null) domains.add(host)
+    }
+    for (bookmark in bookmarks) {
+        val host = try { Uri.parse(bookmark.url).host } catch (e: Exception) { null }
+        if (host != null) domains.add(host)
+    }
+    return domains
+}
+
+fun exportCookies(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: List<Bookmark>): JSONArray {
+    val cookieJson = JSONArray()
+    try {
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        val domains = collectAllDomains(tabs, history, bookmarks)
+        for (domain in domains) {
+            val cookies = cookieManager.getCookie("https://$domain")
+            if (cookies != null && cookies.isNotEmpty()) {
+                val obj = JSONObject()
+                obj.put("domain", domain)
+                obj.put("cookies", cookies)
+                cookieJson.put(obj)
+            }
+        }
+    } catch (e: Exception) { }
+    return cookieJson
+}
+
+fun importCookies(cookieJson: JSONArray) {
+    try {
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        for (i in 0 until cookieJson.length()) {
+            val obj = cookieJson.getJSONObject(i)
+            val domain = obj.getString("domain")
+            val cookieStr = obj.getString("cookies")
+            cookieStr.split(";").forEach { cookie ->
+                val trimmed = cookie.trim()
+                if (trimmed.isNotEmpty()) {
+                    cookieManager.setCookie("https://$domain", trimmed)
+                }
+            }
+        }
+        cookieManager.flush()
+    } catch (e: Exception) { }
+}
+
 fun exportBackup(
     context: Context,
     tabs: List<TabState>,
@@ -824,6 +879,7 @@ fun exportBackup(
             customFiltersArray.put("${cf.domain}##${cf.selector}")
         }
         root.put("customFilters", customFiltersArray)
+        root.put("cookies", exportCookies(tabs, history, bookmarks))
         getBackupFile().writeText(root.toString(1))
     } catch (e: Exception) { }
 }
@@ -862,6 +918,11 @@ fun importBackup(context: Context): Triple<List<SavedTab>, List<HistoryItem>, Li
                 val obj = bookmarksArray.getJSONObject(i)
                 bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
+        }
+        // Restore cookies
+        val cookieJson = root.optJSONArray("cookies")
+        if (cookieJson != null) {
+            importCookies(cookieJson)
         }
         Triple(tabsList, historyList, bookmarksList)
     } catch (e: Exception) { null }
@@ -1053,7 +1114,6 @@ fun GreyBrowser() {
                 history.addAll(backup.second)
                 bookmarks.clear()
                 bookmarks.addAll(backup.third)
-                // Load custom filters from backup
                 val backupFilters = importCustomFiltersFromBackup(context)
                 val merged = mutableMapOf<String, CustomHideRule>()
                 for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
