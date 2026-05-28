@@ -163,8 +163,12 @@ class MainActivity : ComponentActivity() {
         )
         setContent { GreyBrowser() }
     }
-    override fun onPause() { super.onPause(); saveTabsData(this) }
-    override fun onDestroy() { super.onDestroy(); saveTabsData(this) }
+    override fun onPause() {
+        super.onPause()
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("pattern_lock", Context.MODE_PRIVATE).edit().clear().apply()
+    }
+    override fun onDestroy() { super.onDestroy() }
 }
 //PART 1 END
 
