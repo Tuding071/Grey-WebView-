@@ -191,6 +191,7 @@ const val MAX_HISTORY_ITEMS = 500
 const val BACKUP_DIR = "Grey"
 const val BACKUP_FILE = "Grey-backup.json"
 const val CUSTOM_FILTERS_FILE = "CustomFilters.txt"
+const val FILTERS_DIR = "filters"
 
 private val BG            = Color(0xFF121212)
 private val SURFACE       = Color(0xFF1E1E1E)
@@ -752,6 +753,40 @@ fun loadCustomFiltersFromTxt(): List<CustomHideRule> {
     } catch (e: Exception) { emptyList() }
 }
 
+fun getFiltersDir(): File {
+    val dir = File(getBackupDir(), FILTERS_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    return dir
+}
+
+fun saveFilterToFile(name: String, rawText: String) {
+    try {
+        val file = File(getFiltersDir(), "$name.txt")
+        file.writeText(rawText)
+    } catch (e: Exception) { }
+}
+
+fun loadFiltersFromDirectory(): List<Filter> {
+    return try {
+        val dir = getFiltersDir()
+        if (!dir.exists()) return emptyList()
+        val filters = mutableListOf<Filter>()
+        dir.listFiles()?.filter { it.extension == "txt" }?.forEach { file ->
+            val rawText = file.readText()
+            val (network, cosmetic) = parseFilterRules(rawText)
+            filters.add(Filter(
+                name = file.nameWithoutExtension,
+                rawText = rawText,
+                networkRules = network,
+                cosmeticRules = cosmetic,
+                networkRuleCount = network.size,
+                cosmeticRuleCount = cosmetic.size
+            ))
+        }
+        filters
+    } catch (e: Exception) { emptyList() }
+}
+
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
         val viewportWidth  = webView.width
@@ -842,6 +877,7 @@ fun exportBackup(
     history: List<HistoryItem>,
     bookmarks: List<Bookmark>,
     customFilters: List<CustomHideRule>,
+    scripts: List<Script>,
     lastActiveUrl: String
 ) {
     try {
@@ -885,6 +921,26 @@ fun exportBackup(
             customFiltersArray.put("${cf.domain}##${cf.selector}")
         }
         root.put("customFilters", customFiltersArray)
+        val scriptsArray = JSONArray()
+        for (s in scripts) {
+            val obj = JSONObject()
+            obj.put("id", s.id)
+            obj.put("title", s.title)
+            obj.put("code", s.code)
+            obj.put("enabled", s.enabled)
+            obj.put("timestamp", s.timestamp)
+            scriptsArray.put(obj)
+        }
+        root.put("scripts", scriptsArray)
+        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+        val patternHash = prefs.getString("pattern_hash", null)
+        val lockEnabled = prefs.getBoolean("lock_enabled", false)
+        if (patternHash != null || lockEnabled) {
+            val patternObj = JSONObject()
+            patternObj.put("hash", patternHash ?: "")
+            patternObj.put("enabled", lockEnabled)
+            root.put("patternLock", patternObj)
+        }
         root.put("cookies", exportCookies(tabs, history, bookmarks))
         getBackupFile().writeText(root.toString(1))
     } catch (e: Exception) { }
@@ -894,7 +950,10 @@ data class BackupData(
     val tabs: List<SavedTab>,
     val history: List<HistoryItem>,
     val bookmarks: List<Bookmark>,
-    val lastActiveUrl: String
+    val scripts: List<Script>,
+    val lastActiveUrl: String,
+    val patternHash: String?,
+    val lockEnabled: Boolean
 )
 
 fun importBackup(context: Context): BackupData? {
@@ -933,11 +992,28 @@ fun importBackup(context: Context): BackupData? {
                 bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
+        val scriptsList = mutableListOf<Script>()
+        val scriptsArray = root.optJSONArray("scripts")
+        if (scriptsArray != null) {
+            for (i in 0 until scriptsArray.length()) {
+                val obj = scriptsArray.getJSONObject(i)
+                scriptsList.add(Script(
+                    obj.getString("id"),
+                    obj.getString("title"),
+                    obj.getString("code"),
+                    obj.optBoolean("enabled", true),
+                    obj.getLong("timestamp")
+                ))
+            }
+        }
+        val patternObj = root.optJSONObject("patternLock")
+        val patternHash = patternObj?.optString("hash", null)?.ifEmpty { null }
+        val lockEnabled = patternObj?.optBoolean("enabled", false) ?: false
         val cookieJson = root.optJSONArray("cookies")
         if (cookieJson != null) {
             importCookies(cookieJson)
         }
-        BackupData(tabsList, historyList, bookmarksList, lastActiveUrl)
+        BackupData(tabsList, historyList, bookmarksList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
     } catch (e: Exception) { null }
 }
 
@@ -1127,6 +1203,15 @@ fun GreyBrowser() {
                 history.addAll(backup.history)
                 bookmarks.clear()
                 bookmarks.addAll(backup.bookmarks)
+                // Restore scripts
+                scripts.clear()
+                scripts.addAll(backup.scripts)
+                // Restore filters from directory
+                val dirFilters = loadFiltersFromDirectory()
+                if (dirFilters.isNotEmpty()) {
+                    filters.clear()
+                    filters.addAll(dirFilters)
+                }
                 // Restore last active tab
                 val backupLastUrl = backup.lastActiveUrl
                 val lastIndex = tabs.indexOfFirst {
@@ -1135,6 +1220,12 @@ fun GreyBrowser() {
                 currentTabIndex = if (lastIndex >= 0) lastIndex else if (tabs.isNotEmpty()) 0 else -1
                 highlightedTabIndex = currentTabIndex
                 if (backupLastUrl.isNotEmpty()) lastActiveUrl = backupLastUrl
+                // Restore pattern lock
+                val patternPrefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+                if (backup.patternHash != null) {
+                    patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
+                }
+                patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 // Merge custom filters from backup
                 val backupFilters = importCustomFiltersFromBackup(context)
                 val merged = mutableMapOf<String, CustomHideRule>()
@@ -1147,10 +1238,18 @@ fun GreyBrowser() {
                 customHideRules.addAll(merged.values.sortedByDescending { it.timestamp })
                 saveBookmarks(context, bookmarks)
                 saveHistory(context, history)
+                saveScripts(context, scripts)
+                saveFilters(context, filters)
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
             } else {
+                // Load filters from directory on fresh start too
+                val dirFilters = loadFiltersFromDirectory()
+                if (dirFilters.isNotEmpty()) {
+                    filters.clear()
+                    filters.addAll(dirFilters)
+                }
                 withContext(Dispatchers.IO) {
-                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
                 }
             }
             backupLoaded = true
@@ -1161,7 +1260,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1169,7 +1268,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1177,7 +1276,7 @@ fun GreyBrowser() {
         saveBookmarks(context, bookmarks)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1185,18 +1284,32 @@ fun GreyBrowser() {
         saveHistory(context, history)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
-    LaunchedEffect(scripts.toList()) { saveScripts(context, scripts) }
-    LaunchedEffect(filters.toList()) { saveFilters(context, filters) }
+    LaunchedEffect(scripts.toList()) {
+        saveScripts(context, scripts)
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+            }
+        }
+    }
+    LaunchedEffect(filters.toList()) {
+        saveFilters(context, filters)
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+            }
+        }
+    }
     LaunchedEffect(customHideRules.toList()) {
         saveCustomFilters(context, customHideRules)
         saveCustomFiltersToTxt(customHideRules)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1904,6 +2017,7 @@ fun ContentLayer() {
                         networkRuleCount = network.size,
                         cosmeticRuleCount = cosmetic.size
                     ))
+                    saveFilterToFile(name, rawText)
                     showToast("Filter imported: ${network.size} rules")
                 }
             )
