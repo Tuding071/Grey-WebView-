@@ -163,8 +163,9 @@ class MainActivity : ComponentActivity() {
         )
         setContent { GreyBrowser() }
     }
-    override fun onPause() {
-        super.onPause()
+    override fun onPause() { super.onPause() }
+    override fun onStop() {
+        super.onStop()
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
     }
     override fun onDestroy() { super.onDestroy() }
