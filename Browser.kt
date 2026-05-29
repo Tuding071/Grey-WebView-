@@ -1823,12 +1823,14 @@ fun ContentLayer() {
     var showAppLockSettings by remember { mutableStateOf(false) }
     var patternDrawMode by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
-        val lockEnabled = prefs.getBoolean("lock_enabled", false)
-        val hasPattern = prefs.getString("pattern_hash", null) != null
-        if (lockEnabled && hasPattern) {
-            patternDrawMode = "unlock"
+    LaunchedEffect(backupLoaded) {
+        if (backupLoaded) {
+            val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+            val lockEnabled = prefs.getBoolean("lock_enabled", false)
+            val hasPattern = prefs.getString("pattern_hash", null) != null
+            if (lockEnabled && hasPattern) {
+                patternDrawMode = "unlock"
+            }
         }
     }
 
