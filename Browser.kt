@@ -2085,6 +2085,9 @@ fun ContentLayer() {
 
 
 //PART 8.6 START
+        // ── Persistent thumbnail bitmap cache ──────────────────────
+        val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
+
         if (showTabManager) {
             val realTabs = tabs.toList()
             val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
@@ -2105,19 +2108,19 @@ fun ContentLayer() {
                 sortedDomains.forEach { domain -> loadFavicon(domain) }
             }
 
-            val thumbnailBitmaps = remember { mutableStateMapOf<Int, Bitmap?>() }
             LaunchedEffect(showTabManager) {
-                thumbnailBitmaps.clear()
                 realTabs.forEachIndexed { index, tab ->
-                    tab.thumbnailBytes?.let { bytes ->
-                        withContext(Dispatchers.IO) {
-                            try {
-                                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                withContext(Dispatchers.Main) {
-                                    thumbnailBitmaps[index] = bmp
+                    if (!thumbnailBitmapCache.containsKey(index)) {
+                        tab.thumbnailBytes?.let { bytes ->
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    withContext(Dispatchers.Main) {
+                                        thumbnailBitmapCache[index] = bmp
+                                    }
+                                } catch (e: Exception) {
+                                    thumbnailBitmapCache[index] = null
                                 }
-                            } catch (e: Exception) {
-                                thumbnailBitmaps[index] = null
                             }
                         }
                     }
@@ -2255,7 +2258,7 @@ fun ContentLayer() {
                                                 val tabDomain     = getDomainName(tab.url)
                                                 LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                                 val tabFav = tabFavicons[tabDomain]
-                                                val thumbBmp = thumbnailBitmaps[tabIndex]
+                                                val thumbBmp = thumbnailBitmapCache[tabIndex]
 
                                                 Surface(
                                                     Modifier
