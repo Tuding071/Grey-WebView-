@@ -1202,30 +1202,25 @@ fun GreyBrowser() {
                 history.addAll(backup.history)
                 bookmarks.clear()
                 bookmarks.addAll(backup.bookmarks)
-                // Restore scripts
                 scripts.clear()
                 scripts.addAll(backup.scripts)
-                // Restore filters from directory
                 val dirFilters = loadFiltersFromDirectory()
                 if (dirFilters.isNotEmpty()) {
                     filters.clear()
                     filters.addAll(dirFilters)
                 }
-                // Restore last active tab
+                // Stay on homepage — don't load any tab
+                currentTabIndex = -1
                 val backupLastUrl = backup.lastActiveUrl
-                val lastIndex = tabs.indexOfFirst {
+                highlightedTabIndex = tabs.indexOfFirst {
                     it.url.substringBefore("#") == backupLastUrl.substringBefore("#")
-                }
-                currentTabIndex = if (lastIndex >= 0) lastIndex else if (tabs.isNotEmpty()) 0 else -1
-                highlightedTabIndex = currentTabIndex
+                }.let { if (it >= 0) it else -1 }
                 if (backupLastUrl.isNotEmpty()) lastActiveUrl = backupLastUrl
-                // Restore pattern lock
                 val patternPrefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
                 if (backup.patternHash != null) {
                     patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
                 }
                 patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
-                // Merge custom filters from backup
                 val backupFilters = importCustomFiltersFromBackup(context)
                 val merged = mutableMapOf<String, CustomHideRule>()
                 for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
@@ -1241,7 +1236,6 @@ fun GreyBrowser() {
                 saveFilters(context, filters)
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
             } else {
-                // Load filters from directory on fresh start too
                 val dirFilters = loadFiltersFromDirectory()
                 if (dirFilters.isNotEmpty()) {
                     filters.clear()
