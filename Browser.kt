@@ -1047,6 +1047,8 @@ fun GreyBrowser() {
     val scope = rememberCoroutineScope()
 
     var backupLoaded by remember { mutableStateOf(false) }
+    var showLoadingScreen by remember { mutableStateOf(true) }
+    var loadingLetterIndex by remember { mutableIntStateOf(0) }
 
     val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
     var showBookmarks by remember { mutableStateOf(false) }
@@ -1084,7 +1086,6 @@ fun GreyBrowser() {
     }
     var showElementHider by remember { mutableStateOf(false) }
 
-    // ── Persistent thumbnail bitmap cache ──────────────────────────
     val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
 
     var toastMessage by remember { mutableStateOf("") }
@@ -1171,6 +1172,18 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // Loading screen animation
+    LaunchedEffect(backupLoaded) {
+        if (!backupLoaded) {
+            while (!backupLoaded) {
+                delay(200)
+                loadingLetterIndex = (loadingLetterIndex + 1) % 4
+            }
+        }
+        delay(300)
+        showLoadingScreen = false
+    }
+
     LaunchedEffect(Unit) {
         var permissionRequested = false
         while (!backupLoaded) {
@@ -1219,11 +1232,12 @@ fun GreyBrowser() {
                     it.url.substringBefore("#") == backupLastUrl.substringBefore("#")
                 }.let { if (it >= 0) it else -1 }
                 if (backupLastUrl.isNotEmpty()) lastActiveUrl = backupLastUrl
+                // Restore pattern lock — only if hash exists
                 val patternPrefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
                 if (backup.patternHash != null) {
                     patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
+                    patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 }
-                patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 val backupFilters = importCustomFiltersFromBackup(context)
                 val merged = mutableMapOf<String, CustomHideRule>()
                 for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
@@ -1833,6 +1847,33 @@ fun ContentLayer() {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Loading screen
+        if (showLoadingScreen) {
+            Box(
+                Modifier.fillMaxSize().background(BG),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row {
+                        val letters = listOf("G", "R", "E", "Y")
+                        letters.forEachIndexed { index, letter ->
+                            Text(
+                                letter,
+                                color = if (index <= loadingLetterIndex) WHITE else MUTED,
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "browser",
+                        color = MUTED,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        }
 //PART 8.1 END
 
 //PART 8.2 START
