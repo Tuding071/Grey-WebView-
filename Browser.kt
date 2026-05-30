@@ -1172,16 +1172,20 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // Loading screen animation
-    LaunchedEffect(backupLoaded) {
-        if (!backupLoaded) {
-            while (!backupLoaded) {
-                delay(200)
-                loadingLetterIndex = (loadingLetterIndex + 1) % 4
-            }
+    // Loading animation — runs while screen is visible
+    LaunchedEffect(showLoadingScreen) {
+        while (showLoadingScreen) {
+            delay(200)
+            loadingLetterIndex = (loadingLetterIndex + 1) % 4
         }
-        delay(300)
-        showLoadingScreen = false
+    }
+
+    // Hide loading screen after backup loads
+    LaunchedEffect(backupLoaded) {
+        if (backupLoaded) {
+            delay(300)
+            showLoadingScreen = false
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -1232,7 +1236,6 @@ fun GreyBrowser() {
                     it.url.substringBefore("#") == backupLastUrl.substringBefore("#")
                 }.let { if (it >= 0) it else -1 }
                 if (backupLastUrl.isNotEmpty()) lastActiveUrl = backupLastUrl
-                // Restore pattern lock — only if hash exists
                 val patternPrefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
                 if (backup.patternHash != null) {
                     patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
@@ -1929,10 +1932,20 @@ fun ContentLayer() {
                             patternDrawMode = "set"
                         } else {
                             prefs.edit().putBoolean("lock_enabled", true).apply()
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                }
+                            }
                         }
                     } else {
                         showAppLockSettings = false
                         patternDrawMode = "toggle_off"
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                            }
+                        }
                     }
                 },
                 onChangePattern = {
@@ -1957,6 +1970,11 @@ fun ContentLayer() {
                             prefs.edit().putBoolean("lock_enabled", false).apply()
                             patternDrawMode = ""
                             showToast("App lock disabled")
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                }
+                            }
                         }
                     }
                 },
@@ -1965,6 +1983,11 @@ fun ContentLayer() {
                     prefs.edit().putBoolean("lock_enabled", true).apply()
                     patternDrawMode = ""
                     showToast("Pattern saved")
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                        }
+                    }
                 },
                 onPatternRemoved = {}
             )
