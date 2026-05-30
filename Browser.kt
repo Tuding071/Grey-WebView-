@@ -1850,33 +1850,6 @@ fun ContentLayer() {
     }
 
     Box(Modifier.fillMaxSize()) {
-        // Loading screen
-        if (showLoadingScreen) {
-            Box(
-                Modifier.fillMaxSize().background(BG),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row {
-                        val letters = listOf("G", "R", "E", "Y")
-                        letters.forEachIndexed { index, letter ->
-                            Text(
-                                letter,
-                                color = if (index <= loadingLetterIndex) WHITE else MUTED,
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "browser",
-                        color = MUTED,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-        }
 //PART 8.1 END
 
 //PART 8.2 START
@@ -2978,7 +2951,6 @@ fun ContentLayer() {
                         customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
                         appendCustomFilterToTxt(domain, selector)
                         showToast("Saved: $rule")
-                        // Instant hide
                         currentWebView?.evaluateJavascript("""
                             try {
                                 document.querySelectorAll('$selector').forEach(function(el) {
@@ -3054,6 +3026,30 @@ fun ContentLayer() {
                     fontSize = 14.sp,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )
+            }
+        }
+    }
+
+    // Loading screen — topmost layer
+    if (showLoadingScreen) {
+        Box(
+            Modifier.fillMaxSize().background(BG),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row {
+                    val letters = listOf("G", "R", "E", "Y")
+                    letters.forEachIndexed { index, letter ->
+                        Text(
+                            letter,
+                            color = if (index <= loadingLetterIndex) WHITE else MUTED,
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("browser", color = MUTED, fontSize = 16.sp)
             }
         }
     }
