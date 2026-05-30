@@ -1084,6 +1084,9 @@ fun GreyBrowser() {
     }
     var showElementHider by remember { mutableStateOf(false) }
 
+    // ── Persistent thumbnail bitmap cache ──────────────────────────
+    val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
+
     var toastMessage by remember { mutableStateOf("") }
     var showToast by remember { mutableStateOf(false) }
 
@@ -1210,7 +1213,6 @@ fun GreyBrowser() {
                     filters.clear()
                     filters.addAll(dirFilters)
                 }
-                // Stay on homepage — don't load any tab
                 currentTabIndex = -1
                 val backupLastUrl = backup.lastActiveUrl
                 highlightedTabIndex = tabs.indexOfFirst {
@@ -1359,6 +1361,9 @@ fun GreyBrowser() {
                     val bytes = captureThumbnail(view)
                     if (bytes != null && bytes.isNotEmpty()) {
                         tabState.thumbnailBytes = bytes
+                        // Invalidate thumbnail cache for this tab
+                        val idx = tabs.indexOf(tabState)
+                        if (idx >= 0) thumbnailBitmapCache.remove(idx)
                     }
                 }
             }
@@ -1377,7 +1382,6 @@ fun GreyBrowser() {
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
                 if (url != "about:blank") tabState.isBlankTab = false
-                // Reset element hider on navigation
                 if (showElementHider) showElementHider = false
                 wv.evaluateJavascript("""
                     (function() {
@@ -2085,9 +2089,6 @@ fun ContentLayer() {
 
 
 //PART 8.6 START
-        // ── Persistent thumbnail bitmap cache ──────────────────────
-        val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
-
         if (showTabManager) {
             val realTabs = tabs.toList()
             val domainGroups = realTabs.groupBy { getDomainName(it.url) }.filter { it.key.isNotBlank() }
@@ -2110,17 +2111,15 @@ fun ContentLayer() {
 
             LaunchedEffect(showTabManager) {
                 realTabs.forEachIndexed { index, tab ->
-                    if (!thumbnailBitmapCache.containsKey(index)) {
-                        tab.thumbnailBytes?.let { bytes ->
-                            withContext(Dispatchers.IO) {
-                                try {
-                                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                    withContext(Dispatchers.Main) {
-                                        thumbnailBitmapCache[index] = bmp
-                                    }
-                                } catch (e: Exception) {
-                                    thumbnailBitmapCache[index] = null
+                    tab.thumbnailBytes?.let { bytes ->
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                withContext(Dispatchers.Main) {
+                                    thumbnailBitmapCache[index] = bmp
                                 }
+                            } catch (e: Exception) {
+                                thumbnailBitmapCache[index] = null
                             }
                         }
                     }
