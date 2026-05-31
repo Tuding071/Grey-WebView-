@@ -2482,7 +2482,13 @@ fun ContentLayer() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                        IconButton({ showTabManager = true }) {
+                        IconButton({
+                            focusManager.clearFocus()
+                            scope.launch {
+                                delay(50)
+                                showTabManager = true
+                            }
+                        }) {
                             Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                         }
                     }
@@ -3030,7 +3036,6 @@ fun ContentLayer() {
         }
     }
 
-    // Loading screen — topmost layer
     if (showLoadingScreen) {
         Box(
             Modifier.fillMaxSize().background(BG),
