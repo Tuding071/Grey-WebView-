@@ -2367,7 +2367,7 @@ fun ContentLayer() {
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
                                                                 color = WHITE,
                                                                 fontSize = 14.sp,
-                                                                maxLines = 1,
+                                                                maxLines = 2,
                                                                 overflow = TextOverflow.Ellipsis
                                                             )
                                                             Spacer(Modifier.height(2.dp))
