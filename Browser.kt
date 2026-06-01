@@ -119,10 +119,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
@@ -147,6 +149,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2308,15 +2311,21 @@ fun ContentLayer() {
                                                 val tabFav = tabFavicons[tabDomain]
                                                 val thumbBmp = thumbnailBitmapCache[tabIndex]
 
-                                                Surface(
+                                                Box(
                                                     Modifier
                                                         .fillMaxWidth()
                                                         .padding(vertical = 2.dp)
-                                                        .padding(horizontal = 8.dp),
-                                                    color = when {
-                                                        isPending -> DELETE_BG
-                                                        else -> ITEM_BG
-                                                    }
+                                                        .padding(horizontal = 8.dp)
+                                                        .drawWithContent {
+                                                            drawRect(if (isPending) DELETE_BG else ITEM_BG)
+                                                            if (isHighlighted) {
+                                                                drawRect(
+                                                                    color = Color.White,
+                                                                    size = Size(4.dp.toPx(), size.height)
+                                                                )
+                                                            }
+                                                            drawContent()
+                                                        }
                                                 ) {
                                                     Row(
                                                         Modifier
@@ -2328,16 +2337,6 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        if (isHighlighted) {
-                                                            Spacer(
-                                                                Modifier
-                                                                    .width(4.dp)
-                                                                    .height(72.dp)
-                                                                    .background(Color.White)
-                                                            )
-                                                            Spacer(Modifier.width(6.dp))
-                                                        }
-
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
@@ -2429,9 +2428,20 @@ fun ContentLayer() {
                                     val tabCount  = domainGroups[domain]?.size ?: 0
                                     val fav       = faviconBitmaps[domain]
 
-                                    Surface(
+                                    Box(
                                         Modifier
                                             .padding(horizontal = 4.dp)
+                                            .drawWithContent {
+                                                drawRect(if (isSelectedDomain) Color.DarkGray else ITEM_BG)
+                                                if (isActiveTabDomain) {
+                                                    drawRect(
+                                                        color = Color.White,
+                                                        topLeft = Offset(0f, size.height - 4.dp.toPx()),
+                                                        size = Size(size.width, 4.dp.toPx())
+                                                    )
+                                                }
+                                                drawContent()
+                                            }
                                             .clickable {
                                                 selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
@@ -2440,8 +2450,7 @@ fun ContentLayer() {
                                                         tabListState.animateScrollToItem(domainIdx)
                                                     }
                                                 }
-                                            },
-                                        color = if (isSelectedDomain) Color.DarkGray else ITEM_BG
+                                            }
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
@@ -2453,9 +2462,6 @@ fun ContentLayer() {
                                                 Spacer(Modifier.height(2.dp))
                                                 Box(Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
                                                     Text(tabCount.toString(), color = WHITE, fontSize = 9.sp)
-                                                }
-                                                if (isActiveTabDomain) {
-                                                    Spacer(Modifier.height(4.dp))
                                                 }
                                             }
                                         }
