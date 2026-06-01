@@ -939,7 +939,13 @@ fun exportBackup(
         root.put("bookmarks", bookmarksArray)
         val customFiltersArray = JSONArray()
         for (cf in customFilters) {
-            customFiltersArray.put("${cf.domain}##${cf.selector}")
+            val obj = JSONObject()
+            obj.put("id", cf.id)
+            obj.put("domain", cf.domain)
+            obj.put("selector", cf.selector)
+            obj.put("enabled", cf.enabled)
+            obj.put("timestamp", cf.timestamp)
+            customFiltersArray.put(obj)
         }
         root.put("customFilters", customFiltersArray)
         val scriptsArray = JSONArray()
@@ -1046,11 +1052,22 @@ fun importCustomFiltersFromBackup(context: Context): List<CustomHideRule> {
         val arr = root.optJSONArray("customFilters") ?: return emptyList()
         val rules = mutableListOf<CustomHideRule>()
         for (i in 0 until arr.length()) {
-            val str = arr.getString(i)
-            if (str.contains("##")) {
-                val domain = str.substringBefore("##").trim()
-                val selector = str.substringAfter("##").trim()
-                rules.add(CustomHideRule(domain = domain, selector = selector))
+            val item = arr.get(i)
+            if (item is JSONObject) {
+                rules.add(CustomHideRule(
+                    id = item.optString("id", UUID.randomUUID().toString()),
+                    domain = item.getString("domain"),
+                    selector = item.getString("selector"),
+                    enabled = item.optBoolean("enabled", true),
+                    timestamp = item.optLong("timestamp", System.currentTimeMillis())
+                ))
+            } else {
+                val str = item.toString()
+                if (str.contains("##")) {
+                    val domain = str.substringBefore("##").trim()
+                    val selector = str.substringAfter("##").trim()
+                    rules.add(CustomHideRule(domain = domain, selector = selector))
+                }
             }
         }
         rules
@@ -2983,7 +3000,6 @@ fun ContentLayer() {
                     if (domain.isNotBlank() && selector.isNotBlank()) {
                         customHideRules.removeAll { it.domain == domain && it.selector == selector }
                         customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
-                        appendCustomFilterToTxt(domain, selector)
                         showToast("Saved: $rule")
                         currentWebView?.evaluateJavascript("""
                             try {
@@ -3037,8 +3053,13 @@ fun ContentLayer() {
             @android.webkit.JavascriptInterface
             fun onDeleteRule(ruleId: String) {
                 scope.launch(Dispatchers.Main) {
-                    customHideRules.removeAll { it.id == ruleId }
-                    showToast("Rule deleted")
+                    confirmTitle = "Delete Rule?"
+                    confirmMessage = "This cannot be undone."
+                    confirmAction = {
+                        customHideRules.removeAll { it.id == ruleId }
+                        showToast("Rule deleted")
+                    }
+                    showConfirmDialog = true
                 }
             }
         }, "GreyPicker")
