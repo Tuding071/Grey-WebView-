@@ -2498,16 +2498,7 @@ fun ContentLayer() {
             Surface(
                 color = SURFACE,
                 shadowElevation = 0.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .drawBehind {
-                        drawLine(
-                            color = Color.White,
-                            start = Offset(0f, size.height),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -2640,7 +2631,7 @@ fun ContentLayer() {
                         DropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
-                            offset = DpOffset((-40).dp, 0.dp),
+                            offset = DpOffset((-80).dp, 0.dp),
                             containerColor = SURFACE,
                             shape = RectangleShape
                         ) {
@@ -2972,6 +2963,8 @@ fun ContentLayer() {
                     }
                 }
             }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White))
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ContentLayer()
