@@ -1,31 +1,21 @@
 //PART 0 START
 // Grey Browser - V4.0 — Theme Specification
 //
-// THEME: DeepSeek-Inspired Dark — No Borders, Single Background
-//
-// PHILOSOPHY:
-//   One background (#121212) for all content areas.
-//   Panels and overlays use #1E1E1E to distinguish from content.
-//   No borders anywhere — separation via background contrast only.
-//   Active states indicated by pure white bars (left for tabs, bottom for chips).
+// THEME: Dark Grey + White Accents — No Round Corners
 //
 // COLOURS:
-//   Background:    #121212  (universal content background)
-//   Surface:       #1E1E1E  (panels, overlays, dialogs, buttons)
-//   Text Primary:  #ECECEC  (near-white, softened)
-//   Text Muted:    #8B8B8B  (warm grey)
-//   Accent:        #ECECEC  (near-white - icons, progress)
-//   Active Indicator: #FFFFFF (pure white - tab left bar, chip bottom bar)
-//   Progress Bar:  #FFFFFF  (pure white fill behind URL text)
+//   Background:    #121212  (deep dark grey)
+//   Surface:       #1E1E1E  (elevated dark grey)
+//   Field BG:      #1E1E1E  (same as surface)
+//   Border:        White at 20% alpha  (subtle)
+//   Border Active: White solid
+//   Text Primary:  #FFFFFF  (white)
+//   Text Muted:    #808080  (grey)
+//   Accent:        #FFFFFF  (white — used for icons, buttons, progress)
+//   Progress Bar:  #FFFFFF  (white fill behind URL text)
 //   Delete:        #FF0000 at 30% alpha  (pending delete tab)
-//   Toast BG:      #2B2B2B  (dark toast)
-//   Toast Text:    #ECECEC  (near-white on dark toast)
-//   Divider:       #2B2B2B  (subtle section dividers)
-//
-// BORDERS:
-//   Active Tab Indicator:   2dp pure white bar, left side only
-//   Active Chip Indicator:  2dp pure white bar, bottom side only
-//   All Other Borders:      Removed entirely
+//   Toast BG:      White at 90% alpha
+//   Toast Text:    #000000  (black on white toast)
 //
 // SHAPES:
 //   Everything:    RectangleShape  (0dp corner radius)
@@ -41,15 +31,14 @@
 //   Group chips:   12sp (domain), 9sp (count)
 //
 // COMPONENT STYLES:
-//   Buttons:       Button with Surface (#1E1E1E), near-white text, no border
-//   TextFields:    RectangleShape, BG (#121212), no border
-//   Dividers:      1dp, #2B2B2B
-//   Icons:         Near-white when active, 30% white when disabled
+//   Buttons:       OutlinedButton, RectangleShape, white border, white text
+//   TextFields:    RectangleShape, transparent bg, white border
+//   Dividers:      0.5dp or 1dp, Color.DarkGray
+//   Icons:         White when active, White at 30% when disabled
 //   Switches:      White thumb, #444444 track
-//   Dialogs:       #1E1E1E background, RectangleShape, no border
-//   Dropdowns:     #1E1E1E background, no border, RectangleShape
+//   Dialogs:       #1E1E1E background, RectangleShape, white text
+//   Dropdowns:     #1E1E1E background, 1dp white border, RectangleShape
 //   Elevation:     0dp throughout (flat design)
-//   List Items:    #121212 background, no border, separated by gaps
 //
 // SPACING:
 //   Top bar padding:    8dp horizontal, 8dp vertical
@@ -206,15 +195,13 @@ const val FILTERS_DIR = "filters"
 
 private val BG            = Color(0xFF121212)
 private val SURFACE       = Color(0xFF1E1E1E)
-private val WHITE         = Color(0xFFECECEC)
-private val MUTED         = Color(0xFF8B8B8B)
+private val WHITE         = Color(0xFFFFFFFF)
+private val MUTED         = Color(0xFF808080)
 private val ACCENT_DIM    = Color.White.copy(alpha = 0.3f)
-private val BORDER_SUBTLE = Color.Transparent
+private val BORDER_SUBTLE = Color.White.copy(alpha = 0.2f)
 private val DELETE_BG     = Color.Red.copy(alpha = 0.3f)
-private val TOAST_BG      = Color(0xFF2B2B2B)
-private val TOAST_TEXT    = Color(0xFFECECEC)
-private val DIVIDER_COLOR = Color(0xFF2B2B2B)
-private val ACTIVE_INDICATOR = Color(0xFFFFFFFF)
+private val TOAST_BG      = Color.White.copy(alpha = 0.9f)
+private val TOAST_TEXT    = Color.Black
 
 object FaviconMemoryCache {
     private const val MAX_MEMORY_FAVICONS = 100
@@ -1185,6 +1172,7 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // Loading animation — runs while screen is visible
     LaunchedEffect(showLoadingScreen) {
         while (showLoadingScreen) {
             delay(200)
@@ -1192,6 +1180,7 @@ fun GreyBrowser() {
         }
     }
 
+    // Hide loading screen after backup loads
     LaunchedEffect(backupLoaded) {
         if (backupLoaded) {
             delay(300)
@@ -1389,6 +1378,7 @@ fun GreyBrowser() {
                     val bytes = captureThumbnail(view)
                     if (bytes != null && bytes.isNotEmpty()) {
                         tabState.thumbnailBytes = bytes
+                        // Invalidate thumbnail cache for this tab
                         val idx = tabs.indexOf(tabState)
                         if (idx >= 0) thumbnailBitmapCache.remove(idx)
                     }
@@ -2104,7 +2094,8 @@ fun ContentLayer() {
             ) {
                 Surface(
                     modifier = Modifier
-                        .width(240.dp),
+                        .width(240.dp)
+                        .border(1.dp, WHITE, RectangleShape),
                     color = SURFACE,
                     shape = RectangleShape,
                     tonalElevation = 0.dp
@@ -2132,6 +2123,7 @@ fun ContentLayer() {
             }
         }
 //PART 8.5 END
+
 
 //PART 8.6 START
         if (showTabManager) {
@@ -2291,6 +2283,7 @@ fun ContentLayer() {
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
+                                    val isPinned  = pinnedDomains.contains(domain)
 
                                     item(key = domain) {
                                         Column(Modifier.padding(bottom = 48.dp)) {
@@ -2307,19 +2300,8 @@ fun ContentLayer() {
                                                     Modifier
                                                         .fillMaxWidth()
                                                         .padding(vertical = 2.dp)
-                                                        .padding(horizontal = 8.dp)
-                                                        .drawBehind {
-                                                            if (isHighlighted) {
-                                                                drawRect(
-                                                                    color = ACTIVE_INDICATOR,
-                                                                    size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)
-                                                                )
-                                                            }
-                                                        },
-                                                    color = when {
-                                                        isPending -> DELETE_BG
-                                                        else -> BG
-                                                    }
+                                                        .padding(horizontal = 8.dp),
+                                                    color = if (isPending) DELETE_BG else BG
                                                 ) {
                                                     Row(
                                                         Modifier
@@ -2337,6 +2319,7 @@ fun ContentLayer() {
                                                                 "Thumbnail",
                                                                 Modifier
                                                                     .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .clip(RectangleShape),
                                                                 contentScale = ContentScale.Crop
                                                             )
@@ -2344,6 +2327,7 @@ fun ContentLayer() {
                                                             Box(
                                                                 Modifier
                                                                     .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2424,15 +2408,11 @@ fun ContentLayer() {
                                     Surface(
                                         Modifier
                                             .padding(horizontal = 4.dp)
-                                            .drawBehind {
-                                                if (isActiveTabDomain) {
-                                                    drawRect(
-                                                        color = ACTIVE_INDICATOR,
-                                                        topLeft = Offset(0f, size.height - 2.dp.toPx()),
-                                                        size = androidx.compose.ui.geometry.Size(size.width, 2.dp.toPx())
-                                                    )
-                                                }
-                                            }
+                                            .border(
+                                                width = if (isActiveTabDomain) 2.dp else 0.5.dp,
+                                                color = if (isActiveTabDomain) WHITE else BORDER_SUBTLE,
+                                                shape = RectangleShape
+                                            )
                                             .clickable {
                                                 selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
@@ -2442,7 +2422,7 @@ fun ContentLayer() {
                                                     }
                                                 }
                                             },
-                                        color = if (isSelectedDomain) Color.DarkGray else BG
+                                        color = if (isSelectedDomain) Color.DarkGray else Color.Transparent
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
@@ -2466,10 +2446,10 @@ fun ContentLayer() {
                             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Button(
+                            OutlinedButton(
                                 onClick = { currentTabIndex = -1; showTabManager = false },
                                 modifier = Modifier.weight(1f), shape = RectangleShape,
-                                colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE), border = BorderStroke(1.dp, WHITE),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                             ) {
                                 Icon(Icons.Default.Add, null, tint = WHITE, modifier = Modifier.size(16.dp))
@@ -2496,131 +2476,131 @@ fun ContentLayer() {
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton({
-                        focusManager.clearFocus()
-                        scope.launch {
-                            delay(50)
-                            showTabManager = true
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({
+                            focusManager.clearFocus()
+                            scope.launch {
+                                delay(50)
+                                showTabManager = true
+                            }
+                        }) {
+                            Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                         }
-                    }) {
-                        Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                     }
 
                     Spacer(Modifier.width(4.dp))
 
                     val canGoForward = currentTab?.webView?.canGoForward() == true
-                    IconButton(
-                        onClick = { currentTab?.webView?.goForward() },
-                        enabled = canGoForward
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            "Forward",
-                            tint = if (canGoForward) WHITE else ACCENT_DIM
-                        )
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton(
+                            onClick = { currentTab?.webView?.goForward() },
+                            enabled = canGoForward
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                "Forward",
+                                tint = if (canGoForward) WHITE else ACCENT_DIM
+                            )
+                        }
                     }
 
                     Spacer(Modifier.width(4.dp))
 
                     val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
-                    Box(Modifier.weight(1f)) {
-                        if (isLoading) {
-                            Box(
-                                Modifier
-                                    .matchParentSize()
-                                    .background(BG)
-                                    .drawBehind {
-                                        drawRect(
-                                            color = ACTIVE_INDICATOR,
-                                            size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
-                                        )
-                                    }
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                if (currentTabIndex == -1) "Search or enter URL"
+                                else currentTab?.url?.take(50) ?: "",
+                                color = WHITE.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                        }
-                        OutlinedTextField(
-                            value = urlInput,
-                            onValueChange = { urlInput = it },
-                            singleLine = true,
-                            placeholder = {
-                                Text(
-                                    if (currentTabIndex == -1) "Search or enter URL"
-                                    else currentTab?.url?.take(50) ?: "",
-                                    color = WHITE.copy(alpha = 0.5f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(SURFACE)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { isUrlFocused = it.isFocused }
+                            .drawBehind {
+                                if (isLoading) {
+                                    drawRect(
+                                        color = WHITE,
+                                        size = size.copy(width = size.width * (currentTab?.progress ?: 100) / 100f)
+                                    )
+                                }
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester)
-                                .onFocusChanged { isUrlFocused = it.isFocused },
-                            textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
-                            shape = RectangleShape,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(
-                                onGo = {
-                                    val input = urlInput.text
-                                    if (input.isNotBlank()) {
-                                        focusManager.clearFocus()
-                                        urlInput = urlInput.copy(selection = TextRange(0))
-                                        val uri = resolveUrl(input)
-                                        if (currentTabIndex == -1) {
+                        textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(
+                            onGo = {
+                                val input = urlInput.text
+                                if (input.isNotBlank()) {
+                                    focusManager.clearFocus()
+                                    urlInput = urlInput.copy(selection = TextRange(0))
+                                    val uri = resolveUrl(input)
+                                    if (currentTabIndex == -1) {
+                                        createForegroundTab(uri)
+                                    } else {
+                                        val cleanUri = uri.substringBefore("#")
+                                        val existingIndex = tabs.indexOfFirst {
+                                            it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                                        }
+                                        if (existingIndex >= 0 && existingIndex != currentTabIndex) {
+                                            removeDuplicateTab(uri)
                                             createForegroundTab(uri)
                                         } else {
-                                            val cleanUri = uri.substringBefore("#")
-                                            val existingIndex = tabs.indexOfFirst {
-                                                it.url.substringBefore("#") == cleanUri && !it.isBlankTab
-                                            }
-                                            if (existingIndex >= 0 && existingIndex != currentTabIndex) {
-                                                removeDuplicateTab(uri)
-                                                createForegroundTab(uri)
-                                            } else {
-                                                currentTab?.webView?.loadUrl(uri)
-                                            }
+                                            currentTab?.webView?.loadUrl(uri)
                                         }
                                     }
                                 }
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = BG,
-                                unfocusedContainerColor = BG,
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent,
-                                cursorColor = if (isLoading) Color.Gray else WHITE
-                            ),
-                            trailingIcon = {
-                                if (isLoading) {
-                                    IconButton({ currentTab?.webView?.stopLoading() }) {
-                                        Icon(Icons.Default.Close, "Stop", tint = WHITE)
-                                    }
-                                } else {
-                                    IconButton({
-                                        urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
-                                        focusRequester.requestFocus()
-                                    }) {
-                                        Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
-                                    }
+                            }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedBorderColor = WHITE,
+                            unfocusedBorderColor = WHITE,
+                            cursorColor = if (isLoading) Color.Gray else WHITE
+                        ),
+                        trailingIcon = {
+                            if (isLoading) {
+                                IconButton({ currentTab?.webView?.stopLoading() }) {
+                                    Icon(Icons.Default.Close, "Stop", tint = WHITE)
+                                }
+                            } else {
+                                IconButton({
+                                    urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
+                                    focusRequester.requestFocus()
+                                }) {
+                                    Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
                                 }
                             }
-                        )
+                        }
+                    )
+
+                    Spacer(Modifier.width(4.dp))
+
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
+                        IconButton({ currentTabIndex = -1 }) {
+                            Icon(Icons.Default.Add, "New Tab", tint = WHITE)
+                        }
                     }
 
                     Spacer(Modifier.width(4.dp))
 
-                    IconButton({ currentTabIndex = -1 }) {
-                        Icon(Icons.Default.Add, "New Tab", tint = WHITE)
-                    }
-
-                    Spacer(Modifier.width(4.dp))
-
-                    Box {
+                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
                         IconButton({ showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
                         }
                         DropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
-                            offset = DpOffset((-40).dp, 0.dp),
+                            modifier = Modifier.border(1.dp, WHITE, RectangleShape),
                             containerColor = SURFACE,
                             shape = RectangleShape
                         ) {
@@ -3230,8 +3210,13 @@ fun BookmarksUI(
 fun AllGroupChip(isSelected: Boolean, tabCount: Int, onClick: () -> Unit) {
     Surface(
         Modifier.padding(vertical = 4.dp).width(52.dp)
-            .clickable { onClick() },
-        color = if (isSelected) WHITE else BG
+            .clickable { onClick() }
+            .border(
+                0.5.dp,
+                if (isSelected) WHITE else BORDER_SUBTLE,
+                RectangleShape
+            ),
+        color = if (isSelected) WHITE else Color.Transparent
     ) {
         Column(
             Modifier.padding(6.dp),
@@ -3281,10 +3266,19 @@ fun SidebarGroupChip(
         )
     )
 
-    val bg = if (isSelected) WHITE else BG
+    val borderColor = when {
+        isBlinking -> WHITE.copy(alpha = blinkAlpha)
+        isSelected -> WHITE
+        else -> BORDER_SUBTLE
+    }
+
+    val borderThickness = if (isBlinking) 1.dp else 0.5.dp
+
+    val bg = if (isSelected) WHITE else Color.Transparent
     Surface(
         Modifier.padding(vertical = 4.dp).width(52.dp)
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .border(borderThickness, borderColor, RectangleShape),
         color = bg
     ) {
         Box(Modifier.padding(6.dp)) {
@@ -3483,7 +3477,7 @@ fun AppLockSettingsScreen(
                     Text("App Lock", color = WHITE, fontSize = 18.sp)
                 }
 
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -3510,7 +3504,7 @@ fun AppLockSettingsScreen(
                     )
                 }
 
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -3519,7 +3513,7 @@ fun AppLockSettingsScreen(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 if (hasPattern) {
                                     onChangePattern()
@@ -3529,7 +3523,8 @@ fun AppLockSettingsScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RectangleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
                         ) {
                             Text(
                                 if (hasPattern) "Change Pattern" else "Set Pattern",
@@ -3806,7 +3801,7 @@ fun PatternDrawScreen(
                             }
                             drawPath(
                                 path,
-                                color = if (errorState) DELETE_BG else ACTIVE_INDICATOR,
+                                color = if (errorState) DELETE_BG else WHITE,
                                 style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                             )
                         }
@@ -3818,7 +3813,7 @@ fun PatternDrawScreen(
                                 Modifier
                                     .offset(x = dotSpacing * col, y = dotSpacing * row)
                                     .size(dotSize)
-                                    .background(ACTIVE_INDICATOR, RectangleShape)
+                                    .background(WHITE, RectangleShape)
                             )
                         }
                     }
@@ -3835,7 +3830,7 @@ fun PatternDrawScreen(
                 Spacer(Modifier.height(24.dp))
 
                 if (mode != "unlock") {
-                    Button(
+                    OutlinedButton(
                         onClick = {
                             selectedDots.clear()
                             firstPattern = ""
@@ -3851,7 +3846,8 @@ fun PatternDrawScreen(
                             }
                         },
                         shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
                     ) {
                         Text("Reset")
                     }
@@ -3932,10 +3928,11 @@ fun ScriptsManagerScreen(
                         Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
                     }
                     Spacer(Modifier.weight(1f))
-                    Button(
+                    OutlinedButton(
                         onClick = { showGuide = true },
                         shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text("?", fontSize = 14.sp, color = WHITE)
@@ -4003,235 +4000,16 @@ fun ScriptsManagerScreen(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = onAddScript,
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
                     ) {
                         Icon(Icons.Default.Add, null, tint = WHITE)
                         Spacer(Modifier.width(8.dp))
                         Text("Add Script", color = WHITE)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ScriptEditorScreen(
-    script: Script?,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
-) {
-    var title by remember { mutableStateOf(script?.title ?: "") }
-    var code by remember { mutableStateOf(script?.code ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    if (script != null) "Edit Script" else "Add Script",
-                    color = WHITE,
-                    fontSize = 18.sp
-                )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp))
-                }
-            }
-        },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    singleLine = true,
-                    placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = BG,
-                        unfocusedContainerColor = BG,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = WHITE
-                    )
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                Text("Code", color = MUTED, fontSize = 12.sp)
-                Spacer(Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    placeholder = {
-                        Column {
-                            Text(
-                                "JavaScript code...",
-                                color = WHITE.copy(alpha = 0.5f),
-                                fontSize = 14.sp
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "Note: Paste your code here. For editing, use an\nexternal code editor for a better experience.",
-                                color = MUTED.copy(alpha = 0.6f),
-                                fontSize = 11.sp
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 200.dp, max = 350.dp),
-                    textStyle = TextStyle(
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp
-                    ),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = BG,
-                        unfocusedContainerColor = BG,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = WHITE
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
-                ) {
-                    Text("Cancel", color = WHITE)
-                }
-                Button(
-                    onClick = { onSave(title, code) },
-                    modifier = Modifier.weight(1f),
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
-                ) {
-                    Text("Save", color = WHITE)
-                }
-            }
-        },
-        containerColor = SURFACE,
-        titleContentColor = WHITE,
-        textContentColor = WHITE,
-        shape = RectangleShape,
-        tonalElevation = 0.dp
-    )
-}
-
-@Composable
-fun ScriptGuideScreen(onDismiss: () -> Unit) {
-    val clipboardManager = LocalClipboardManager.current
-
-    val guideText = """
-WebView Script Guide
-
-Scripts run in page context via Android WebView.
-Full DOM access and standard JS APIs available.
-
-Available:
-• DOM manipulation (querySelector, etc.)
-• XHR/fetch interception
-• Media element detection (video, audio, source)
-• URL.createObjectURL hooking
-• navigator.clipboard.writeText
-• window.open for new tabs
-• @match / @exclude URL patterns
-• @run-at document-start / document-end
-• @name for script identification
-• try/catch error wrapping
-
-Not available:
-• GM_getValue / GM_setValue (no storage bridge)
-• GM_xmlhttpRequest (no CORS bypass)
-• GM_download (no download manager)
-• Cross-origin iframe access
-• Browser tab management
-• Native Android integration
-
-Scripts use userscript header format:
-/* ==UserScript==
-@name My Script
-@match *://*.example.com/*
-@run-at document-end
-==/UserScript== */
-
-Errors are silently caught. Use console.log
-for debugging via remote DevTools.
-""".trimIndent()
-
-    Popup(
-        alignment = Alignment.TopStart,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
-    ) {
-        Surface(
-            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-            color = SURFACE
-        ) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, "Close", tint = WHITE)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text("Script Guide", color = WHITE, fontSize = 18.sp)
-                }
-
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
-
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().padding(16.dp)
-                ) {
-                    item {
-                        Text(
-                            guideText,
-                            color = WHITE.copy(alpha = 0.9f),
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp
-                        )
-                    }
-                }
-
-                Surface(
-                    Modifier.fillMaxWidth().navigationBarsPadding(),
-                    color = SURFACE
-                ) {
-                    Box(
-                        Modifier.fillMaxWidth().padding(12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Button(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(guideText))
-                            },
-                            shape = RectangleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
-                        ) {
-                            Text("Copy Guide", color = WHITE)
-                        }
                     }
                 }
             }
@@ -4322,7 +4100,7 @@ fun FiltersManagerScreen(
                     Text("Filters", color = WHITE, fontSize = 18.sp)
                 }
 
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -4355,7 +4133,7 @@ fun FiltersManagerScreen(
                     )
                 }
 
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
 
                 if (filters.isEmpty()) {
                     Box(
@@ -4436,11 +4214,12 @@ fun FiltersManagerScreen(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = { showImportDialog = true },
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                        border = BorderStroke(1.dp, WHITE)
                     ) {
                         Icon(Icons.Default.Add, null, tint = WHITE)
                         Spacer(Modifier.width(8.dp))
@@ -4450,107 +4229,5 @@ fun FiltersManagerScreen(
             }
         }
     }
-}
-
-@Composable
-fun FilterImportDialog(
-    onDismiss: () -> Unit,
-    onImport: (String, String) -> Unit
-) {
-    var filterName by remember { mutableStateOf("") }
-    var selectedFileName by remember { mutableStateOf("") }
-    var fileContent by remember { mutableStateOf("") }
-    val context = LocalContext.current
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val content = inputStream?.bufferedReader()?.readText() ?: ""
-                inputStream?.close()
-                fileContent = content
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (nameIndex >= 0) {
-                            selectedFileName = it.getString(nameIndex)
-                        }
-                    }
-                }
-                if (selectedFileName.isEmpty()) selectedFileName = "filter.txt"
-                if (filterName.isEmpty()) {
-                    filterName = selectedFileName.removeSuffix(".txt")
-                }
-            } catch (e: Exception) { }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Import Filter", color = WHITE, fontSize = 18.sp) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = filterName,
-                    onValueChange = { filterName = it },
-                    singleLine = true,
-                    placeholder = { Text("Filter name", color = WHITE.copy(alpha = 0.5f)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                    shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = BG,
-                        unfocusedContainerColor = BG,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = WHITE
-                    )
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                Button(
-                    onClick = { filePickerLauncher.launch("text/plain") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = SURFACE, contentColor = WHITE)
-                ) {
-                    Text(
-                        if (selectedFileName.isEmpty()) "Select File"
-                        else selectedFileName,
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
-                        onImport(filterName, fileContent)
-                    }
-                },
-                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
-            ) {
-                Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = WHITE)
-            }
-        },
-        containerColor = SURFACE,
-        titleContentColor = WHITE,
-        textContentColor = WHITE,
-        shape = RectangleShape,
-        tonalElevation = 0.dp
-    )
 }
 //PART 13 END
