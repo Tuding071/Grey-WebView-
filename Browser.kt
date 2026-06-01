@@ -1316,7 +1316,6 @@ fun GreyBrowser() {
                 val elementsFromFile = loadElementsFile()
                 val merged = mutableMapOf<String, CustomHideRule>()
                 for (r in elementsFromFile) merged["${r.domain}##${r.selector}"] = r
-                for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
                 for (r in backupFilters) {
                     val key = "${r.domain}##${r.selector}"
                     if (key !in merged) merged[key] = r
