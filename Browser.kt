@@ -2312,15 +2312,7 @@ fun ContentLayer() {
                                                     Modifier
                                                         .fillMaxWidth()
                                                         .padding(vertical = 2.dp)
-                                                        .padding(horizontal = 8.dp)
-                                                        .drawBehind {
-                                                            if (isHighlighted) {
-                                                                drawRect(
-                                                                    color = Color.White,
-                                                                    size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)
-                                                                )
-                                                            }
-                                                        },
+                                                        .padding(horizontal = 8.dp),
                                                     color = when {
                                                         isPending -> DELETE_BG
                                                         else -> ITEM_BG
@@ -2336,6 +2328,16 @@ fun ContentLayer() {
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
+                                                        if (isHighlighted) {
+                                                            Box(
+                                                                Modifier
+                                                                    .width(2.dp)
+                                                                    .height(72.dp)
+                                                                    .background(Color.White)
+                                                            )
+                                                            Spacer(Modifier.width(8.dp))
+                                                        }
+
                                                         if (thumbBmp != null) {
                                                             Image(
                                                                 thumbBmp.asImageBitmap(),
@@ -2430,15 +2432,6 @@ fun ContentLayer() {
                                     Surface(
                                         Modifier
                                             .padding(horizontal = 4.dp)
-                                            .drawBehind {
-                                                if (isActiveTabDomain) {
-                                                    drawRect(
-                                                        color = Color.White,
-                                                        topLeft = Offset(0f, size.height - 2.dp.toPx()),
-                                                        size = androidx.compose.ui.geometry.Size(size.width, 2.dp.toPx())
-                                                    )
-                                                }
-                                            }
                                             .clickable {
                                                 selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
@@ -2461,6 +2454,15 @@ fun ContentLayer() {
                                                 Box(Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
                                                     Text(tabCount.toString(), color = WHITE, fontSize = 9.sp)
                                                 }
+                                            }
+                                            if (isActiveTabDomain) {
+                                                Box(
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .height(2.dp)
+                                                        .background(Color.White)
+                                                        .align(Alignment.BottomCenter)
+                                                )
                                             }
                                         }
                                     }
