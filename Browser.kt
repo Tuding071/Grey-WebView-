@@ -4016,6 +4016,229 @@ fun ScriptsManagerScreen(
         }
     }
 }
+
+@Composable
+fun ScriptEditorScreen(
+    script: Script?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var title by remember { mutableStateOf(script?.title ?: "") }
+    var code by remember { mutableStateOf(script?.code ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (script != null) "Edit Script" else "Add Script",
+                    color = WHITE,
+                    fontSize = 18.sp
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp))
+                }
+            }
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Text("Code", color = MUTED, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    placeholder = {
+                        Column {
+                            Text(
+                                "JavaScript code...",
+                                color = WHITE.copy(alpha = 0.5f),
+                                fontSize = 14.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Note: Paste your code here. For editing, use an\nexternal code editor for a better experience.",
+                                color = MUTED.copy(alpha = 0.6f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 350.dp),
+                    textStyle = TextStyle(
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text("Cancel", color = WHITE)
+                }
+                OutlinedButton(
+                    onClick = { onSave(title, code) },
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text("Save", color = WHITE)
+                }
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
+    )
+}
+
+@Composable
+fun ScriptGuideScreen(onDismiss: () -> Unit) {
+    val clipboardManager = LocalClipboardManager.current
+
+    val guideText = """
+WebView Script Guide
+
+Scripts run in page context via Android WebView.
+Full DOM access and standard JS APIs available.
+
+Available:
+• DOM manipulation (querySelector, etc.)
+• XHR/fetch interception
+• Media element detection (video, audio, source)
+• URL.createObjectURL hooking
+• navigator.clipboard.writeText
+• window.open for new tabs
+• @match / @exclude URL patterns
+• @run-at document-start / document-end
+• @name for script identification
+• try/catch error wrapping
+
+Not available:
+• GM_getValue / GM_setValue (no storage bridge)
+• GM_xmlhttpRequest (no CORS bypass)
+• GM_download (no download manager)
+• Cross-origin iframe access
+• Browser tab management
+• Native Android integration
+
+Scripts use userscript header format:
+/* ==UserScript==
+@name My Script
+@match *://*.example.com/*
+@run-at document-end
+==/UserScript== */
+
+Errors are silently caught. Use console.log
+for debugging via remote DevTools.
+""".trimIndent()
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Script Guide", color = WHITE, fontSize = 18.sp)
+                }
+
+                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().padding(16.dp)
+                ) {
+                    item {
+                        Text(
+                            guideText,
+                            color = WHITE.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(guideText))
+                            },
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                            border = BorderStroke(1.dp, WHITE)
+                        ) {
+                            Text("Copy Guide", color = WHITE)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 //PART 12 END
 
 //PART 13 START
@@ -4229,5 +4452,108 @@ fun FiltersManagerScreen(
             }
         }
     }
+}
+
+@Composable
+fun FilterImportDialog(
+    onDismiss: () -> Unit,
+    onImport: (String, String) -> Unit
+) {
+    var filterName by remember { mutableStateOf("") }
+    var selectedFileName by remember { mutableStateOf("") }
+    var fileContent by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val content = inputStream?.bufferedReader()?.readText() ?: ""
+                inputStream?.close()
+                fileContent = content
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            selectedFileName = it.getString(nameIndex)
+                        }
+                    }
+                }
+                if (selectedFileName.isEmpty()) selectedFileName = "filter.txt"
+                if (filterName.isEmpty()) {
+                    filterName = selectedFileName.removeSuffix(".txt")
+                }
+            } catch (e: Exception) { }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import Filter", color = WHITE, fontSize = 18.sp) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = filterName,
+                    onValueChange = { filterName = it },
+                    singleLine = true,
+                    placeholder = { Text("Filter name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedBorderColor = WHITE,
+                        unfocusedBorderColor = WHITE,
+                        cursorColor = WHITE
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { filePickerLauncher.launch("text/plain") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
+                    border = BorderStroke(1.dp, WHITE)
+                ) {
+                    Text(
+                        if (selectedFileName.isEmpty()) "Select File"
+                        else selectedFileName,
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
+                        onImport(filterName, fileContent)
+                    }
+                },
+                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
+            ) {
+                Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = WHITE)
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
+    )
 }
 //PART 13 END
