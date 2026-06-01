@@ -1,21 +1,34 @@
 //PART 0 START
 // Grey Browser - V4.0 — Theme Specification
 //
-// THEME: Dark Grey + White Accents — No Round Corners
+// THEME: DeepSeek-Inspired Dark — No Borders, Layer-Based Separation
+//
+// LAYER SYSTEM (darkest to lightest):
+//   Base:          #121212  (main app background, homepage)
+//   Inset:         #1A1A1A  (list items, chips, input fields)
+//   Elevated:      #1E1E1E  (top bar, overlays, dialogs, buttons)
+//   Highlight:     #2B2B2B  (selected chip, hover states)
 //
 // COLOURS:
-//   Background:    #121212  (deep dark grey)
-//   Surface:       #1E1E1E  (elevated dark grey)
-//   Field BG:      #1E1E1E  (same as surface)
-//   Border:        White at 20% alpha  (subtle)
-//   Border Active: White solid
-//   Text Primary:  #FFFFFF  (white)
-//   Text Muted:    #808080  (grey)
-//   Accent:        #FFFFFF  (white — used for icons, buttons, progress)
-//   Progress Bar:  #FFFFFF  (white fill behind URL text)
+//   Background:    #121212  (deep dark grey - base layer)
+//   Surface:       #1E1E1E  (elevated dark grey - panels, overlays)
+//   Item BG:       #1A1A1A  (inset layer - list items, fields, chips)
+//   Field BG:      #1A1A1A  (same as item - input fields)
+//   Button BG:     #1E1E1E  (elevated - buttons on dark backgrounds)
+//   Text Primary:  #ECECEC  (near-white, softened)
+//   Text Muted:    #8B8B8B  (warm grey)
+//   Accent:        #ECECEC  (near-white - icons, progress)
+//   Progress Bar:  #ECECEC  (near-white fill behind URL text)
 //   Delete:        #FF0000 at 30% alpha  (pending delete tab)
-//   Toast BG:      White at 90% alpha
-//   Toast Text:    #000000  (black on white toast)
+//   Toast BG:      #2B2B2B  (dark toast to match theme)
+//   Toast Text:    #ECECEC  (near-white on dark toast)
+//   Divider:       #2B2B2B  (subtle section dividers)
+//
+// BORDERS:
+//   Active Tab Indicator:   2dp white bar, left side only
+//   Active Chip Indicator:  2dp white bar, bottom side only
+//   All Other Borders:      Removed entirely
+//   Separation:             Achieved through background color layers
 //
 // SHAPES:
 //   Everything:    RectangleShape  (0dp corner radius)
@@ -31,14 +44,15 @@
 //   Group chips:   12sp (domain), 9sp (count)
 //
 // COMPONENT STYLES:
-//   Buttons:       OutlinedButton, RectangleShape, white border, white text
-//   TextFields:    RectangleShape, transparent bg, white border
-//   Dividers:      0.5dp or 1dp, Color.DarkGray
+//   Buttons:       Button with Elevated BG (#1E1E1E), white text, no border
+//   TextFields:    RectangleShape, Item BG (#1A1A1A), no border
+//   Dividers:      1dp, #2B2B2B
 //   Icons:         White when active, White at 30% when disabled
 //   Switches:      White thumb, #444444 track
-//   Dialogs:       #1E1E1E background, RectangleShape, white text
-//   Dropdowns:     #1E1E1E background, 1dp white border, RectangleShape
+//   Dialogs:       #1E1E1E background, RectangleShape, no border
+//   Dropdowns:     #1E1E1E background, no border, RectangleShape
 //   Elevation:     0dp throughout (flat design)
+//   List Items:    #1A1A1A background, no border, separated by 2dp gaps
 //
 // SPACING:
 //   Top bar padding:    8dp horizontal, 8dp vertical
@@ -195,13 +209,17 @@ const val FILTERS_DIR = "filters"
 
 private val BG            = Color(0xFF121212)
 private val SURFACE       = Color(0xFF1E1E1E)
-private val WHITE         = Color(0xFFFFFFFF)
-private val MUTED         = Color(0xFF808080)
+private val ITEM_BG       = Color(0xFF1A1A1A)
+private val FIELD_BG      = Color(0xFF1A1A1A)
+private val ELEVATED_BG   = Color(0xFF1E1E1E)
+private val WHITE         = Color(0xFFECECEC)
+private val MUTED         = Color(0xFF8B8B8B)
 private val ACCENT_DIM    = Color.White.copy(alpha = 0.3f)
-private val BORDER_SUBTLE = Color.White.copy(alpha = 0.2f)
+private val BORDER_SUBTLE = Color.Transparent
 private val DELETE_BG     = Color.Red.copy(alpha = 0.3f)
-private val TOAST_BG      = Color.White.copy(alpha = 0.9f)
-private val TOAST_TEXT    = Color.Black
+private val TOAST_BG      = Color(0xFF2B2B2B)
+private val TOAST_TEXT    = Color(0xFFECECEC)
+private val DIVIDER_COLOR = Color(0xFF2B2B2B)
 
 object FaviconMemoryCache {
     private const val MAX_MEMORY_FAVICONS = 100
@@ -1172,7 +1190,6 @@ fun GreyBrowser() {
     var isUrlFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    // Loading animation — runs while screen is visible
     LaunchedEffect(showLoadingScreen) {
         while (showLoadingScreen) {
             delay(200)
@@ -1180,7 +1197,6 @@ fun GreyBrowser() {
         }
     }
 
-    // Hide loading screen after backup loads
     LaunchedEffect(backupLoaded) {
         if (backupLoaded) {
             delay(300)
@@ -1378,7 +1394,6 @@ fun GreyBrowser() {
                     val bytes = captureThumbnail(view)
                     if (bytes != null && bytes.isNotEmpty()) {
                         tabState.thumbnailBytes = bytes
-                        // Invalidate thumbnail cache for this tab
                         val idx = tabs.indexOf(tabState)
                         if (idx >= 0) thumbnailBitmapCache.remove(idx)
                     }
@@ -2094,8 +2109,7 @@ fun ContentLayer() {
             ) {
                 Surface(
                     modifier = Modifier
-                        .width(240.dp)
-                        .border(1.dp, WHITE, RectangleShape),
+                        .width(240.dp),
                     color = SURFACE,
                     shape = RectangleShape,
                     tonalElevation = 0.dp
@@ -2123,7 +2137,6 @@ fun ContentLayer() {
             }
         }
 //PART 8.5 END
-
 
 //PART 8.6 START
         if (showTabManager) {
@@ -2283,7 +2296,6 @@ fun ContentLayer() {
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
-                                    val isPinned  = pinnedDomains.contains(domain)
 
                                     item(key = domain) {
                                         Column(Modifier.padding(bottom = 48.dp)) {
@@ -2301,12 +2313,18 @@ fun ContentLayer() {
                                                         .fillMaxWidth()
                                                         .padding(vertical = 2.dp)
                                                         .padding(horizontal = 8.dp)
-                                                        .border(
-                                                            width = if (isHighlighted) 2.dp else 0.5.dp,
-                                                            color = if (isHighlighted) WHITE else Color.DarkGray,
-                                                            shape = RectangleShape
-                                                        ),
-                                                    color = if (isPending) DELETE_BG else Color.Transparent
+                                                        .drawBehind {
+                                                            if (isHighlighted) {
+                                                                drawRect(
+                                                                    color = WHITE,
+                                                                    size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)
+                                                                )
+                                                            }
+                                                        },
+                                                    color = when {
+                                                        isPending -> DELETE_BG
+                                                        else -> ITEM_BG
+                                                    }
                                                 ) {
                                                     Row(
                                                         Modifier
@@ -2332,7 +2350,6 @@ fun ContentLayer() {
                                                             Box(
                                                                 Modifier
                                                                     .size(80.dp, 72.dp)
-                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
                                                                     .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
@@ -2413,11 +2430,15 @@ fun ContentLayer() {
                                     Surface(
                                         Modifier
                                             .padding(horizontal = 4.dp)
-                                            .border(
-                                                width = if (isActiveTabDomain) 2.dp else 0.5.dp,
-                                                color = if (isActiveTabDomain) WHITE else BORDER_SUBTLE,
-                                                shape = RectangleShape
-                                            )
+                                            .drawBehind {
+                                                if (isActiveTabDomain) {
+                                                    drawRect(
+                                                        color = WHITE,
+                                                        topLeft = Offset(0f, size.height - 2.dp.toPx()),
+                                                        size = androidx.compose.ui.geometry.Size(size.width, 2.dp.toPx())
+                                                    )
+                                                }
+                                            }
                                             .clickable {
                                                 selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
@@ -2427,7 +2448,7 @@ fun ContentLayer() {
                                                     }
                                                 }
                                             },
-                                        color = if (isSelectedDomain) Color.DarkGray else Color.Transparent
+                                        color = if (isSelectedDomain) Color.DarkGray else ITEM_BG
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
                                             if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
@@ -2451,10 +2472,10 @@ fun ContentLayer() {
                             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedButton(
+                            Button(
                                 onClick = { currentTabIndex = -1; showTabManager = false },
                                 modifier = Modifier.weight(1f), shape = RectangleShape,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE), border = BorderStroke(1.dp, WHITE),
+                                colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                             ) {
                                 Icon(Icons.Default.Add, null, tint = WHITE, modifier = Modifier.size(16.dp))
@@ -2481,32 +2502,28 @@ fun ContentLayer() {
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                        IconButton({
-                            focusManager.clearFocus()
-                            scope.launch {
-                                delay(50)
-                                showTabManager = true
-                            }
-                        }) {
-                            Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
+                    IconButton({
+                        focusManager.clearFocus()
+                        scope.launch {
+                            delay(50)
+                            showTabManager = true
                         }
+                    }) {
+                        Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                     }
 
                     Spacer(Modifier.width(4.dp))
 
                     val canGoForward = currentTab?.webView?.canGoForward() == true
-                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                        IconButton(
-                            onClick = { currentTab?.webView?.goForward() },
-                            enabled = canGoForward
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                "Forward",
-                                tint = if (canGoForward) WHITE else ACCENT_DIM
-                            )
-                        }
+                    IconButton(
+                        onClick = { currentTab?.webView?.goForward() },
+                        enabled = canGoForward
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            "Forward",
+                            tint = if (canGoForward) WHITE else ACCENT_DIM
+                        )
                     }
 
                     Spacer(Modifier.width(4.dp))
@@ -2566,10 +2583,10 @@ fun ContentLayer() {
                             }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = WHITE,
-                            unfocusedBorderColor = WHITE,
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
                             cursorColor = if (isLoading) Color.Gray else WHITE
                         ),
                         trailingIcon = {
@@ -2590,350 +2607,345 @@ fun ContentLayer() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                        IconButton({ currentTabIndex = -1 }) {
-                            Icon(Icons.Default.Add, "New Tab", tint = WHITE)
-                        }
+                    IconButton({ currentTabIndex = -1 }) {
+                        Icon(Icons.Default.Add, "New Tab", tint = WHITE)
                     }
 
                     Spacer(Modifier.width(4.dp))
 
-                    Box(Modifier.border(0.5.dp, BORDER_SUBTLE, RectangleShape)) {
-                        IconButton({ showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier.border(1.dp, WHITE, RectangleShape),
-                            containerColor = SURFACE,
-                            shape = RectangleShape
-                        ) {
-                            if (currentTabIndex >= 0) {
-                                DropdownMenuItem(
-                                    text = { Text("Refresh", color = WHITE) },
-                                    onClick = {
-                                        showMenu = false
-                                        currentTab?.webView?.reload()
+                    IconButton({ showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        containerColor = SURFACE,
+                        shape = RectangleShape
+                    ) {
+                        if (currentTabIndex >= 0) {
+                            DropdownMenuItem(
+                                text = { Text("Refresh", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    currentTab?.webView?.reload()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add to Bookmark", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    val url = currentTab?.url ?: ""
+                                    if (url != "about:blank" && url.isNotBlank()) {
+                                        bookmarks.removeAll { it.url == url }
+                                        bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
+                                        showToast("Added to bookmarks")
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Add to Bookmark", color = WHITE) },
-                                    onClick = {
-                                        showMenu = false
-                                        val url = currentTab?.url ?: ""
-                                        if (url != "about:blank" && url.isNotBlank()) {
-                                            bookmarks.removeAll { it.url == url }
-                                            bookmarks.add(Bookmark(url = url, title = currentTab?.title?.ifBlank { url } ?: url))
-                                            showToast("Added to bookmarks")
-                                        }
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (showElementHider) "Stop Hiding" else "Hide Element", color = WHITE) },
-                                    onClick = {
-                                        showMenu = false
-                                        showElementHider = !showElementHider
-                                        val wv = currentTab?.webView
-                                        if (showElementHider && wv != null) {
-                                            wv.evaluateJavascript("""
-                                                (function() {
-                                                    if (window.__GREY_PICKER__) return;
-                                                    window.__GREY_PICKER__ = true;
-                                                    
-                                                    var current = document.body;
-                                                    var highlight = null;
-                                                    var currentView = 'picker';
-                                                    
-                                                    function createHighlight() {
-                                                        var h = document.createElement('div');
-                                                        h.id = 'gp-highlight';
-                                                        Object.assign(h.style, {
-                                                            position: 'absolute', pointerEvents: 'none',
-                                                            zIndex: '2147483646', border: '2px solid #FF4444',
-                                                            background: 'rgba(255,68,68,0.25)',
-                                                            borderRadius: '0px', transition: 'all 0.12s ease',
-                                                            boxSizing: 'border-box', top: '0', left: '0'
-                                                        });
-                                                        document.body.appendChild(h);
-                                                        return h;
-                                                    }
-                                                    
-                                                    function moveHighlight(el) {
-                                                        if (!el || el === document.documentElement) return;
-                                                        if (!highlight) highlight = createHighlight();
-                                                        var r = el.getBoundingClientRect();
-                                                        Object.assign(highlight.style, {
-                                                            top: (r.top + window.scrollY) + 'px',
-                                                            left: (r.left + window.scrollX) + 'px',
-                                                            width: r.width + 'px',
-                                                            height: r.height + 'px',
-                                                            display: 'block'
-                                                        });
-                                                    }
-                                                    
-                                                    function buildSelector(el) {
-                                                        if (!el || el.nodeType !== 1) return '';
-                                                        var sel = el.tagName.toLowerCase();
-                                                        if (el.id) sel += '#' + el.id;
-                                                        else if (el.className) {
-                                                            var classes = Array.from(el.classList)
-                                                                .filter(function(c) { return c && c.indexOf(':') === -1; })
-                                                                .slice(0, 3).join('.');
-                                                            if (classes) sel += '.' + classes;
-                                                        }
-                                                        return sel;
-                                                    }
-                                                    
-                                                    function buildRule(el) {
-                                                        var host = location.hostname.replace(/^www\./, '');
-                                                        var sel = buildSelector(el);
-                                                        return sel ? host + '##' + sel : '';
-                                                    }
-                                                    
-                                                    function validEl(el) {
-                                                        var panel = document.getElementById('gp-panel');
-                                                        return el && el.nodeType === 1 && el !== panel && !(panel && panel.contains(el)) && el !== highlight;
-                                                    }
-                                                    
-                                                    function update(el) {
-                                                        if (!el || el === document.documentElement || el.id === 'gp-panel' || el.id === 'gp-highlight') return;
-                                                        if (document.getElementById('gp-panel') && document.getElementById('gp-panel').contains(el)) return;
-                                                        current = el;
-                                                        moveHighlight(el);
-                                                        var tagEl = document.getElementById('gp-tag');
-                                                        var selEl = document.getElementById('gp-sel');
-                                                        var ruleEl = document.getElementById('gp-rule');
-                                                        if (tagEl) tagEl.textContent = '<' + el.tagName.toLowerCase() + (el.id ? ' id="' + el.id + '"' : '') + (el.className ? ' class="' + el.className.slice(0,60) + '"' : '') + '>';
-                                                        if (selEl) selEl.textContent = buildSelector(el);
-                                                        if (ruleEl) ruleEl.textContent = buildRule(el);
-                                                    }
-                                                    
-                                                    function showPickerView() {
-                                                        currentView = 'picker';
-                                                        document.getElementById('gp-panel-body').innerHTML = 
-                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
-                                                            '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
-                                                            '<button id="gp-child" class="gp-btn">Child ▶</button>' +
-                                                            '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
-                                                            '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
-                                                            '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
-                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
-                                                            '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
-                                                            '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
-                                                            '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
-                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
-                                                            '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
-                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
-                                                            '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
-                                                            '<button id="gp-rules-btn" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
-                                                            '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
-                                                        bindPickerEvents();
-                                                        update(current);
-                                                    }
-                                                    
-                                                    function showRulesView(rules) {
-                                                        currentView = 'rules';
-                                                        var html = '<div style="max-height:350px;overflow-y:auto;margin-bottom:8px">';
-                                                        var domains = {};
-                                                        rules.forEach(function(r) {
-                                                            if (!domains[r.domain]) domains[r.domain] = [];
-                                                            domains[r.domain].push(r);
-                                                        });
-                                                        var sortedDomains = Object.keys(domains).sort(function(a, b) {
-                                                            var aMax = Math.max.apply(null, domains[a].map(function(r) { return r.timestamp || 0; }));
-                                                            var bMax = Math.max.apply(null, domains[b].map(function(r) { return r.timestamp || 0; }));
-                                                            return bMax - aMax;
-                                                        });
-                                                        if (sortedDomains.length === 0) {
-                                                            html += '<div style="color:#888;text-align:center;padding:20px">No rules saved yet</div>';
-                                                        } else {
-                                                            sortedDomains.forEach(function(domain) {
-                                                                html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
-                                                                var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
-                                                                domainRules.forEach(function(r) {
-                                                                    var checked = r.enabled ? 'checked' : '';
-                                                                    var color = r.enabled ? '#FFF' : '#666';
-                                                                    html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
-                                                                        '<input type="checkbox" ' + checked + ' style="accent-color:#4ADE80;margin-right:8px;cursor:pointer" onchange="GreyPicker.onToggleRule(\'' + r.id + '\', this.checked)">' +
-                                                                        '<span style="color:' + color + ';flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
-                                                                        '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
-                                                                        '</div>';
-                                                                });
-                                                            });
-                                                        }
-                                                        html += '</div>' +
-                                                            '<button id="gp-back" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;width:100%">← Back to Picker</button>';
-                                                        document.getElementById('gp-panel-body').innerHTML = html;
-                                                        document.getElementById('gp-back').addEventListener('click', function() {
-                                                            showPickerView();
-                                                        });
-                                                    }
-                                                    
-                                                    function bindPickerEvents() {
-                                                        document.getElementById('gp-parent').addEventListener('click', function() {
-                                                            var p = current.parentElement;
-                                                            if (validEl(p) && p !== document.documentElement) update(p);
-                                                        });
-                                                        document.getElementById('gp-child').addEventListener('click', function() {
-                                                            var c = current.firstElementChild;
-                                                            if (validEl(c)) update(c);
-                                                        });
-                                                        document.getElementById('gp-prev').addEventListener('click', function() {
-                                                            var s = current.previousElementSibling;
-                                                            while (s && !validEl(s)) s = s.previousElementSibling;
-                                                            if (s) update(s);
-                                                        });
-                                                        document.getElementById('gp-next').addEventListener('click', function() {
-                                                            var s = current.nextElementSibling;
-                                                            while (s && !validEl(s)) s = s.nextElementSibling;
-                                                            if (s) update(s);
-                                                        });
-                                                        document.getElementById('gp-save').addEventListener('click', function() {
-                                                            var rule = buildRule(current);
-                                                            if (rule) {
-                                                                GreyPicker.onRuleGenerated(rule);
-                                                                document.getElementById('gp-msg').textContent = '✓ Saved!';
-                                                            }
-                                                        });
-                                                        document.getElementById('gp-rules-btn').addEventListener('click', function() {
-                                                            GreyPicker.onShowRules();
-                                                        });
-                                                    }
-                                                    
-                                                    var panel = document.createElement('div');
-                                                    panel.id = 'gp-panel';
-                                                    Object.assign(panel.style, {
-                                                        position: 'fixed', bottom: '16px', right: '12px',
-                                                        background: '#1E1E1E', color: '#FFFFFF',
-                                                        borderRadius: '0px', zIndex: '2147483647',
-                                                        fontSize: '11px', fontFamily: 'monospace',
-                                                        width: '290px', boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
-                                                        userSelect: 'none', border: '1px solid #333333'
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (showElementHider) "Stop Hiding" else "Hide Element", color = WHITE) },
+                                onClick = {
+                                    showMenu = false
+                                    showElementHider = !showElementHider
+                                    val wv = currentTab?.webView
+                                    if (showElementHider && wv != null) {
+                                        wv.evaluateJavascript("""
+                                            (function() {
+                                                if (window.__GREY_PICKER__) return;
+                                                window.__GREY_PICKER__ = true;
+                                                
+                                                var current = document.body;
+                                                var highlight = null;
+                                                var currentView = 'picker';
+                                                
+                                                function createHighlight() {
+                                                    var h = document.createElement('div');
+                                                    h.id = 'gp-highlight';
+                                                    Object.assign(h.style, {
+                                                        position: 'absolute', pointerEvents: 'none',
+                                                        zIndex: '2147483646', border: '2px solid #FF4444',
+                                                        background: 'rgba(255,68,68,0.25)',
+                                                        borderRadius: '0px', transition: 'all 0.12s ease',
+                                                        boxSizing: 'border-box', top: '0', left: '0'
                                                     });
-                                                    
-                                                    panel.innerHTML = 
-                                                        '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
-                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span></div>' +
-                                                        '<div id="gp-panel-body" style="padding:12px"></div>';
-                                                    document.body.appendChild(panel);
-                                                    
-                                                    document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
-                                                    
-                                                    var header = document.getElementById('gp-header');
-                                                    var isDragging = false;
-                                                    var startX, startY, panelLeft, panelTop;
-                                                    
-                                                    header.addEventListener('touchstart', function(e) {
-                                                        isDragging = true;
-                                                        startX = e.touches[0].clientX;
-                                                        startY = e.touches[0].clientY;
-                                                        panelLeft = panel.offsetLeft;
-                                                        panelTop = panel.offsetTop;
-                                                        header.style.cursor = 'grabbing';
-                                                        e.preventDefault();
+                                                    document.body.appendChild(h);
+                                                    return h;
+                                                }
+                                                
+                                                function moveHighlight(el) {
+                                                    if (!el || el === document.documentElement) return;
+                                                    if (!highlight) highlight = createHighlight();
+                                                    var r = el.getBoundingClientRect();
+                                                    Object.assign(highlight.style, {
+                                                        top: (r.top + window.scrollY) + 'px',
+                                                        left: (r.left + window.scrollX) + 'px',
+                                                        width: r.width + 'px',
+                                                        height: r.height + 'px',
+                                                        display: 'block'
                                                     });
-                                                    
-                                                    header.addEventListener('mousedown', function(e) {
-                                                        isDragging = true;
-                                                        startX = e.clientX;
-                                                        startY = e.clientY;
-                                                        panelLeft = panel.offsetLeft;
-                                                        panelTop = panel.offsetTop;
-                                                        header.style.cursor = 'grabbing';
-                                                        e.preventDefault();
-                                                    });
-                                                    
-                                                    window.addEventListener('touchmove', function(e) {
-                                                        if (!isDragging) return;
-                                                        var dx = e.touches[0].clientX - startX;
-                                                        var dy = e.touches[0].clientY - startY;
-                                                        panel.style.right = 'auto';
-                                                        panel.style.bottom = 'auto';
-                                                        panel.style.left = (panelLeft + dx) + 'px';
-                                                        panel.style.top = (panelTop + dy) + 'px';
-                                                    });
-                                                    
-                                                    window.addEventListener('mousemove', function(e) {
-                                                        if (!isDragging) return;
-                                                        var dx = e.clientX - startX;
-                                                        var dy = e.clientY - startY;
-                                                        panel.style.right = 'auto';
-                                                        panel.style.bottom = 'auto';
-                                                        panel.style.left = (panelLeft + dx) + 'px';
-                                                        panel.style.top = (panelTop + dy) + 'px';
-                                                    });
-                                                    
-                                                    window.addEventListener('touchend', function() {
-                                                        isDragging = false;
-                                                        header.style.cursor = 'grab';
-                                                    });
-                                                    
-                                                    window.addEventListener('mouseup', function() {
-                                                        isDragging = false;
-                                                        header.style.cursor = 'grab';
-                                                    });
-                                                    
-                                                    window.addEventListener('scroll', function() {
-                                                        if (current && currentView === 'picker') moveHighlight(current);
-                                                    }, true);
-                                                    window.addEventListener('resize', function() {
-                                                        if (current && currentView === 'picker') moveHighlight(current);
-                                                    });
-                                                    
-                                                    showPickerView();
-                                                    update(document.body.firstElementChild || document.body);
-                                                    
-                                                    document.addEventListener('click', function(e) {
-                                                        if (currentView !== 'picker') return;
-                                                        if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        update(e.target);
-                                                    }, true);
-                                                    
-                                                    window.__GREY_SHOW_RULES__ = function(rules) {
-                                                        document.getElementById('gp-title').textContent = '⬡ My Rules';
-                                                        showRulesView(rules);
-                                                    };
-                                                })();
-                                            """.trimIndent(), null)
-                                        } else if (!showElementHider && wv != null) {
-                                            wv.evaluateJavascript("""
-                                                (function() {
+                                                }
+                                                
+                                                function buildSelector(el) {
+                                                    if (!el || el.nodeType !== 1) return '';
+                                                    var sel = el.tagName.toLowerCase();
+                                                    if (el.id) sel += '#' + el.id;
+                                                    else if (el.className) {
+                                                        var classes = Array.from(el.classList)
+                                                            .filter(function(c) { return c && c.indexOf(':') === -1; })
+                                                            .slice(0, 3).join('.');
+                                                        if (classes) sel += '.' + classes;
+                                                    }
+                                                    return sel;
+                                                }
+                                                
+                                                function buildRule(el) {
+                                                    var host = location.hostname.replace(/^www\./, '');
+                                                    var sel = buildSelector(el);
+                                                    return sel ? host + '##' + sel : '';
+                                                }
+                                                
+                                                function validEl(el) {
                                                     var panel = document.getElementById('gp-panel');
-                                                    var hl = document.getElementById('gp-highlight');
-                                                    if (panel) panel.remove();
-                                                    if (hl) hl.remove();
-                                                    delete window.__GREY_PICKER__;
-                                                    delete window.__GREY_SHOW_RULES__;
-                                                })();
-                                            """.trimIndent(), null)
-                                        }
+                                                    return el && el.nodeType === 1 && el !== panel && !(panel && panel.contains(el)) && el !== highlight;
+                                                }
+                                                
+                                                function update(el) {
+                                                    if (!el || el === document.documentElement || el.id === 'gp-panel' || el.id === 'gp-highlight') return;
+                                                    if (document.getElementById('gp-panel') && document.getElementById('gp-panel').contains(el)) return;
+                                                    current = el;
+                                                    moveHighlight(el);
+                                                    var tagEl = document.getElementById('gp-tag');
+                                                    var selEl = document.getElementById('gp-sel');
+                                                    var ruleEl = document.getElementById('gp-rule');
+                                                    if (tagEl) tagEl.textContent = '<' + el.tagName.toLowerCase() + (el.id ? ' id="' + el.id + '"' : '') + (el.className ? ' class="' + el.className.slice(0,60) + '"' : '') + '>';
+                                                    if (selEl) selEl.textContent = buildSelector(el);
+                                                    if (ruleEl) ruleEl.textContent = buildRule(el);
+                                                }
+                                                
+                                                function showPickerView() {
+                                                    currentView = 'picker';
+                                                    document.getElementById('gp-panel-body').innerHTML = 
+                                                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
+                                                        '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
+                                                        '<button id="gp-child" class="gp-btn">Child ▶</button>' +
+                                                        '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
+                                                        '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
+                                                        '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
+                                                        '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
+                                                        '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
+                                                        '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
+                                                        '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
+                                                        '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
+                                                        '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
+                                                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
+                                                        '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
+                                                        '<button id="gp-rules-btn" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
+                                                        '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
+                                                    bindPickerEvents();
+                                                    update(current);
+                                                }
+                                                
+                                                function showRulesView(rules) {
+                                                    currentView = 'rules';
+                                                    var html = '<div style="max-height:350px;overflow-y:auto;margin-bottom:8px">';
+                                                    var domains = {};
+                                                    rules.forEach(function(r) {
+                                                        if (!domains[r.domain]) domains[r.domain] = [];
+                                                        domains[r.domain].push(r);
+                                                    });
+                                                    var sortedDomains = Object.keys(domains).sort(function(a, b) {
+                                                        var aMax = Math.max.apply(null, domains[a].map(function(r) { return r.timestamp || 0; }));
+                                                        var bMax = Math.max.apply(null, domains[b].map(function(r) { return r.timestamp || 0; }));
+                                                        return bMax - aMax;
+                                                    });
+                                                    if (sortedDomains.length === 0) {
+                                                        html += '<div style="color:#888;text-align:center;padding:20px">No rules saved yet</div>';
+                                                    } else {
+                                                        sortedDomains.forEach(function(domain) {
+                                                            html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
+                                                            var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+                                                            domainRules.forEach(function(r) {
+                                                                var checked = r.enabled ? 'checked' : '';
+                                                                var color = r.enabled ? '#FFF' : '#666';
+                                                                html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
+                                                                    '<input type="checkbox" ' + checked + ' style="accent-color:#4ADE80;margin-right:8px;cursor:pointer" onchange="GreyPicker.onToggleRule(\'' + r.id + '\', this.checked)">' +
+                                                                    '<span style="color:' + color + ';flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
+                                                                    '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
+                                                                    '</div>';
+                                                            });
+                                                        });
+                                                    }
+                                                    html += '</div>' +
+                                                        '<button id="gp-back" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;width:100%">← Back to Picker</button>';
+                                                    document.getElementById('gp-panel-body').innerHTML = html;
+                                                    document.getElementById('gp-back').addEventListener('click', function() {
+                                                        showPickerView();
+                                                    });
+                                                }
+                                                
+                                                function bindPickerEvents() {
+                                                    document.getElementById('gp-parent').addEventListener('click', function() {
+                                                        var p = current.parentElement;
+                                                        if (validEl(p) && p !== document.documentElement) update(p);
+                                                    });
+                                                    document.getElementById('gp-child').addEventListener('click', function() {
+                                                        var c = current.firstElementChild;
+                                                        if (validEl(c)) update(c);
+                                                    });
+                                                    document.getElementById('gp-prev').addEventListener('click', function() {
+                                                        var s = current.previousElementSibling;
+                                                        while (s && !validEl(s)) s = s.previousElementSibling;
+                                                        if (s) update(s);
+                                                    });
+                                                    document.getElementById('gp-next').addEventListener('click', function() {
+                                                        var s = current.nextElementSibling;
+                                                        while (s && !validEl(s)) s = s.nextElementSibling;
+                                                        if (s) update(s);
+                                                    });
+                                                    document.getElementById('gp-save').addEventListener('click', function() {
+                                                        var rule = buildRule(current);
+                                                        if (rule) {
+                                                            GreyPicker.onRuleGenerated(rule);
+                                                            document.getElementById('gp-msg').textContent = '✓ Saved!';
+                                                        }
+                                                    });
+                                                    document.getElementById('gp-rules-btn').addEventListener('click', function() {
+                                                        GreyPicker.onShowRules();
+                                                    });
+                                                }
+                                                
+                                                var panel = document.createElement('div');
+                                                panel.id = 'gp-panel';
+                                                Object.assign(panel.style, {
+                                                    position: 'fixed', bottom: '16px', right: '12px',
+                                                    background: '#1E1E1E', color: '#FFFFFF',
+                                                    borderRadius: '0px', zIndex: '2147483647',
+                                                    fontSize: '11px', fontFamily: 'monospace',
+                                                    width: '290px', boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
+                                                    userSelect: 'none', border: '1px solid #333333'
+                                                });
+                                                
+                                                panel.innerHTML = 
+                                                    '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
+                                                    '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span></div>' +
+                                                    '<div id="gp-panel-body" style="padding:12px"></div>';
+                                                document.body.appendChild(panel);
+                                                
+                                                document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
+                                                
+                                                var header = document.getElementById('gp-header');
+                                                var isDragging = false;
+                                                var startX, startY, panelLeft, panelTop;
+                                                
+                                                header.addEventListener('touchstart', function(e) {
+                                                    isDragging = true;
+                                                    startX = e.touches[0].clientX;
+                                                    startY = e.touches[0].clientY;
+                                                    panelLeft = panel.offsetLeft;
+                                                    panelTop = panel.offsetTop;
+                                                    header.style.cursor = 'grabbing';
+                                                    e.preventDefault();
+                                                });
+                                                
+                                                header.addEventListener('mousedown', function(e) {
+                                                    isDragging = true;
+                                                    startX = e.clientX;
+                                                    startY = e.clientY;
+                                                    panelLeft = panel.offsetLeft;
+                                                    panelTop = panel.offsetTop;
+                                                    header.style.cursor = 'grabbing';
+                                                    e.preventDefault();
+                                                });
+                                                
+                                                window.addEventListener('touchmove', function(e) {
+                                                    if (!isDragging) return;
+                                                    var dx = e.touches[0].clientX - startX;
+                                                    var dy = e.touches[0].clientY - startY;
+                                                    panel.style.right = 'auto';
+                                                    panel.style.bottom = 'auto';
+                                                    panel.style.left = (panelLeft + dx) + 'px';
+                                                    panel.style.top = (panelTop + dy) + 'px';
+                                                });
+                                                
+                                                window.addEventListener('mousemove', function(e) {
+                                                    if (!isDragging) return;
+                                                    var dx = e.clientX - startX;
+                                                    var dy = e.clientY - startY;
+                                                    panel.style.right = 'auto';
+                                                    panel.style.bottom = 'auto';
+                                                    panel.style.left = (panelLeft + dx) + 'px';
+                                                    panel.style.top = (panelTop + dy) + 'px';
+                                                });
+                                                
+                                                window.addEventListener('touchend', function() {
+                                                    isDragging = false;
+                                                    header.style.cursor = 'grab';
+                                                });
+                                                
+                                                window.addEventListener('mouseup', function() {
+                                                    isDragging = false;
+                                                    header.style.cursor = 'grab';
+                                                });
+                                                
+                                                window.addEventListener('scroll', function() {
+                                                    if (current && currentView === 'picker') moveHighlight(current);
+                                                }, true);
+                                                window.addEventListener('resize', function() {
+                                                    if (current && currentView === 'picker') moveHighlight(current);
+                                                });
+                                                
+                                                showPickerView();
+                                                update(document.body.firstElementChild || document.body);
+                                                
+                                                document.addEventListener('click', function(e) {
+                                                    if (currentView !== 'picker') return;
+                                                    if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    update(e.target);
+                                                }, true);
+                                                
+                                                window.__GREY_SHOW_RULES__ = function(rules) {
+                                                    document.getElementById('gp-title').textContent = '⬡ My Rules';
+                                                    showRulesView(rules);
+                                                };
+                                            })();
+                                        """.trimIndent(), null)
+                                    } else if (!showElementHider && wv != null) {
+                                        wv.evaluateJavascript("""
+                                            (function() {
+                                                var panel = document.getElementById('gp-panel');
+                                                var hl = document.getElementById('gp-highlight');
+                                                if (panel) panel.remove();
+                                                if (hl) hl.remove();
+                                                delete window.__GREY_PICKER__;
+                                                delete window.__GREY_SHOW_RULES__;
+                                            })();
+                                        """.trimIndent(), null)
                                     }
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Bookmarks", color = WHITE) },
-                                onClick = { showMenu = false; showBookmarks = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("History", color = WHITE) },
-                                onClick = { showMenu = false; showHistory = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Scripts", color = WHITE) },
-                                onClick = { showMenu = false; showScripts = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Filters", color = WHITE) },
-                                onClick = { showMenu = false; showFilters = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("App Lock", color = WHITE) },
-                                onClick = { showMenu = false; showAppLockSettings = true }
+                                }
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("Bookmarks", color = WHITE) },
+                            onClick = { showMenu = false; showBookmarks = true }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("History", color = WHITE) },
+                            onClick = { showMenu = false; showHistory = true }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Scripts", color = WHITE) },
+                            onClick = { showMenu = false; showScripts = true }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Filters", color = WHITE) },
+                            onClick = { showMenu = false; showFilters = true }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("App Lock", color = WHITE) },
+                            onClick = { showMenu = false; showAppLockSettings = true }
+                        )
                     }
                 }
             }
@@ -3140,9 +3152,8 @@ fun BookmarksUI(
                             LaunchedEffect(item.url) { loadFavicon(domain) }
                             val fav = faviconBitmaps[domain]
                             Surface(
-                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                color = Color.Transparent
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(12.dp)
@@ -3216,13 +3227,8 @@ fun BookmarksUI(
 fun AllGroupChip(isSelected: Boolean, tabCount: Int, onClick: () -> Unit) {
     Surface(
         Modifier.padding(vertical = 4.dp).width(52.dp)
-            .clickable { onClick() }
-            .border(
-                0.5.dp,
-                if (isSelected) WHITE else BORDER_SUBTLE,
-                RectangleShape
-            ),
-        color = if (isSelected) WHITE else Color.Transparent
+            .clickable { onClick() },
+        color = if (isSelected) WHITE else ITEM_BG
     ) {
         Column(
             Modifier.padding(6.dp),
@@ -3272,19 +3278,10 @@ fun SidebarGroupChip(
         )
     )
 
-    val borderColor = when {
-        isBlinking -> WHITE.copy(alpha = blinkAlpha)
-        isSelected -> WHITE
-        else -> BORDER_SUBTLE
-    }
-
-    val borderThickness = if (isBlinking) 1.dp else 0.5.dp
-
-    val bg = if (isSelected) WHITE else Color.Transparent
+    val bg = if (isSelected) WHITE else ITEM_BG
     Surface(
         Modifier.padding(vertical = 4.dp).width(52.dp)
-            .clickable { onClick() }
-            .border(borderThickness, borderColor, RectangleShape),
+            .clickable { onClick() },
         color = bg
     ) {
         Box(Modifier.padding(6.dp)) {
@@ -3386,9 +3383,8 @@ fun HistoryUI(
                             LaunchedEffect(item.url) { loadFavicon(domain) }
                             val fav = faviconBitmaps[domain]
                             Surface(
-                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                color = Color.Transparent
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(12.dp)
@@ -3484,7 +3480,7 @@ fun AppLockSettingsScreen(
                     Text("App Lock", color = WHITE, fontSize = 18.sp)
                 }
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
 
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -3511,7 +3507,7 @@ fun AppLockSettingsScreen(
                     )
                 }
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -3520,7 +3516,7 @@ fun AppLockSettingsScreen(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        OutlinedButton(
+                        Button(
                             onClick = {
                                 if (hasPattern) {
                                     onChangePattern()
@@ -3530,8 +3526,7 @@ fun AppLockSettingsScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
+                            colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                         ) {
                             Text(
                                 if (hasPattern) "Change Pattern" else "Set Pattern",
@@ -3837,7 +3832,7 @@ fun PatternDrawScreen(
                 Spacer(Modifier.height(24.dp))
 
                 if (mode != "unlock") {
-                    OutlinedButton(
+                    Button(
                         onClick = {
                             selectedDots.clear()
                             firstPattern = ""
@@ -3853,8 +3848,7 @@ fun PatternDrawScreen(
                             }
                         },
                         shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                     ) {
                         Text("Reset")
                     }
@@ -3935,11 +3929,10 @@ fun ScriptsManagerScreen(
                         Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
                     }
                     Spacer(Modifier.weight(1f))
-                    OutlinedButton(
+                    Button(
                         onClick = { showGuide = true },
                         shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE),
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text("?", fontSize = 14.sp, color = WHITE)
@@ -3959,9 +3952,8 @@ fun ScriptsManagerScreen(
                     ) {
                         items(scripts) { script ->
                             Surface(
-                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                color = Color.Transparent
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
@@ -4008,12 +4000,11 @@ fun ScriptsManagerScreen(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
                 ) {
-                    OutlinedButton(
+                    Button(
                         onClick = onAddScript,
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                     ) {
                         Icon(Icons.Default.Add, null, tint = WHITE)
                         Spacer(Modifier.width(8.dp))
@@ -4063,10 +4054,10 @@ fun ScriptEditorScreen(
                     textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                     shape = RectangleShape,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
                         cursorColor = WHITE
                     )
                 )
@@ -4104,10 +4095,10 @@ fun ScriptEditorScreen(
                     ),
                     shape = RectangleShape,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
                         cursorColor = WHITE
                     )
                 )
@@ -4118,21 +4109,19 @@ fun ScriptEditorScreen(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                OutlinedButton(
+                Button(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
                     shape = RectangleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                    border = BorderStroke(1.dp, WHITE)
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                 ) {
                     Text("Cancel", color = WHITE)
                 }
-                OutlinedButton(
+                Button(
                     onClick = { onSave(title, code) },
                     modifier = Modifier.weight(1f),
                     shape = RectangleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                    border = BorderStroke(1.dp, WHITE)
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                 ) {
                     Text("Save", color = WHITE)
                 }
@@ -4208,7 +4197,7 @@ for debugging via remote DevTools.
                     Text("Script Guide", color = WHITE, fontSize = 18.sp)
                 }
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
 
                 LazyColumn(
                     Modifier.weight(1f).fillMaxWidth().padding(16.dp)
@@ -4231,13 +4220,12 @@ for debugging via remote DevTools.
                         Modifier.fillMaxWidth().padding(12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        OutlinedButton(
+                        Button(
                             onClick = {
                                 clipboardManager.setText(AnnotatedString(guideText))
                             },
                             shape = RectangleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                            border = BorderStroke(1.dp, WHITE)
+                            colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                         ) {
                             Text("Copy Guide", color = WHITE)
                         }
@@ -4331,7 +4319,7 @@ fun FiltersManagerScreen(
                     Text("Filters", color = WHITE, fontSize = 18.sp)
                 }
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
 
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -4364,7 +4352,7 @@ fun FiltersManagerScreen(
                     )
                 }
 
-                Divider(color = Color.DarkGray, thickness = 0.5.dp)
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
 
                 if (filters.isEmpty()) {
                     Box(
@@ -4383,9 +4371,8 @@ fun FiltersManagerScreen(
                     ) {
                         items(filters) { filter ->
                             Surface(
-                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    .border(0.5.dp, Color.DarkGray, RectangleShape),
-                                color = Color.Transparent
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
                             ) {
                                 Column(
                                     Modifier.fillMaxWidth().padding(12.dp)
@@ -4446,12 +4433,11 @@ fun FiltersManagerScreen(
                     Modifier.fillMaxWidth().navigationBarsPadding(),
                     color = SURFACE
                 ) {
-                    OutlinedButton(
+                    Button(
                         onClick = { showImportDialog = true },
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         shape = RectangleShape,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                        border = BorderStroke(1.dp, WHITE)
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                     ) {
                         Icon(Icons.Default.Add, null, tint = WHITE)
                         Spacer(Modifier.width(8.dp))
@@ -4513,22 +4499,21 @@ fun FilterImportDialog(
                     textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
                     shape = RectangleShape,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedBorderColor = WHITE,
-                        unfocusedBorderColor = WHITE,
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
                         cursorColor = WHITE
                     )
                 )
 
                 Spacer(Modifier.height(12.dp))
 
-                OutlinedButton(
+                Button(
                     onClick = { filePickerLauncher.launch("text/plain") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RectangleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WHITE),
-                    border = BorderStroke(1.dp, WHITE)
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
                 ) {
                     Text(
                         if (selectedFileName.isEmpty()) "Select File"
