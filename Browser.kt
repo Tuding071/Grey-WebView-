@@ -2548,9 +2548,13 @@ fun ContentLayer() {
                         if (isLoading) {
                             Box(
                                 Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(fraction = (currentTab?.progress ?: 100) / 100f)
-                                    .background(Color.White)
+                                    .matchParentSize()
+                                    .drawBehind {
+                                        drawRect(
+                                            color = Color.White,
+                                            size = Size(size.width * (currentTab?.progress ?: 100) / 100f, size.height)
+                                        )
+                                    }
                             )
                         }
                         OutlinedTextField(
