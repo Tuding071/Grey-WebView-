@@ -207,6 +207,7 @@ const val MAX_HISTORY_ITEMS = 500
 
 const val BACKUP_DIR = "Grey"
 const val BACKUP_FILE = "Grey-backup.json"
+const val ELEMENTS_FILE = "Grey-elements.json"
 const val CUSTOM_FILTERS_FILE = "CustomFilters.txt"
 const val FILTERS_DIR = "filters"
 
@@ -723,6 +724,48 @@ fun getCustomFiltersFile(): File {
     return File(dir, CUSTOM_FILTERS_FILE)
 }
 
+fun getElementsFile(): File {
+    val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    return File(dir, ELEMENTS_FILE)
+}
+
+fun saveElementsFile(rules: List<CustomHideRule>) {
+    try {
+        val arr = JSONArray()
+        for (r in rules) {
+            val obj = JSONObject()
+            obj.put("id", r.id)
+            obj.put("domain", r.domain)
+            obj.put("selector", r.selector)
+            obj.put("enabled", r.enabled)
+            obj.put("timestamp", r.timestamp)
+            arr.put(obj)
+        }
+        getElementsFile().writeText(arr.toString(1))
+    } catch (e: Exception) { }
+}
+
+fun loadElementsFile(): List<CustomHideRule> {
+    return try {
+        val file = getElementsFile()
+        if (!file.exists()) return emptyList()
+        val arr = JSONArray(file.readText())
+        val rules = mutableListOf<CustomHideRule>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            rules.add(CustomHideRule(
+                id = obj.optString("id", UUID.randomUUID().toString()),
+                domain = obj.getString("domain"),
+                selector = obj.getString("selector"),
+                enabled = obj.optBoolean("enabled", true),
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+            ))
+        }
+        rules
+    } catch (e: Exception) { emptyList() }
+}
+
 fun saveCustomFiltersToTxt(rules: List<CustomHideRule>) {
     try {
         val grouped = rules.groupBy { it.domain }
@@ -1111,15 +1154,7 @@ fun GreyBrowser() {
 
     val customHideRules = remember {
         mutableStateListOf<CustomHideRule>().apply {
-            val fromPrefs = loadCustomFilters(context)
-            val fromTxt = loadCustomFiltersFromTxt()
-            val merged = mutableMapOf<String, CustomHideRule>()
-            for (r in fromPrefs) merged["${r.domain}##${r.selector}"] = r
-            for (r in fromTxt) {
-                val key = "${r.domain}##${r.selector}"
-                if (key !in merged) merged[key] = r
-            }
-            addAll(merged.values.sortedByDescending { it.timestamp })
+            addAll(loadElementsFile())
         }
     }
     var showElementHider by remember { mutableStateOf(false) }
@@ -1278,7 +1313,9 @@ fun GreyBrowser() {
                     patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 }
                 val backupFilters = importCustomFiltersFromBackup(context)
+                val elementsFromFile = loadElementsFile()
                 val merged = mutableMapOf<String, CustomHideRule>()
+                for (r in elementsFromFile) merged["${r.domain}##${r.selector}"] = r
                 for (r in customHideRules) merged["${r.domain}##${r.selector}"] = r
                 for (r in backupFilters) {
                     val key = "${r.domain}##${r.selector}"
@@ -1286,6 +1323,7 @@ fun GreyBrowser() {
                 }
                 customHideRules.clear()
                 customHideRules.addAll(merged.values.sortedByDescending { it.timestamp })
+                saveElementsFile(customHideRules.toList())
                 saveBookmarks(context, bookmarks)
                 saveHistory(context, history)
                 saveScripts(context, scripts)
@@ -1355,7 +1393,7 @@ fun GreyBrowser() {
     }
     LaunchedEffect(customHideRules.toList()) {
         saveCustomFilters(context, customHideRules)
-        saveCustomFiltersToTxt(customHideRules)
+        saveElementsFile(customHideRules)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
                 exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
