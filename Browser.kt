@@ -2318,95 +2318,94 @@ fun ContentLayer() {
                                                         else -> ITEM_BG
                                                     }
                                                 ) {
-                                                    Box(Modifier.fillMaxWidth()) {
+                                                    Row(
+                                                        Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(10.dp)
+                                                            .clickable(enabled = !isPending) {
+                                                                currentTabIndex = tabIndex
+                                                                showTabManager = false
+                                                            },
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
                                                         if (isHighlighted) {
-                                                            Box(
+                                                            Spacer(
                                                                 Modifier
                                                                     .width(4.dp)
-                                                                    .fillMaxHeight()
+                                                                    .height(72.dp)
                                                                     .background(Color.White)
-                                                                    .align(Alignment.CenterStart)
+                                                            )
+                                                            Spacer(Modifier.width(6.dp))
+                                                        }
+
+                                                        if (thumbBmp != null) {
+                                                            Image(
+                                                                thumbBmp.asImageBitmap(),
+                                                                "Thumbnail",
+                                                                Modifier
+                                                                    .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
+                                                                    .clip(RectangleShape),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        } else {
+                                                            Box(
+                                                                Modifier
+                                                                    .size(80.dp, 72.dp)
+                                                                    .background(Color(0xFF121212), RectangleShape)
                                                             )
                                                         }
-                                                        Row(
-                                                            Modifier
-                                                                .fillMaxWidth()
-                                                                .padding(start = if (isHighlighted) 14.dp else 10.dp, top = 10.dp, bottom = 10.dp, end = 10.dp)
-                                                                .clickable(enabled = !isPending) {
-                                                                    currentTabIndex = tabIndex
-                                                                    showTabManager = false
-                                                                },
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            if (thumbBmp != null) {
-                                                                Image(
-                                                                    thumbBmp.asImageBitmap(),
-                                                                    "Thumbnail",
-                                                                    Modifier
-                                                                        .size(80.dp, 72.dp)
-                                                                        .border(0.8.dp, Color.DarkGray, RectangleShape)
-                                                                        .clip(RectangleShape),
-                                                                    contentScale = ContentScale.Crop
-                                                                )
-                                                            } else {
-                                                                Box(
-                                                                    Modifier
-                                                                        .size(80.dp, 72.dp)
-                                                                        .background(Color(0xFF121212), RectangleShape)
-                                                                )
-                                                            }
 
-                                                            Spacer(Modifier.width(10.dp))
+                                                        Spacer(Modifier.width(10.dp))
 
-                                                            if (tabFav != null) {
-                                                                Image(
-                                                                    tabFav.asImageBitmap(), tabDomain,
-                                                                    Modifier.size(32.dp).clip(CircleShape),
-                                                                    contentScale = ContentScale.Fit
-                                                                )
-                                                            } else {
-                                                                Box(
-                                                                    Modifier.size(32.dp).clip(CircleShape)
-                                                                        .background(Color.DarkGray),
-                                                                    contentAlignment = Alignment.Center
-                                                                ) {
-                                                                    Text(
-                                                                        tabDomain.take(1).uppercase(),
-                                                                        color = WHITE,
-                                                                        fontSize = 14.sp,
-                                                                        fontWeight = FontWeight.Bold
-                                                                    )
-                                                                }
-                                                            }
-
-                                                            Spacer(Modifier.width(12.dp))
-
-                                                            Column(Modifier.weight(1f)) {
+                                                        if (tabFav != null) {
+                                                            Image(
+                                                                tabFav.asImageBitmap(), tabDomain,
+                                                                Modifier.size(32.dp).clip(CircleShape),
+                                                                contentScale = ContentScale.Fit
+                                                            )
+                                                        } else {
+                                                            Box(
+                                                                Modifier.size(32.dp).clip(CircleShape)
+                                                                    .background(Color.DarkGray),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
                                                                 Text(
-                                                                    if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
+                                                                    tabDomain.take(1).uppercase(),
                                                                     color = WHITE,
                                                                     fontSize = 14.sp,
-                                                                    maxLines = 2,
-                                                                    overflow = TextOverflow.Ellipsis
-                                                                )
-                                                                Spacer(Modifier.height(2.dp))
-                                                                Text(
-                                                                    tabDomain,
-                                                                    color = MUTED.copy(alpha = 0.7f),
-                                                                    fontSize = 11.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis
+                                                                    fontWeight = FontWeight.Bold
                                                                 )
                                                             }
+                                                        }
 
-                                                            if (isPending) {
-                                                                IconButton({ undoDeleteTab(tabIndex) }) {
-                                                                    Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                                }
-                                                            } else {
-                                                                IconButton({ requestDeleteTab(tabIndex) }) {
-                                                                    Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
-                                                                }
+                                                        Spacer(Modifier.width(12.dp))
+
+                                                        Column(Modifier.weight(1f)) {
+                                                            Text(
+                                                                if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
+                                                                color = WHITE,
+                                                                fontSize = 14.sp,
+                                                                maxLines = 2,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                            Spacer(Modifier.height(2.dp))
+                                                            Text(
+                                                                tabDomain,
+                                                                color = MUTED.copy(alpha = 0.7f),
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+
+                                                        if (isPending) {
+                                                            IconButton({ undoDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                            }
+                                                        } else {
+                                                            IconButton({ requestDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
                                                             }
                                                         }
                                                     }
@@ -2444,28 +2443,20 @@ fun ContentLayer() {
                                             },
                                         color = if (isSelectedDomain) Color.DarkGray else ITEM_BG
                                     ) {
-                                        Box(Modifier.width(52.dp)) {
-                                            Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
-                                                if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                                    else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                    Spacer(Modifier.height(2.dp))
-                                                    Box(Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                                                        Text(tabCount.toString(), color = WHITE, fontSize = 9.sp)
-                                                    }
+                                        Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
+                                            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                                                    Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                 }
-                                            }
-                                            if (isActiveTabDomain) {
-                                                Box(
-                                                    Modifier
-                                                        .fillMaxWidth()
-                                                        .height(4.dp)
-                                                        .background(Color.White)
-                                                        .align(Alignment.BottomCenter)
-                                                )
+                                                Spacer(Modifier.height(2.dp))
+                                                Box(Modifier.background(Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                                    Text(tabCount.toString(), color = WHITE, fontSize = 9.sp)
+                                                }
+                                                if (isActiveTabDomain) {
+                                                    Spacer(Modifier.height(4.dp))
+                                                }
                                             }
                                         }
                                     }
