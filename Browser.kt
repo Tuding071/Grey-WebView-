@@ -2631,7 +2631,7 @@ fun ContentLayer() {
                         DropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
-                            offset = DpOffset((-80).dp, 0.dp),
+                            offset = DpOffset((-500).dp, 0.dp),
                             containerColor = SURFACE,
                             shape = RectangleShape
                         ) {
@@ -2964,7 +2964,7 @@ fun ContentLayer() {
                 }
             }
 
-            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White))
+            Box(Modifier.fillMaxWidth().height(0.5.dp).background(MUTED))
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ContentLayer()
