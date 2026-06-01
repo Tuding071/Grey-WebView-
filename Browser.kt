@@ -980,17 +980,6 @@ fun exportBackup(
             bookmarksArray.put(obj)
         }
         root.put("bookmarks", bookmarksArray)
-        val customFiltersArray = JSONArray()
-        for (cf in customFilters) {
-            val obj = JSONObject()
-            obj.put("id", cf.id)
-            obj.put("domain", cf.domain)
-            obj.put("selector", cf.selector)
-            obj.put("enabled", cf.enabled)
-            obj.put("timestamp", cf.timestamp)
-            customFiltersArray.put(obj)
-        }
-        root.put("customFilters", customFiltersArray)
         val scriptsArray = JSONArray()
         for (s in scripts) {
             val obj = JSONObject()
@@ -1085,36 +1074,6 @@ fun importBackup(context: Context): BackupData? {
         }
         BackupData(tabsList, historyList, bookmarksList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
     } catch (e: Exception) { null }
-}
-
-fun importCustomFiltersFromBackup(context: Context): List<CustomHideRule> {
-    return try {
-        val file = getBackupFile()
-        if (!file.exists()) return emptyList()
-        val root = JSONObject(file.readText())
-        val arr = root.optJSONArray("customFilters") ?: return emptyList()
-        val rules = mutableListOf<CustomHideRule>()
-        for (i in 0 until arr.length()) {
-            val item = arr.get(i)
-            if (item is JSONObject) {
-                rules.add(CustomHideRule(
-                    id = item.optString("id", UUID.randomUUID().toString()),
-                    domain = item.getString("domain"),
-                    selector = item.getString("selector"),
-                    enabled = item.optBoolean("enabled", true),
-                    timestamp = item.optLong("timestamp", System.currentTimeMillis())
-                ))
-            } else {
-                val str = item.toString()
-                if (str.contains("##")) {
-                    val domain = str.substringBefore("##").trim()
-                    val selector = str.substringAfter("##").trim()
-                    rules.add(CustomHideRule(domain = domain, selector = selector))
-                }
-            }
-        }
-        rules
-    } catch (e: Exception) { emptyList() }
 }
 //PART 4 END
 
@@ -1312,17 +1271,6 @@ fun GreyBrowser() {
                     patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
                     patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 }
-                val backupFilters = importCustomFiltersFromBackup(context)
-                val elementsFromFile = loadElementsFile()
-                val merged = mutableMapOf<String, CustomHideRule>()
-                for (r in elementsFromFile) merged["${r.domain}##${r.selector}"] = r
-                for (r in backupFilters) {
-                    val key = "${r.domain}##${r.selector}"
-                    if (key !in merged) merged[key] = r
-                }
-                customHideRules.clear()
-                customHideRules.addAll(merged.values.sortedByDescending { it.timestamp })
-                saveElementsFile(customHideRules.toList())
                 saveBookmarks(context, bookmarks)
                 saveHistory(context, history)
                 saveScripts(context, scripts)
@@ -1391,13 +1339,7 @@ fun GreyBrowser() {
         }
     }
     LaunchedEffect(customHideRules.toList()) {
-        saveCustomFilters(context, customHideRules)
         saveElementsFile(customHideRules)
-        if (backupLoaded) {
-            withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
-            }
-        }
     }
 
     LaunchedEffect(filtersEnabled) {
