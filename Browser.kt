@@ -378,8 +378,11 @@ data class SavedTab(
 )
 
 data class CustomHideRule(
+    val id: String = UUID.randomUUID().toString(),
     val domain: String,
-    val selector: String
+    val selector: String,
+    val enabled: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 class TabState {
@@ -572,8 +575,11 @@ fun saveCustomFilters(context: Context, rules: List<CustomHideRule>) {
     val arr = JSONArray()
     for (r in rules) {
         val obj = JSONObject()
+        obj.put("id", r.id)
         obj.put("domain", r.domain)
         obj.put("selector", r.selector)
+        obj.put("enabled", r.enabled)
+        obj.put("timestamp", r.timestamp)
         arr.put(obj)
     }
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_CUSTOM_FILTERS, arr.toString()).apply()
@@ -587,8 +593,11 @@ fun loadCustomFilters(context: Context): List<CustomHideRule> {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 add(CustomHideRule(
+                    o.getString("id"),
                     o.getString("domain"),
-                    o.getString("selector")
+                    o.getString("selector"),
+                    o.optBoolean("enabled", true),
+                    o.getLong("timestamp")
                 ))
             }
         }
@@ -709,72 +718,103 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
+fun getCustomFiltersFile(): File {
+    val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    return File(dir, CUSTOM_FILTERS_FILE)
+}
+
 fun getElementsFile(): File {
     val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
     if (!dir.exists()) dir.mkdirs()
     return File(dir, ELEMENTS_FILE)
 }
 
-fun saveElementsFile(manual: List<CustomHideRule>, cosmetic: List<CustomHideRule>) {
+fun saveElementsFile(rules: List<CustomHideRule>) {
     try {
-        val root = JSONObject()
-        val manualArr = JSONArray()
-        val manualGroups = manual.groupBy { it.domain }
-        for ((domain, rules) in manualGroups) {
+        val arr = JSONArray()
+        for (r in rules) {
             val obj = JSONObject()
-            obj.put("domain", domain)
-            val sels = JSONArray()
-            for (r in rules) sels.put(r.selector)
-            obj.put("selectors", sels)
-            manualArr.put(obj)
+            obj.put("id", r.id)
+            obj.put("domain", r.domain)
+            obj.put("selector", r.selector)
+            obj.put("enabled", r.enabled)
+            obj.put("timestamp", r.timestamp)
+            arr.put(obj)
         }
-        root.put("manual", manualArr)
-        val cosmeticArr = JSONArray()
-        val cosmeticGroups = cosmetic.groupBy { it.domain }
-        for ((domain, rules) in cosmeticGroups) {
-            val obj = JSONObject()
-            obj.put("domain", domain)
-            val sels = JSONArray()
-            for (r in rules) sels.put(r.selector)
-            obj.put("selectors", sels)
-            cosmeticArr.put(obj)
-        }
-        root.put("cosmetic", cosmeticArr)
-        getElementsFile().writeText(root.toString(1))
+        getElementsFile().writeText(arr.toString(1))
     } catch (e: Exception) { }
 }
 
-fun loadElementsFile(): Pair<List<CustomHideRule>, List<CustomHideRule>> {
+fun loadElementsFile(): List<CustomHideRule> {
     return try {
         val file = getElementsFile()
-        if (!file.exists()) return Pair(emptyList(), emptyList())
-        val root = JSONObject(file.readText())
-        val manual = mutableListOf<CustomHideRule>()
-        val manualArr = root.optJSONArray("manual")
-        if (manualArr != null) {
-            for (i in 0 until manualArr.length()) {
-                val obj = manualArr.getJSONObject(i)
-                val domain = obj.getString("domain")
-                val sels = obj.getJSONArray("selectors")
-                for (j in 0 until sels.length()) {
-                    manual.add(CustomHideRule(domain, sels.getString(j)))
-                }
+        if (!file.exists()) return emptyList()
+        val arr = JSONArray(file.readText())
+        val rules = mutableListOf<CustomHideRule>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            rules.add(CustomHideRule(
+                id = obj.optString("id", UUID.randomUUID().toString()),
+                domain = obj.getString("domain"),
+                selector = obj.getString("selector"),
+                enabled = obj.optBoolean("enabled", true),
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+            ))
+        }
+        rules
+    } catch (e: Exception) { emptyList() }
+}
+
+fun saveCustomFiltersToTxt(rules: List<CustomHideRule>) {
+    try {
+        val grouped = rules.groupBy { it.domain }
+        val sb = StringBuilder()
+        sb.appendLine("! Grey Browser — Custom Element Hiding Rules")
+        sb.appendLine("! Last updated: ${System.currentTimeMillis()}")
+        sb.appendLine("! Format: domain.com##selector")
+        sb.appendLine()
+        val sortedDomains = grouped.keys.sortedByDescending { d ->
+            grouped[d]?.maxOfOrNull { it.timestamp } ?: 0L
+        }
+        for (domain in sortedDomains) {
+            sb.appendLine("! $domain")
+            val domainRules = grouped[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
+            for (rule in domainRules) {
+                sb.appendLine("$domain##${rule.selector}")
+            }
+            sb.appendLine()
+        }
+        getCustomFiltersFile().writeText(sb.toString())
+    } catch (e: Exception) { }
+}
+
+fun appendCustomFilterToTxt(domain: String, selector: String) {
+    try {
+        val file = getCustomFiltersFile()
+        if (!file.exists()) {
+            file.writeText("! Grey Browser — Custom Element Hiding Rules\n! Format: domain.com##selector\n\n")
+        }
+        file.appendText("$domain##$selector\n")
+    } catch (e: Exception) { }
+}
+
+fun loadCustomFiltersFromTxt(): List<CustomHideRule> {
+    return try {
+        val file = getCustomFiltersFile()
+        if (!file.exists()) return emptyList()
+        val rules = mutableListOf<CustomHideRule>()
+        for (line in file.readLines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("!")) continue
+            if (trimmed.contains("##")) {
+                val domain = trimmed.substringBefore("##").trim()
+                val selector = trimmed.substringAfter("##").trim()
+                rules.add(CustomHideRule(domain = domain, selector = selector))
             }
         }
-        val cosmetic = mutableListOf<CustomHideRule>()
-        val cosmeticArr = root.optJSONArray("cosmetic")
-        if (cosmeticArr != null) {
-            for (i in 0 until cosmeticArr.length()) {
-                val obj = cosmeticArr.getJSONObject(i)
-                val domain = obj.getString("domain")
-                val sels = obj.getJSONArray("selectors")
-                for (j in 0 until sels.length()) {
-                    cosmetic.add(CustomHideRule(domain, sels.getString(j)))
-                }
-            }
-        }
-        Pair(manual, cosmetic)
-    } catch (e: Exception) { Pair(emptyList(), emptyList()) }
+        rules
+    } catch (e: Exception) { emptyList() }
 }
 
 fun getFiltersDir(): File {
@@ -900,6 +940,7 @@ fun exportBackup(
     tabs: List<TabState>,
     history: List<HistoryItem>,
     bookmarks: List<Bookmark>,
+    customFilters: List<CustomHideRule>,
     scripts: List<Script>,
     lastActiveUrl: String
 ) {
@@ -1444,20 +1485,16 @@ fun GreyBrowser() {
                 }
                 if (url != "about:blank") {
                     val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
-                    val allSelectors = mutableListOf<String>()
-                    for (rule in cosmeticHideRules) {
+                    val selectors = mutableListOf<String>()
+                    for (rule in customHideRules) {
+                        if (!rule.enabled) continue
                         if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
-                            allSelectors.add(rule.selector)
+                            selectors.add(rule.selector)
                         }
                     }
-                    for (rule in manualHideRules) {
-                        if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
-                            allSelectors.add(rule.selector)
-                        }
-                    }
-                    if (allSelectors.isNotEmpty()) {
+                    if (selectors.isNotEmpty()) {
                         val selectorsJson = JSONArray()
-                        allSelectors.forEach { selectorsJson.put(it) }
+                        selectors.forEach { selectorsJson.put(it) }
                         val selectorsJs = selectorsJson.toString()
                         wv.evaluateJavascript("""
                             (function() {
@@ -2958,8 +2995,8 @@ fun ContentLayer() {
                     val domain = rule.substringBefore("##").trim()
                     val selector = rule.substringAfter("##").trim()
                     if (domain.isNotBlank() && selector.isNotBlank()) {
-                        manualHideRules.removeAll { it.domain == domain && it.selector == selector }
-                        manualHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
+                        customHideRules.removeAll { it.domain == domain && it.selector == selector }
+                        customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
                         showToast("Saved: $rule")
                         currentWebView?.evaluateJavascript("""
                             try {
@@ -2984,10 +3021,13 @@ fun ContentLayer() {
                 scope.launch(Dispatchers.Main) {
                     val wv = currentTab?.webView ?: return@launch
                     val rulesJson = JSONArray()
-                    for (rule in manualHideRules) {
+                    for (rule in customHideRules) {
                         val obj = JSONObject()
+                        obj.put("id", rule.id)
                         obj.put("domain", rule.domain)
                         obj.put("selector", rule.selector)
+                        obj.put("enabled", rule.enabled)
+                        obj.put("timestamp", rule.timestamp)
                         rulesJson.put(obj)
                     }
                     wv.evaluateJavascript(
