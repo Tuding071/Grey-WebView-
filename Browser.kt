@@ -199,7 +199,6 @@ private const val KEY_HISTORY = "saved_history"
 private const val KEY_SCRIPTS = "saved_scripts"
 private const val KEY_FILTERS = "saved_filters"
 private const val KEY_FILTERS_ENABLED = "filters_enabled"
-private const val KEY_CUSTOM_FILTERS = "custom_filters"
 
 const val MAX_WARM_WEBVIEWS = 20
 const val UNDO_DELAY_MS = 2000L
@@ -207,8 +206,6 @@ const val MAX_HISTORY_ITEMS = 500
 
 const val BACKUP_DIR = "Grey"
 const val BACKUP_FILE = "Grey-backup.json"
-const val ELEMENTS_FILE = "Grey-elements.json"
-const val CUSTOM_FILTERS_FILE = "CustomFilters.txt"
 const val FILTERS_DIR = "filters"
 
 private val BG            = Color(0xFF121212)
@@ -718,105 +715,6 @@ fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
     return false
 }
 
-fun getCustomFiltersFile(): File {
-    val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
-    if (!dir.exists()) dir.mkdirs()
-    return File(dir, CUSTOM_FILTERS_FILE)
-}
-
-fun getElementsFile(): File {
-    val dir = File(android.os.Environment.getExternalStorageDirectory(), BACKUP_DIR)
-    if (!dir.exists()) dir.mkdirs()
-    return File(dir, ELEMENTS_FILE)
-}
-
-fun saveElementsFile(rules: List<CustomHideRule>) {
-    try {
-        val arr = JSONArray()
-        for (r in rules) {
-            val obj = JSONObject()
-            obj.put("id", r.id)
-            obj.put("domain", r.domain)
-            obj.put("selector", r.selector)
-            obj.put("enabled", r.enabled)
-            obj.put("timestamp", r.timestamp)
-            arr.put(obj)
-        }
-        getElementsFile().writeText(arr.toString(1))
-    } catch (e: Exception) { }
-}
-
-fun loadElementsFile(): List<CustomHideRule> {
-    return try {
-        val file = getElementsFile()
-        if (!file.exists()) return emptyList()
-        val arr = JSONArray(file.readText())
-        val rules = mutableListOf<CustomHideRule>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            rules.add(CustomHideRule(
-                id = obj.optString("id", UUID.randomUUID().toString()),
-                domain = obj.getString("domain"),
-                selector = obj.getString("selector"),
-                enabled = obj.optBoolean("enabled", true),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
-            ))
-        }
-        rules
-    } catch (e: Exception) { emptyList() }
-}
-
-fun saveCustomFiltersToTxt(rules: List<CustomHideRule>) {
-    try {
-        val grouped = rules.groupBy { it.domain }
-        val sb = StringBuilder()
-        sb.appendLine("! Grey Browser — Custom Element Hiding Rules")
-        sb.appendLine("! Last updated: ${System.currentTimeMillis()}")
-        sb.appendLine("! Format: domain.com##selector")
-        sb.appendLine()
-        val sortedDomains = grouped.keys.sortedByDescending { d ->
-            grouped[d]?.maxOfOrNull { it.timestamp } ?: 0L
-        }
-        for (domain in sortedDomains) {
-            sb.appendLine("! $domain")
-            val domainRules = grouped[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
-            for (rule in domainRules) {
-                sb.appendLine("$domain##${rule.selector}")
-            }
-            sb.appendLine()
-        }
-        getCustomFiltersFile().writeText(sb.toString())
-    } catch (e: Exception) { }
-}
-
-fun appendCustomFilterToTxt(domain: String, selector: String) {
-    try {
-        val file = getCustomFiltersFile()
-        if (!file.exists()) {
-            file.writeText("! Grey Browser — Custom Element Hiding Rules\n! Format: domain.com##selector\n\n")
-        }
-        file.appendText("$domain##$selector\n")
-    } catch (e: Exception) { }
-}
-
-fun loadCustomFiltersFromTxt(): List<CustomHideRule> {
-    return try {
-        val file = getCustomFiltersFile()
-        if (!file.exists()) return emptyList()
-        val rules = mutableListOf<CustomHideRule>()
-        for (line in file.readLines()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("!")) continue
-            if (trimmed.contains("##")) {
-                val domain = trimmed.substringBefore("##").trim()
-                val selector = trimmed.substringAfter("##").trim()
-                rules.add(CustomHideRule(domain = domain, selector = selector))
-            }
-        }
-        rules
-    } catch (e: Exception) { emptyList() }
-}
-
 fun getFiltersDir(): File {
     val dir = File(getBackupDir(), FILTERS_DIR)
     if (!dir.exists()) dir.mkdirs()
@@ -980,6 +878,17 @@ fun exportBackup(
             bookmarksArray.put(obj)
         }
         root.put("bookmarks", bookmarksArray)
+        val customFiltersArray = JSONArray()
+        for (cf in customFilters) {
+            val obj = JSONObject()
+            obj.put("id", cf.id)
+            obj.put("domain", cf.domain)
+            obj.put("selector", cf.selector)
+            obj.put("enabled", cf.enabled)
+            obj.put("timestamp", cf.timestamp)
+            customFiltersArray.put(obj)
+        }
+        root.put("customFilters", customFiltersArray)
         val scriptsArray = JSONArray()
         for (s in scripts) {
             val obj = JSONObject()
@@ -1009,6 +918,7 @@ data class BackupData(
     val tabs: List<SavedTab>,
     val history: List<HistoryItem>,
     val bookmarks: List<Bookmark>,
+    val customFilters: List<CustomHideRule>,
     val scripts: List<Script>,
     val lastActiveUrl: String,
     val patternHash: String?,
@@ -1051,6 +961,20 @@ fun importBackup(context: Context): BackupData? {
                 bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
+        val customFiltersList = mutableListOf<CustomHideRule>()
+        val customFiltersArray = root.optJSONArray("customFilters")
+        if (customFiltersArray != null) {
+            for (i in 0 until customFiltersArray.length()) {
+                val obj = customFiltersArray.getJSONObject(i)
+                customFiltersList.add(CustomHideRule(
+                    id = obj.optString("id", UUID.randomUUID().toString()),
+                    domain = obj.getString("domain"),
+                    selector = obj.getString("selector"),
+                    enabled = obj.optBoolean("enabled", true),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                ))
+            }
+        }
         val scriptsList = mutableListOf<Script>()
         val scriptsArray = root.optJSONArray("scripts")
         if (scriptsArray != null) {
@@ -1072,7 +996,7 @@ fun importBackup(context: Context): BackupData? {
         if (cookieJson != null) {
             importCookies(cookieJson)
         }
-        BackupData(tabsList, historyList, bookmarksList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
+        BackupData(tabsList, historyList, bookmarksList, customFiltersList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
     } catch (e: Exception) { null }
 }
 //PART 4 END
@@ -1111,11 +1035,7 @@ fun GreyBrowser() {
     }
     var totalBlocked by remember { mutableIntStateOf(0) }
 
-    val customHideRules = remember {
-        mutableStateListOf<CustomHideRule>().apply {
-            addAll(loadElementsFile())
-        }
-    }
+    val customHideRules = remember { mutableStateListOf<CustomHideRule>() }
     var showElementHider by remember { mutableStateOf(false) }
 
     val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
@@ -1255,6 +1175,8 @@ fun GreyBrowser() {
                 bookmarks.addAll(backup.bookmarks)
                 scripts.clear()
                 scripts.addAll(backup.scripts)
+                customHideRules.clear()
+                customHideRules.addAll(backup.customFilters)
                 val dirFilters = loadFiltersFromDirectory()
                 if (dirFilters.isNotEmpty()) {
                     filters.clear()
@@ -1339,7 +1261,11 @@ fun GreyBrowser() {
         }
     }
     LaunchedEffect(customHideRules.toList()) {
-        saveElementsFile(customHideRules)
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+            }
+        }
     }
 
     LaunchedEffect(filtersEnabled) {
@@ -2774,8 +2700,11 @@ fun ContentLayer() {
                                                                 html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
                                                                 var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
                                                                 domainRules.forEach(function(r) {
+                                                                    var checked = r.enabled ? 'checked' : '';
+                                                                    var color = r.enabled ? '#FFF' : '#666';
                                                                     html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
-                                                                        '<span style="color:#FFF;flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
+                                                                        '<input type="checkbox" ' + checked + ' style="accent-color:#4ADE80;margin-right:8px;cursor:pointer" onchange="GreyPicker.onToggleRule(\'' + r.id + '\', this.checked)">' +
+                                                                        '<span style="color:' + color + ';flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
                                                                         '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
                                                                         '</div>';
                                                                 });
@@ -3013,6 +2942,16 @@ fun ContentLayer() {
                         "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
                         null
                     )
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onToggleRule(ruleId: String, enabled: Boolean) {
+                scope.launch(Dispatchers.Main) {
+                    val index = customHideRules.indexOfFirst { it.id == ruleId }
+                    if (index >= 0) {
+                        customHideRules[index] = customHideRules[index].copy(enabled = enabled)
+                    }
                 }
             }
 
