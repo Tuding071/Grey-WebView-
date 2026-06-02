@@ -2774,8 +2774,9 @@ fun ContentLayer() {
                                                                 html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
                                                                 var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
                                                                 domainRules.forEach(function(r) {
-                                                                    html += '<div style="padding:4px 0;font-size:11px">' +
-                                                                        '<span style="color:#FFF;font-family:monospace">' + r.selector + '</span>' +
+                                                                    html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
+                                                                        '<span style="color:#FFF;flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
+                                                                        '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
                                                                         '</div>';
                                                                 });
                                                             });
@@ -3012,6 +3013,19 @@ fun ContentLayer() {
                         "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
                         null
                     )
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onDeleteRule(ruleId: String) {
+                scope.launch(Dispatchers.Main) {
+                    confirmTitle = "Delete Rule?"
+                    confirmMessage = "This cannot be undone."
+                    confirmAction = {
+                        customHideRules.removeAll { it.id == ruleId }
+                        showToast("Rule deleted")
+                    }
+                    showConfirmDialog = true
                 }
             }
         }, "GreyPicker")
