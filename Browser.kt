@@ -567,39 +567,6 @@ fun loadFilters(context: Context): List<Filter> {
         }
     } catch (e: Exception) { emptyList() }
 }
-
-fun saveCustomFilters(context: Context, rules: List<CustomHideRule>) {
-    val arr = JSONArray()
-    for (r in rules) {
-        val obj = JSONObject()
-        obj.put("id", r.id)
-        obj.put("domain", r.domain)
-        obj.put("selector", r.selector)
-        obj.put("enabled", r.enabled)
-        obj.put("timestamp", r.timestamp)
-        arr.put(obj)
-    }
-    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_CUSTOM_FILTERS, arr.toString()).apply()
-}
-
-fun loadCustomFilters(context: Context): List<CustomHideRule> {
-    val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_CUSTOM_FILTERS, null) ?: return emptyList()
-    return try {
-        val arr = JSONArray(json)
-        mutableListOf<CustomHideRule>().apply {
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                add(CustomHideRule(
-                    o.getString("id"),
-                    o.getString("domain"),
-                    o.getString("selector"),
-                    o.optBoolean("enabled", true),
-                    o.getLong("timestamp")
-                ))
-            }
-        }
-    } catch (e: Exception) { emptyList() }
-}
 //PART 3 END
 
 //PART 4 START
