@@ -3026,6 +3026,21 @@ fun ContentLayer() {
                     if (index >= 0) {
                         customHideRules[index] = customHideRules[index].copy(enabled = enabled)
                     }
+                    val wv = currentWebView ?: return@launch
+                    val rulesJson = JSONArray()
+                    for (rule in customHideRules) {
+                        val obj = JSONObject()
+                        obj.put("id", rule.id)
+                        obj.put("domain", rule.domain)
+                        obj.put("selector", rule.selector)
+                        obj.put("enabled", rule.enabled)
+                        obj.put("timestamp", rule.timestamp)
+                        rulesJson.put(obj)
+                    }
+                    wv.evaluateJavascript(
+                        "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
+                        null
+                    )
                 }
             }
 
@@ -3037,6 +3052,21 @@ fun ContentLayer() {
                     confirmAction = {
                         customHideRules.removeAll { it.id == ruleId }
                         showToast("Rule deleted")
+                        val wv = currentWebView ?: return@confirmAction
+                        val rulesJson = JSONArray()
+                        for (rule in customHideRules) {
+                            val obj = JSONObject()
+                            obj.put("id", rule.id)
+                            obj.put("domain", rule.domain)
+                            obj.put("selector", rule.selector)
+                            obj.put("enabled", rule.enabled)
+                            obj.put("timestamp", rule.timestamp)
+                            rulesJson.put(obj)
+                        }
+                        wv.evaluateJavascript(
+                            "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
+                            null
+                        )
                     }
                     showConfirmDialog = true
                 }
