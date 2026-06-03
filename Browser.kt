@@ -1409,35 +1409,23 @@ fun GreyBrowser() {
                 }
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
-                if (!filtersEnabled) return false
                 if (!request.isForMainFrame) return false
                 val url = request.url.toString()
-                val host = request.url.host ?: return false
-                for (filter in filters) {
-                    if (!filter.enabled) continue
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) continue
-                        if (matchesAdBlockRule(url, host, rule)) {
-                            totalBlocked++
-                            val originalUrl = tabState.url
-                            view.stopLoading()
-                            val newWv = createWebView(url)
-                            val newTab = TabState().apply {
-                                webView = newWv
-                                this.url = url
-                                isBlankTab = false
-                                isDiscarded = false
-                                lastUpdated = System.currentTimeMillis()
-                                parentTabIndex = currentTabIndex
-                            }
-                            tabs.add(currentTabIndex + 1, newTab)
-                            setupDelegates(newTab)
-                            tabState.url = originalUrl
-                            return true
-                        }
-                    }
+                val originalUrl = tabState.url
+                view.stopLoading()
+                val newWv = createWebView(url)
+                val newTab = TabState().apply {
+                    webView = newWv
+                    this.url = url
+                    isBlankTab = false
+                    isDiscarded = false
+                    lastUpdated = System.currentTimeMillis()
+                    parentTabIndex = currentTabIndex
                 }
-                return false
+                tabs.add(currentTabIndex + 1, newTab)
+                setupDelegates(newTab)
+                tabState.url = originalUrl
+                return true
             }
             override fun shouldInterceptRequest(
                 view: WebView,
