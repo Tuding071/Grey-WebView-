@@ -1004,6 +1004,7 @@ fun GreyBrowser() {
 
     val customHideRules = remember { mutableStateListOf<CustomHideRule>() }
     var showElementHider by remember { mutableStateOf(false) }
+    var showElementRules by remember { mutableStateOf(false) }
 
     val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
 
@@ -2667,12 +2668,8 @@ fun ContentLayer() {
                                                                 html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
                                                                 var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
                                                                 domainRules.forEach(function(r) {
-                                                                    var checked = r.enabled ? 'checked' : '';
-                                                                    var color = r.enabled ? '#FFF' : '#666';
-                                                                    html += '<div style="display:flex;align-items:center;padding:4px 0;font-size:11px">' +
-                                                                        '<input type="checkbox" ' + checked + ' style="accent-color:#4ADE80;margin-right:8px;cursor:pointer" onchange="GreyPicker.onToggleRule(\'' + r.id + '\', this.checked)">' +
-                                                                        '<span style="color:' + color + ';flex:1;word-break:break-all;font-family:monospace">' + r.selector + '</span>' +
-                                                                        '<button style="background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 4px" onclick="GreyPicker.onDeleteRule(\'' + r.id + '\')">✕</button>' +
+                                                                    html += '<div style="padding:4px 0;font-size:11px">' +
+                                                                        '<span style="color:#FFF;font-family:monospace">' + r.selector + '</span>' +
                                                                         '</div>';
                                                                 });
                                                             });
@@ -2801,7 +2798,6 @@ fun ContentLayer() {
                                                     
                                                     document.addEventListener('click', function(e) {
                                                         if (currentView !== 'picker') return;
-                                                        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
                                                         if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
                                                         e.preventDefault();
                                                         e.stopPropagation();
@@ -2829,6 +2825,10 @@ fun ContentLayer() {
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text("Element Rules", color = WHITE) },
+                                onClick = { showMenu = false; showElementRules = true }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Bookmarks", color = WHITE) },
                                 onClick = { showMenu = false; showBookmarks = true }
@@ -2912,64 +2912,29 @@ fun ContentLayer() {
                     )
                 }
             }
-
-            @android.webkit.JavascriptInterface
-            fun onToggleRule(ruleId: String, enabled: Boolean) {
-                scope.launch(Dispatchers.Main) {
-                    val index = customHideRules.indexOfFirst { it.id == ruleId }
-                    if (index >= 0) {
-                        customHideRules[index] = customHideRules[index].copy(enabled = enabled)
-                    }
-                    val wv = currentTab?.webView
-                    if (wv != null) {
-                        val rulesJson = JSONArray()
-                        for (rule in customHideRules) {
-                            val obj = JSONObject()
-                            obj.put("id", rule.id)
-                            obj.put("domain", rule.domain)
-                            obj.put("selector", rule.selector)
-                            obj.put("enabled", rule.enabled)
-                            obj.put("timestamp", rule.timestamp)
-                            rulesJson.put(obj)
-                        }
-                        wv.evaluateJavascript(
-                            "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
-                            null
-                        )
-                    }
-                }
-            }
-
-            @android.webkit.JavascriptInterface
-            fun onDeleteRule(ruleId: String) {
-                scope.launch(Dispatchers.Main) {
-                    confirmTitle = "Delete Rule?"
-                    confirmMessage = "This cannot be undone."
-                    confirmAction = {
-                        customHideRules.removeAll { it.id == ruleId }
-                        showToast("Rule deleted")
-                        val wv = currentTab?.webView
-                        if (wv != null) {
-                            val rulesJson = JSONArray()
-                            for (rule in customHideRules) {
-                                val obj = JSONObject()
-                                obj.put("id", rule.id)
-                                obj.put("domain", rule.domain)
-                                obj.put("selector", rule.selector)
-                                obj.put("enabled", rule.enabled)
-                                obj.put("timestamp", rule.timestamp)
-                                rulesJson.put(obj)
-                            }
-                            wv.evaluateJavascript(
-                                "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
-                                null
-                            )
-                        }
-                    }
-                    showConfirmDialog = true
-                }
-            }
         }, "GreyPicker")
+    }
+
+    if (showElementRules) {
+        ElementRulesScreen(
+            rules = customHideRules,
+            onDismiss = { showElementRules = false },
+            onToggleRule = { id ->
+                val index = customHideRules.indexOfFirst { it.id == id }
+                if (index >= 0) {
+                    customHideRules[index] = customHideRules[index].copy(enabled = !customHideRules[index].enabled)
+                }
+            },
+            onDeleteRule = { id ->
+                customHideRules.removeAll { it.id == id }
+                showToast("Rule deleted")
+            },
+            onAddRule = { domain, selector ->
+                customHideRules.removeAll { it.domain == domain && it.selector == selector }
+                customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
+                showToast("Rule added")
+            }
+        )
     }
 
     if (showToast) {
@@ -4495,3 +4460,236 @@ fun FilterImportDialog(
     )
 }
 //PART 13 END
+
+//PART 14 START
+@Composable
+fun ElementRulesScreen(
+    rules: List<CustomHideRule>,
+    onDismiss: () -> Unit,
+    onToggleRule: (String) -> Unit,
+    onDeleteRule: (String) -> Unit,
+    onAddRule: (String, String) -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var ruleToDelete by remember { mutableStateOf<String?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm && ruleToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false; ruleToDelete = null },
+            title = { Text("Delete Rule?", color = WHITE, fontSize = 18.sp) },
+            text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
+            confirmButton = {
+                TextButton({
+                    onDeleteRule(ruleToDelete!!)
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    if (showAddDialog) {
+        var newDomain by remember { mutableStateOf("") }
+        var newSelector by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add Rule", color = WHITE, fontSize = 18.sp) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newDomain,
+                        onValueChange = { newDomain = it },
+                        singleLine = true,
+                        placeholder = { Text("Domain (e.g. example.com or *)", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newSelector,
+                        onValueChange = { newSelector = it },
+                        singleLine = true,
+                        placeholder = { Text("CSS Selector", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newDomain.isNotBlank() && newSelector.isNotBlank()) {
+                            onAddRule(newDomain.trim(), newSelector.trim())
+                            showAddDialog = false
+                        }
+                    },
+                    enabled = newDomain.isNotBlank() && newSelector.isNotBlank()
+                ) {
+                    Text("Add", color = if (newDomain.isNotBlank() && newSelector.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = WHITE)
+                }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Element Rules", color = WHITE, fontSize = 18.sp)
+                    if (rules.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${rules.size})", color = MUTED, fontSize = 14.sp)
+                    }
+                }
+
+                if (rules.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No rules", color = MUTED, fontSize = 16.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Use Hide Element or Add Rule", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    val groupedRules = rules.groupBy { it.domain }
+                    val sortedDomains = groupedRules.keys.sortedByDescending { d ->
+                        groupedRules[d]?.maxOfOrNull { it.timestamp } ?: 0L
+                    }
+
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        for (domain in sortedDomains) {
+                            val domainRules = groupedRules[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                            item(key = domain) {
+                                Text(
+                                    domain,
+                                    color = MUTED,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            items(domainRules, key = { it.id }) { rule ->
+                                Surface(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    color = ITEM_BG
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Switch(
+                                            checked = rule.enabled,
+                                            onCheckedChange = { onToggleRule(rule.id) },
+                                            modifier = Modifier.padding(end = 4.dp),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = WHITE,
+                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                                uncheckedTrackColor = Color(0xFF444444)
+                                            )
+                                        )
+                                        Text(
+                                            rule.selector,
+                                            color = if (rule.enabled) WHITE else MUTED,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton({
+                                            ruleToDelete = rule.id
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Delete",
+                                                tint = WHITE.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Button(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Rule", color = WHITE)
+                    }
+                }
+            }
+        }
+    }
+}
+//PART 14 END
