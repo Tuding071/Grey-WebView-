@@ -1419,19 +1419,8 @@ fun GreyBrowser() {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(url, host, rule)) {
                             totalBlocked++
-                            val cleanUrl = url.substringBefore("#")
-                            val oldIndex = tabs.indexOfFirst {
-                                it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
-                            }
-                            if (oldIndex >= 0) {
-                                tabs[oldIndex].webView?.destroy()
-                                tabs.removeAt(oldIndex)
-                                for (t in tabs) {
-                                    if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
-                                    else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
-                                }
-                            }
-                            val insertIdx = currentTabIndex + 1
+                            val originalUrl = tabState.url
+                            view.stopLoading()
                             val newWv = createWebView(url)
                             val newTab = TabState().apply {
                                 webView = newWv
@@ -1441,8 +1430,9 @@ fun GreyBrowser() {
                                 lastUpdated = System.currentTimeMillis()
                                 parentTabIndex = currentTabIndex
                             }
-                            tabs.add(insertIdx, newTab)
+                            tabs.add(currentTabIndex + 1, newTab)
                             setupDelegates(newTab)
+                            tabState.url = originalUrl
                             return true
                         }
                     }
