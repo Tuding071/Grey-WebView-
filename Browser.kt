@@ -1408,7 +1408,7 @@ fun GreyBrowser() {
                     }
                 }
             }
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!filtersEnabled) return false
                 val url = request.url.toString()
                 val host = request.url.host ?: return false
