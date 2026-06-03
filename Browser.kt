@@ -1410,6 +1410,7 @@ fun GreyBrowser() {
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!filtersEnabled) return false
+                if (!request.isForMainFrame) return false
                 val url = request.url.toString()
                 val host = request.url.host ?: return false
                 for (filter in filters) {
@@ -1418,6 +1419,7 @@ fun GreyBrowser() {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(url, host, rule)) {
                             totalBlocked++
+                            createForegroundTab(url)
                             return true
                         }
                     }
