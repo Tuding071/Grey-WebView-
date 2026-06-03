@@ -1419,7 +1419,33 @@ fun GreyBrowser() {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(url, host, rule)) {
                             totalBlocked++
-                            createForegroundTab(url)
+                            val wv = WebView(context).apply {
+                                setBackgroundColor(android.graphics.Color.parseColor("#121212"))
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                with(settings) {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                    builtInZoomControls = true
+                                    displayZoomControls = false
+                                    setSupportZoom(true)
+                                }
+                                loadUrl(url)
+                            }
+                            val newTab = TabState().apply {
+                                webView = wv
+                                this.url = url
+                                isBlankTab = false
+                                isDiscarded = false
+                                lastUpdated = System.currentTimeMillis()
+                                parentTabIndex = currentTabIndex
+                            }
+                            tabs.add(currentTabIndex + 1, newTab)
+                            setupDelegates(newTab)
                             return true
                         }
                     }
