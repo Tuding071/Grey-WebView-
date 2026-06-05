@@ -47,6 +47,7 @@ jobs:
           PKG=app/src/main/java/com/grey/browser
           mkdir -p $PKG
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
 
           cp Browser.kt $PKG/
@@ -216,65 +217,125 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-pillow-v1
+          key: pip-pillow-v2
 
-      - name: Generate launcher icons
+      - name: Generate launcher icons (fresh)
         run: |
+          # Clean any existing icons first
+          rm -rf app/src/main/res/mipmap-*
+          
           pip install Pillow --quiet
           python3 << 'PYEOF'
           from PIL import Image, ImageDraw
           import os
 
           def make_icon(size):
+              # Deep dark grey background matching the app theme
               BG = (18, 18, 18, 255)
+              # Pure white for the browser icon
               WHITE = (255, 255, 255, 255)
+              # Light grey for subtle details
+              LIGHT_GREY = (200, 200, 200, 255)
 
               img = Image.new('RGBA', (size, size), BG)
               d = ImageDraw.Draw(img)
 
-              padding = size // 6
-              stroke_width = max(3, size // 12)
+              # Modern minimalist browser icon
+              padding = size // 5
+              stroke_width = max(2, size // 16)
               center = size // 2
-              radius = (size - 2 * padding) // 2
               
-              d.ellipse(
+              # Outer rounded square (browser window)
+              radius = (size - 2 * padding) // 2
+              d.rounded_rectangle(
                   [padding, padding, size - padding, size - padding],
+                  radius=size // 8,
                   outline=WHITE,
                   width=stroke_width
               )
 
-              d.line(
-                  [(padding, center), (size - padding, center)],
-                  fill=WHITE,
-                  width=stroke_width
+              # URL/search bar at top
+              bar_height = size // 8
+              bar_padding = padding + size // 10
+              d.rounded_rectangle(
+                  [bar_padding, padding + size // 8, size - bar_padding, padding + size // 8 + bar_height],
+                  radius=size // 16,
+                  fill=LIGHT_GREY
               )
 
-              d.arc(
-                  [padding, padding, size - padding, size - padding],
-                  start=60, end=300,
-                  fill=WHITE,
-                  width=stroke_width
+              # Content area lines
+              line_width = size // 14
+              line_margin = padding + size // 6
+              
+              # Content line 1
+              d.rounded_rectangle(
+                  [line_margin, padding + size // 3, size - line_margin * 2, padding + size // 3 + line_width // 2],
+                  radius=size // 32,
+                  fill=LIGHT_GREY
               )
-
-              d.arc(
-                  [padding, padding, size - padding, size - padding],
-                  start=240, end=120,
-                  fill=WHITE,
-                  width=stroke_width
+              
+              # Content line 2 (shorter)
+              d.rounded_rectangle(
+                  [line_margin, padding + size // 2, size - line_margin * 3, padding + size // 2 + line_width // 2],
+                  radius=size // 32,
+                  fill=LIGHT_GREY
               )
 
               return img
 
-          sizes = {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}
+          # Generate icons for all densities
+          sizes = {
+              'mdpi': 48,
+              'hdpi': 72,
+              'xhdpi': 96,
+              'xxhdpi': 144,
+              'xxxhdpi': 192
+          }
+          
           for density, s in sizes.items():
               path = f'app/src/main/res/mipmap-{density}'
               os.makedirs(path, exist_ok=True)
+              
               icon = make_icon(s)
               icon.save(f'{path}/ic_launcher.png')
               icon.save(f'{path}/ic_launcher_round.png')
+              
+              print(f"✅ Generated {density} icons ({s}x{s})")
 
-          print("Material 3 browser icons generated successfully!")
+          # Create adaptive icon XML for API 26+
+          os.makedirs('app/src/main/res/mipmap-anydpi-v26', exist_ok=True)
+          
+          with open('app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml', 'w') as f:
+              f.write('''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+          </adaptive-icon>''')
+          
+          with open('app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml', 'w') as f:
+              f.write('''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+          </adaptive-icon>''')
+          
+          # Create color resource for adaptive icon background
+          os.makedirs('app/src/main/res/values', exist_ok=True)
+          with open('app/src/main/res/values/ic_launcher_background.xml', 'w') as f:
+              f.write('''<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="ic_launcher_background">#121212</color>
+          </resources>''')
+
+          print("🎨 Adaptive icons configured!")
+          print("📱 Icon design: Modern browser window with address bar")
           PYEOF
+
+      - name: Verify icons exist
+        run: |
+          echo "Checking generated icons..."
+          find app/src/main/res/mipmap-* -name "*.png" -o -name "*.xml" | sort
+          echo "✅ All icon files present"
 
       - name: Setup Gradle Wrapper
         run: |
@@ -284,6 +345,11 @@ jobs:
       - name: Build signed release APK
         run: ./gradlew assembleRelease --no-daemon
 
+      - name: Verify APK contents
+        run: |
+          echo "Checking APK for icons..."
+          unzip -l app/build/outputs/apk/release/app-arm64-v8a-release.apk | grep -E "mipmap|ic_launcher"
+          
       - name: Verify APK signing
         run: |
           APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
