@@ -1,6 +1,16 @@
 name: Build Grey Browser
 
 on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'Browser.kt'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'Browser.kt'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
@@ -20,10 +30,15 @@ jobs:
       - name: Set Android SDK path
         run: echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
         with:
-          gradle-version: 8.11.1
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Generate project structure
         env:
@@ -86,10 +101,9 @@ jobs:
 
               buildTypes {
                   release {
-                      isMinifyEnabled = false    // Disabled ProGuard/R8
-                      isShrinkResources = false   // Disabled resource shrinking
+                      isMinifyEnabled = false
+                      isShrinkResources = false
                       signingConfig  = signingConfigs.getByName("release")
-                      // Removed proguardFiles line
                   }
               }
 
@@ -212,37 +226,29 @@ jobs:
           import os
 
           def make_icon(size):
-              # Material 3 dark grey background
               BG = (18, 18, 18, 255)
-              # Solid white for browser icon
               WHITE = (255, 255, 255, 255)
 
               img = Image.new('RGBA', (size, size), BG)
               d = ImageDraw.Draw(img)
 
-              # Calculate proportions based on Material 3 design
-              padding = size // 6  # Generous padding for adaptive icon
-              stroke_width = max(3, size // 12)  # Bold stroke width
-
-              # Draw globe circle (browser icon)
+              padding = size // 6
+              stroke_width = max(3, size // 12)
               center = size // 2
               radius = (size - 2 * padding) // 2
               
-              # Main circle outline
               d.ellipse(
                   [padding, padding, size - padding, size - padding],
                   outline=WHITE,
                   width=stroke_width
               )
 
-              # Horizontal line (equator)
               d.line(
                   [(padding, center), (size - padding, center)],
                   fill=WHITE,
                   width=stroke_width
               )
 
-              # Vertical arc line (meridian)
               d.arc(
                   [padding, padding, size - padding, size - padding],
                   start=60, end=300,
@@ -250,7 +256,6 @@ jobs:
                   width=stroke_width
               )
 
-              # Right arc line (meridian)
               d.arc(
                   [padding, padding, size - padding, size - padding],
                   start=240, end=120,
@@ -260,7 +265,6 @@ jobs:
 
               return img
 
-          # Generate icons for all densities
           sizes = {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}
           for density, s in sizes.items():
               path = f'app/src/main/res/mipmap-{density}'
@@ -272,7 +276,7 @@ jobs:
           print("Material 3 browser icons generated successfully!")
           PYEOF
 
-      - name: Create Gradle Wrapper
+      - name: Setup Gradle Wrapper
         run: |
           gradle wrapper --gradle-version=8.11.1 --distribution-type=bin
           chmod +x gradlew
