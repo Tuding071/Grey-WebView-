@@ -1277,6 +1277,214 @@ fun GreyBrowser() {
         }
     }
 
+    fun setupDelegates(tabState: TabState) {
+        val wv = tabState.webView ?: return
+        var hideElementsFired = false
+        
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                tabState.progress = newProgress
+                tabState.lastUpdated = System.currentTimeMillis()
+                if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
+                    val bytes = captureThumbnail(view)
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        tabState.thumbnailBytes = bytes
+                        val idx = tabs.indexOf(tabState)
+                        if (idx >= 0) thumbnailBitmapCache.remove(idx)
+                    }
+                }
+                if (newProgress >= 10 && !hideElementsFired && !tabState.isBlankTab) {
+                    hideElementsFired = true
+                    val url = tabState.url
+                    if (url != "about:blank") {
+                        val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
+                        val selectors = mutableListOf<String>()
+                        for (rule in customHideRules) {
+                            if (!rule.enabled) continue
+                            if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
+                                selectors.add(rule.selector)
+                            }
+                        }
+                        if (selectors.isNotEmpty()) {
+                            val selectorsJson = JSONArray()
+                            selectors.forEach { selectorsJson.put(it) }
+                            val selectorsJs = selectorsJson.toString()
+                            wv.evaluateJavascript("""
+                                (function() {
+                                    var selectors = $selectorsJs;
+                                    function hideElements() {
+                                        selectors.forEach(function(sel) {
+                                            try {
+                                                document.querySelectorAll(sel).forEach(function(el) {
+                                                    el.style.setProperty('display', 'none', 'important');
+                                                });
+                                            } catch(e) {}
+                                        });
+                                    }
+                                    hideElements();
+                                    var timer = null;
+                                    new MutationObserver(function() {
+                                        if (timer) clearTimeout(timer);
+                                        timer = setTimeout(hideElements, 500);
+                                    }).observe(document.documentElement, { childList: true, subtree: true });
+                                })();
+                            """.trimIndent(), null)
+                        }
+                    }
+                }
+            }
+            override fun onReceivedTitle(view: WebView, title: String?) {
+                if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
+                    tabState.title = title
+                }
+            }
+            override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
+                request.deny()
+            }
+        }
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                tabState.url = url
+                tabState.progress = 5
+                tabState.lastUpdated = System.currentTimeMillis()
+                hideElementsFired = false
+                if (url != "about:blank") tabState.isBlankTab = false
+                if (showElementHider) showElementHider = false
+                wv.evaluateJavascript("""
+                    (function() {
+                        var originalMatchMedia = window.matchMedia;
+                        window.matchMedia = function(query) {
+                            var result = originalMatchMedia(query);
+                            if (query.includes('prefers-color-scheme')) {
+                                return {
+                                    matches: true,
+                                    media: query,
+                                    onchange: null,
+                                    addListener: function(cb) { cb(this); },
+                                    removeListener: function() {},
+                                    addEventListener: function(type, cb) { if (type === 'change') cb(this); },
+                                    removeEventListener: function() {},
+                                    dispatchEvent: function() { return true; }
+                                };
+                            }
+                            return result;
+                        };
+                    })();
+                """.trimIndent(), null)
+                for (script in scripts) {
+                    if (!shouldInjectScript(script, url)) continue
+                    val meta = parseScriptHeader(script.code)
+                    val runAt = meta["run-at"] ?: "document-end"
+                    if (runAt == "document-start") {
+                        val body = getScriptBody(script.code)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
+                    }
+                }
+            }
+            override fun onPageFinished(view: WebView, url: String) {
+                tabState.progress = 100
+                tabState.url = url
+                tabState.lastUpdated = System.currentTimeMillis()
+                if (url != "about:blank") {
+                    tabState.isBlankTab = false
+                    lastActiveUrl = url
+                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                        highlightedTabIndex = currentTabIndex
+                    }
+                    val cleanUrl = url.substringBefore("#")
+                    history.removeAll { it.url.substringBefore("#") == cleanUrl }
+                    history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
+                    if (history.size > MAX_HISTORY_ITEMS) history.removeAt(0)
+                }
+                for (script in scripts) {
+                    if (!shouldInjectScript(script, url)) continue
+                    val meta = parseScriptHeader(script.code)
+                    val runAt = meta["run-at"] ?: "document-end"
+                    if (runAt == "document-end" || runAt == "document-idle") {
+                        val body = getScriptBody(script.code)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
+                    }
+                }
+            }
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
+                val url = request.url.toString()
+                val originalUrl = tabState.url
+                view.stopLoading()
+                val newWv = createWebView(url)
+                val newTab = TabState().apply {
+                    webView = newWv
+                    this.url = url
+                    isBlankTab = false
+                    isDiscarded = false
+                    lastUpdated = System.currentTimeMillis()
+                    parentTabIndex = currentTabIndex
+                }
+                tabs.add(currentTabIndex + 1, newTab)
+                setupDelegates(newTab)
+                tabState.url = originalUrl
+                return true
+            }
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: android.webkit.WebResourceRequest
+            ): android.webkit.WebResourceResponse? {
+                if (!filtersEnabled) return null
+                val requestUrl = request.url.toString()
+                val requestHost = request.url.host ?: return null
+                for (filter in filters) {
+                    if (!filter.enabled) continue
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) {
+                            val exceptionPattern = rule.removePrefix("@@")
+                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) return null
+                        }
+                    }
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) continue
+                        if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
+                            totalBlocked++
+                            return android.webkit.WebResourceResponse(
+                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
+                            )
+                        }
+                    }
+                }
+                return null
+            }
+        }
+
+        var lastTouchX = 0f
+        var lastTouchY = 0f
+        wv.setOnTouchListener { _, event ->
+            val scale = if (wv.scale > 0) wv.scale else 1f
+            lastTouchX = event.x / scale
+            lastTouchY = event.y / scale
+            false
+        }
+
+        wv.setOnLongClickListener {
+            wv.evaluateJavascript(
+                "(function(){" +
+                "var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
+                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){" +
+                "el=el.parentElement;" +
+                "}" +
+                "return el?el.href:'';" +
+                "})()"
+            ) { href ->
+                val clean = href.trim('"').trim()
+                if (clean.isNotEmpty() && clean != "null" && clean != "undefined" && clean != "") {
+                    linkMenuUrl = clean
+                    showLinkMenu = true
+                }
+            }
+            true
+        }
+    }
+
     fun removeDuplicateTab(url: String) {
         val cleanUrl = url.substringBefore("#")
         val oldIndex = tabs.indexOfFirst {
@@ -1342,209 +1550,6 @@ fun GreyBrowser() {
         currentTabIndex = insertIdx
         highlightedTabIndex = currentTabIndex
         manageTabLifecycle(currentTabIndex)
-    }
-
-    fun setupDelegates(tabState: TabState) {
-        val wv = tabState.webView ?: return
-        wv.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                tabState.progress = newProgress
-                tabState.lastUpdated = System.currentTimeMillis()
-                if (newProgress >= THUMBNAIL_CAPTURE_PROGRESS) {
-                    val bytes = captureThumbnail(view)
-                    if (bytes != null && bytes.isNotEmpty()) {
-                        tabState.thumbnailBytes = bytes
-                        val idx = tabs.indexOf(tabState)
-                        if (idx >= 0) thumbnailBitmapCache.remove(idx)
-                    }
-                }
-            }
-            override fun onReceivedTitle(view: WebView, title: String?) {
-                if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
-                    tabState.title = title
-                }
-            }
-            override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
-                request.deny()
-            }
-        }
-        wv.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
-                // Only intercept main frame navigations
-                if (!request.isForMainFrame) return false
-                
-                val url = request.url.toString()
-                
-                // Don't intercept the initial page load
-                if (view.url == null || view.url == "about:blank") return false
-                
-                // Don't intercept if it's the same page (anchor links, etc.)
-                if (url.substringBefore("#") == view.url?.substringBefore("#")) return false
-                
-                // Open redirect/pop-up in new tab, keep current page
-                createForegroundTab(url, currentTabIndex)
-                
-                // Restore original URL in current tab
-                view.loadUrl(view.url ?: return false)
-                
-                return true
-            }
-            
-            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                tabState.url = url
-                tabState.progress = 5
-                tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") tabState.isBlankTab = false
-                if (showElementHider) showElementHider = false
-                wv.evaluateJavascript("""
-                    (function() {
-                        var originalMatchMedia = window.matchMedia;
-                        window.matchMedia = function(query) {
-                            var result = originalMatchMedia(query);
-                            if (query.includes('prefers-color-scheme')) {
-                                return {
-                                    matches: true,
-                                    media: query,
-                                    onchange: null,
-                                    addListener: function(cb) { cb(this); },
-                                    removeListener: function() {},
-                                    addEventListener: function(type, cb) { if (type === 'change') cb(this); },
-                                    removeEventListener: function() {},
-                                    dispatchEvent: function() { return true; }
-                                };
-                            }
-                            return result;
-                        };
-                    })();
-                """.trimIndent(), null)
-                for (script in scripts) {
-                    if (!shouldInjectScript(script, url)) continue
-                    val meta = parseScriptHeader(script.code)
-                    val runAt = meta["run-at"] ?: "document-end"
-                    if (runAt == "document-start") {
-                        val body = getScriptBody(script.code)
-                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
-                        wv.evaluateJavascript(wrapped, null)
-                    }
-                }
-                if (url != "about:blank") {
-                    val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
-                    val selectors = mutableListOf<String>()
-                    for (rule in customHideRules) {
-                        if (!rule.enabled) continue
-                        if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
-                            selectors.add(rule.selector)
-                        }
-                    }
-                    if (selectors.isNotEmpty()) {
-                        val selectorsJson = JSONArray()
-                        selectors.forEach { selectorsJson.put(it) }
-                        val selectorsJs = selectorsJson.toString()
-                        wv.evaluateJavascript("""
-                            (function() {
-                                var selectors = $selectorsJs;
-                                function hideElements() {
-                                    selectors.forEach(function(sel) {
-                                        try {
-                                            document.querySelectorAll(sel).forEach(function(el) {
-                                                el.style.setProperty('display', 'none', 'important');
-                                            });
-                                        } catch(e) {}
-                                    });
-                                }
-                                hideElements();
-                                var timer = null;
-                                new MutationObserver(function() {
-                                    if (timer) clearTimeout(timer);
-                                    timer = setTimeout(hideElements, 500);
-                                }).observe(document.documentElement, { childList: true, subtree: true });
-                            })();
-                        """.trimIndent(), null)
-                    }
-                }
-            }
-            override fun onPageFinished(view: WebView, url: String) {
-                tabState.progress = 100
-                tabState.url = url
-                tabState.lastUpdated = System.currentTimeMillis()
-                if (url != "about:blank") {
-                    tabState.isBlankTab = false
-                    lastActiveUrl = url
-                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                        highlightedTabIndex = currentTabIndex
-                    }
-                    val cleanUrl = url.substringBefore("#")
-                    history.removeAll { it.url.substringBefore("#") == cleanUrl }
-                    history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
-                    if (history.size > MAX_HISTORY_ITEMS) history.removeAt(0)
-                }
-                for (script in scripts) {
-                    if (!shouldInjectScript(script, url)) continue
-                    val meta = parseScriptHeader(script.code)
-                    val runAt = meta["run-at"] ?: "document-end"
-                    if (runAt == "document-end" || runAt == "document-idle") {
-                        val body = getScriptBody(script.code)
-                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
-                        wv.evaluateJavascript(wrapped, null)
-                    }
-                }
-            }
-            override fun shouldInterceptRequest(
-                view: WebView,
-                request: android.webkit.WebResourceRequest
-            ): android.webkit.WebResourceResponse? {
-                if (!filtersEnabled) return null
-                val requestUrl = request.url.toString()
-                val requestHost = request.url.host ?: return null
-                for (filter in filters) {
-                    if (!filter.enabled) continue
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) {
-                            val exceptionPattern = rule.removePrefix("@@")
-                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) return null
-                        }
-                    }
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) continue
-                        if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
-                            totalBlocked++
-                            return android.webkit.WebResourceResponse(
-                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
-                            )
-                        }
-                    }
-                }
-                return null
-            }
-        }
-
-        var lastTouchX = 0f
-        var lastTouchY = 0f
-        wv.setOnTouchListener { _, event ->
-            val scale = if (wv.scale > 0) wv.scale else 1f
-            lastTouchX = event.x / scale
-            lastTouchY = event.y / scale
-            false
-        }
-
-        wv.setOnLongClickListener {
-            wv.evaluateJavascript(
-                "(function(){" +
-                "var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
-                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){" +
-                "el=el.parentElement;" +
-                "}" +
-                "return el?el.href:'';" +
-                "})()"
-            ) { href ->
-                val clean = href.trim('"').trim()
-                if (clean.isNotEmpty() && clean != "null" && clean != "undefined" && clean != "") {
-                    linkMenuUrl = clean
-                    showLinkMenu = true
-                }
-            }
-            true
-        }
     }
 
     fun requestDeleteTab(index: Int) {
