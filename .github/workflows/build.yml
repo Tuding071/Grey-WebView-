@@ -22,27 +22,41 @@ jobs:
           if [ -z "$CACHES" ]; then
             echo "No caches found to delete"
           else
-            echo "Found caches to delete:"
+            echo "Found $(echo "$CACHES" | wc -l) caches to delete"
             echo "$CACHES"
             echo ""
             for CACHE_ID in $CACHES; do
               echo "Deleting cache $CACHE_ID..."
               gh cache delete $CACHE_ID
+              sleep 1
             done
             echo ""
-            echo "All caches deleted successfully!"
+            echo "All caches deleted!"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify caches cleared
+      - name: Wait and verify
         run: |
-          echo "Verifying no caches remain..."
-          REMAINING=$(gh cache list --limit 1 --json id --jq '.[].id')
-          if [ -z "$REMAINING" ]; then
+          echo "Waiting for cache deletion to propagate..."
+          sleep 5
+          echo "Checking remaining caches..."
+          CACHES=$(gh cache list --limit 100 --json id --jq '.[].id')
+          if [ -z "$CACHES" ]; then
             echo "✅ All caches successfully cleared!"
           else
-            echo "⚠️ Some caches still remain"
+            echo "⚠️ $(echo "$CACHES" | wc -l) caches still remain, retrying..."
+            for CACHE_ID in $CACHES; do
+              echo "Deleting cache $CACHE_ID..."
+              gh cache delete $CACHE_ID
+            done
+            sleep 3
+            FINAL=$(gh cache list --limit 1 --json id --jq '.[].id')
+            if [ -z "$FINAL" ]; then
+              echo "✅ All caches cleared on retry!"
+            else
+              echo "⚠️ Some caches may still be propagating - check again in a minute"
+            fi
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
