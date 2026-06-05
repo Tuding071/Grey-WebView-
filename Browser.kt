@@ -1277,6 +1277,73 @@ fun GreyBrowser() {
         }
     }
 
+    fun removeDuplicateTab(url: String) {
+        val cleanUrl = url.substringBefore("#")
+        val oldIndex = tabs.indexOfFirst {
+            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
+        }
+        if (oldIndex >= 0) {
+            tabs[oldIndex].webView?.destroy()
+            tabs.removeAt(oldIndex)
+            for (t in tabs) {
+                if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
+                else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
+            }
+            if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
+            if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
+            val updated = mutableMapOf<Int, Long>()
+            for ((idx, time) in pendingDeletions) {
+                if (idx > oldIndex) updated[idx - 1] = time
+                else if (idx < oldIndex) updated[idx] = time
+            }
+            pendingDeletions.clear()
+            pendingDeletions.putAll(updated)
+        }
+    }
+
+    fun manageTabLifecycle(activeIndex: Int) {
+        if (activeIndex < 0 || activeIndex >= tabs.size) return
+        val activeTab = tabs[activeIndex]
+        if (activeTab.webView == null && activeTab.isDiscarded) {
+            activeTab.webView = createWebView(activeTab.url)
+            activeTab.isDiscarded = false
+            setupDelegates(activeTab)
+            activeTab.lastUpdated = System.currentTimeMillis()
+        }
+        val warmTabs = tabs.filterIndexed { i, t ->
+            i != activeIndex && !t.isDiscarded && t.webView != null
+        }
+        if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
+            val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
+            for (tab in toDiscard) {
+                tab.webView?.destroy()
+                tab.webView = null
+                tab.isDiscarded = true
+                tab.progress = 100
+            }
+        }
+    }
+
+    fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
+        removeDuplicateTab(url)
+        val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
+        val parentIdx = if (insertAfterIndex >= 0) insertAfterIndex else -1
+        val wv = createWebView(url)
+        val newTab = TabState().apply {
+            webView = wv
+            this.url = url
+            isBlankTab = false
+            isDiscarded = false
+            lastUpdated = System.currentTimeMillis()
+            parentTabIndex = parentIdx
+        }
+        tabs.add(insertIdx, newTab)
+        setupDelegates(newTab)
+        currentTabIndex = insertIdx
+        highlightedTabIndex = currentTabIndex
+        manageTabLifecycle(currentTabIndex)
+    }
+
     fun setupDelegates(tabState: TabState) {
         val wv = tabState.webView ?: return
         wv.webChromeClient = object : WebChromeClient() {
@@ -1478,73 +1545,6 @@ fun GreyBrowser() {
             }
             true
         }
-    }
-
-    fun removeDuplicateTab(url: String) {
-        val cleanUrl = url.substringBefore("#")
-        val oldIndex = tabs.indexOfFirst {
-            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
-        }
-        if (oldIndex >= 0) {
-            tabs[oldIndex].webView?.destroy()
-            tabs.removeAt(oldIndex)
-            for (t in tabs) {
-                if (t.parentTabIndex == oldIndex) t.parentTabIndex = -1
-                else if (t.parentTabIndex > oldIndex) t.parentTabIndex--
-            }
-            if (currentTabIndex >= oldIndex && currentTabIndex >= 0) currentTabIndex--
-            if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
-            val updated = mutableMapOf<Int, Long>()
-            for ((idx, time) in pendingDeletions) {
-                if (idx > oldIndex) updated[idx - 1] = time
-                else if (idx < oldIndex) updated[idx] = time
-            }
-            pendingDeletions.clear()
-            pendingDeletions.putAll(updated)
-        }
-    }
-
-    fun manageTabLifecycle(activeIndex: Int) {
-        if (activeIndex < 0 || activeIndex >= tabs.size) return
-        val activeTab = tabs[activeIndex]
-        if (activeTab.webView == null && activeTab.isDiscarded) {
-            activeTab.webView = createWebView(activeTab.url)
-            activeTab.isDiscarded = false
-            setupDelegates(activeTab)
-            activeTab.lastUpdated = System.currentTimeMillis()
-        }
-        val warmTabs = tabs.filterIndexed { i, t ->
-            i != activeIndex && !t.isDiscarded && t.webView != null
-        }
-        if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
-            val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
-            for (tab in toDiscard) {
-                tab.webView?.destroy()
-                tab.webView = null
-                tab.isDiscarded = true
-                tab.progress = 100
-            }
-        }
-    }
-
-    fun createForegroundTab(url: String, insertAfterIndex: Int = -1) {
-        removeDuplicateTab(url)
-        val insertIdx = if (insertAfterIndex >= 0) insertAfterIndex + 1 else 0
-        val parentIdx = if (insertAfterIndex >= 0) insertAfterIndex else -1
-        val wv = createWebView(url)
-        val newTab = TabState().apply {
-            webView = wv
-            this.url = url
-            isBlankTab = false
-            isDiscarded = false
-            lastUpdated = System.currentTimeMillis()
-            parentTabIndex = parentIdx
-        }
-        tabs.add(insertIdx, newTab)
-        setupDelegates(newTab)
-        currentTabIndex = insertIdx
-        highlightedTabIndex = currentTabIndex
-        manageTabLifecycle(currentTabIndex)
     }
 
     fun requestDeleteTab(index: Int) {
