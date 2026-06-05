@@ -1734,9 +1734,8 @@ fun ContentLayer() {
     SideEffect {
         if (!isUrlFocused && currentTabIndex >= 0) {
             val tabUrl = currentTab?.url ?: ""
-            val displayUrl = tabUrl.removePrefix("https://").removePrefix("http://")
-            if (tabUrl != "about:blank" && displayUrl != urlInput.text && tabUrl != urlInput.text) {
-                urlInput = TextFieldValue(displayUrl, selection = TextRange(0))
+            if (tabUrl != "about:blank" && tabUrl != urlInput.text) {
+                urlInput = TextFieldValue(tabUrl, selection = TextRange(0))
             }
         }
         if (!isUrlFocused && currentTabIndex == -1 && urlInput.text.isNotEmpty()) {
@@ -2425,7 +2424,6 @@ fun ContentLayer() {
                                     }
                             )
                         }
-                        
                         OutlinedTextField(
                             value = urlInput,
                             onValueChange = { urlInput = it },
@@ -2433,7 +2431,7 @@ fun ContentLayer() {
                             placeholder = {
                                 Text(
                                     if (currentTabIndex == -1) "Search or enter URL"
-                                    else "",
+                                    else currentTab?.url?.removePrefix("https://")?.take(50) ?: "",
                                     color = WHITE.copy(alpha = 0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -2442,21 +2440,7 @@ fun ContentLayer() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester)
-                                .onFocusChanged { focusState ->
-                                    isUrlFocused = focusState.isFocused
-                                    if (focusState.isFocused) {
-                                        // Show full URL when focused
-                                        val fullUrl = currentTab?.url ?: ""
-                                        if (fullUrl != "about:blank" && fullUrl.isNotBlank()) {
-                                            urlInput = TextFieldValue(fullUrl, selection = TextRange(fullUrl.length))
-                                        }
-                                    } else {
-                                        // Reset scroll to start when losing focus
-                                        if (urlInput.text.isNotBlank()) {
-                                            urlInput = TextFieldValue(urlInput.text, selection = TextRange(0))
-                                        }
-                                    }
-                                },
+                                .onFocusChanged { isUrlFocused = it.isFocused },
                             textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
                             shape = RectangleShape,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
