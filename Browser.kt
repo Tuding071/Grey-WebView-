@@ -1305,6 +1305,9 @@ fun GreyBrowser() {
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!filtersEnabled) return false
                 
+                // Only block main frame navigations (page changes), not sub-resources
+                if (!request.isForMainFrame) return false
+                
                 val url = request.url.toString()
                 val host = request.url.host ?: return false
                 
