@@ -71,7 +71,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.os.Message
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebChromeClient
@@ -1273,8 +1272,6 @@ fun GreyBrowser() {
                 builtInZoomControls = true
                 displayZoomControls = false
                 setSupportZoom(true)
-                setSupportMultipleWindows(true)
-                javaScriptCanOpenWindowsAutomatically = false
             }
             loadUrl(url)
         }
@@ -1303,59 +1300,29 @@ fun GreyBrowser() {
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 request.deny()
             }
-            override fun onCreateWindow(
-                view: WebView,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: Message?
-            ): Boolean {
-                if (!isUserGesture) return false
-
-                val tempWebView = WebView(view.context)
-                tempWebView.webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                        wv.loadUrl(url)
-                        tempWebView.destroy()
-                        return true
-                    }
-                }
-                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-                transport.webView = tempWebView
-                resultMsg.sendToTarget()
-                return true
-            }
         }
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
-                if (!filtersEnabled) return false
+                // Only intercept main frame navigations
                 if (!request.isForMainFrame) return false
-                if (request.hasGesture()) return false
-
+                
                 val url = request.url.toString()
-                val host = request.url.host ?: return false
-
-                val currentHost = Uri.parse(view.url ?: "").host ?: ""
-                if (host == currentHost) return false
-
-                for (filter in filters) {
-                    if (!filter.enabled) continue
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) {
-                            val exceptionPattern = rule.removePrefix("@@")
-                            if (matchesAdBlockRule(url, host, exceptionPattern)) return false
-                        }
-                    }
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) continue
-                        if (matchesAdBlockRule(url, host, rule)) {
-                            totalBlocked++
-                            return true
-                        }
-                    }
-                }
-                return false
+                
+                // Don't intercept the initial page load
+                if (view.url == null || view.url == "about:blank") return false
+                
+                // Don't intercept if it's the same page (anchor links, etc.)
+                if (url.substringBefore("#") == view.url?.substringBefore("#")) return false
+                
+                // Open redirect/pop-up in new tab, keep current page
+                createForegroundTab(url, currentTabIndex)
+                
+                // Restore original URL in current tab
+                view.loadUrl(view.url ?: return false)
+                
+                return true
             }
-
+            
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 tabState.url = url
                 tabState.progress = 5
