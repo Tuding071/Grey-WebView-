@@ -1302,6 +1302,32 @@ fun GreyBrowser() {
             }
         }
         wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                if (!filtersEnabled) return false
+                if (!request.isRedirect) return false
+                
+                val url = request.url.toString()
+                val host = request.url.host ?: return false
+                
+                for (filter in filters) {
+                    if (!filter.enabled) continue
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) {
+                            val exceptionPattern = rule.removePrefix("@@")
+                            if (matchesAdBlockRule(url, host, exceptionPattern)) return false
+                        }
+                    }
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) continue
+                        if (matchesAdBlockRule(url, host, rule)) {
+                            totalBlocked++
+                            return true // BLOCK the redirect
+                        }
+                    }
+                }
+                return false
+            }
+            
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 tabState.url = url
                 tabState.progress = 5
