@@ -1272,6 +1272,8 @@ fun GreyBrowser() {
                 builtInZoomControls = true
                 displayZoomControls = false
                 setSupportZoom(true)
+                setSupportMultipleWindows(true)
+                javaScriptCanOpenWindowsAutomatically = false
             }
             loadUrl(url)
         }
@@ -1300,17 +1302,40 @@ fun GreyBrowser() {
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 request.deny()
             }
+            override fun onCreateWindow(
+                view: WebView,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                if (!isUserGesture) return false
+
+                val tempWebView = WebView(view.context)
+                tempWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                        wv.loadUrl(url)
+                        tempWebView.destroy()
+                        return true
+                    }
+                }
+                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                transport.webView = tempWebView
+                resultMsg.sendToTarget()
+                return true
+            }
         }
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!filtersEnabled) return false
-                
-                // Only block main frame navigations (page changes), not sub-resources
                 if (!request.isForMainFrame) return false
-                
+                if (request.hasGesture()) return false
+
                 val url = request.url.toString()
                 val host = request.url.host ?: return false
-                
+
+                val currentHost = Uri.parse(view.url ?: "").host ?: ""
+                if (host == currentHost) return false
+
                 for (filter in filters) {
                     if (!filter.enabled) continue
                     for (rule in filter.networkRules) {
@@ -1329,7 +1354,7 @@ fun GreyBrowser() {
                 }
                 return false
             }
-            
+
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 tabState.url = url
                 tabState.progress = 5
