@@ -1734,8 +1734,9 @@ fun ContentLayer() {
     SideEffect {
         if (!isUrlFocused && currentTabIndex >= 0) {
             val tabUrl = currentTab?.url ?: ""
-            if (tabUrl != "about:blank" && tabUrl != urlInput.text) {
-                urlInput = TextFieldValue(tabUrl, selection = TextRange(0))
+            val displayUrl = tabUrl.removePrefix("https://").removePrefix("http://")
+            if (tabUrl != "about:blank" && displayUrl != urlInput.text && tabUrl != urlInput.text) {
+                urlInput = TextFieldValue(displayUrl, selection = TextRange(0))
             }
         }
         if (!isUrlFocused && currentTabIndex == -1 && urlInput.text.isNotEmpty()) {
@@ -2425,30 +2426,14 @@ fun ContentLayer() {
                             )
                         }
                         
-                        // Build display URL: strip scheme when unfocused
-                        val displayUrl = if (!isUrlFocused && currentTabIndex >= 0) {
-                            val url = currentTab?.url ?: ""
-                            url.removePrefix("https://").removePrefix("http://")
-                        } else {
-                            currentTab?.url ?: ""
-                        }
-                        
-                        // Show placeholder with scheme-stripped URL when unfocused and urlInput is empty
-                        val showPlaceholder = !isUrlFocused && urlInput.text.isEmpty() && currentTabIndex >= 0
-                        
                         OutlinedTextField(
                             value = urlInput,
                             onValueChange = { urlInput = it },
                             singleLine = true,
                             placeholder = {
                                 Text(
-                                    if (showPlaceholder) {
-                                        displayUrl.ifEmpty { "" }.take(50)
-                                    } else if (currentTabIndex == -1) {
-                                        "Search or enter URL"
-                                    } else {
-                                        ""
-                                    },
+                                    if (currentTabIndex == -1) "Search or enter URL"
+                                    else "",
                                     color = WHITE.copy(alpha = 0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
