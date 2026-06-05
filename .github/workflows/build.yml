@@ -1,322 +1,45 @@
-name: Build Grey Browser
+name: Clean Cache
 
 on:
-  push:
-    branches: [ main, master ]
-    paths:
-      - 'Browser.kt'
-      - '.github/workflows/build.yml'
-  pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'Browser.kt'
-      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
-  build:
+  clean:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set Android SDK path
-        run: echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Generate project structure
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
+      - name: Delete all caches
         run: |
-          PKG=app/src/main/java/com/grey/browser
-          mkdir -p $PKG
-          mkdir -p app/src/main/res/values
-          mkdir -p gradle/wrapper
-
-          cp Browser.kt $PKG/
-
-          cat > settings.gradle.kts << 'EOF'
-          pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
-          }
-          rootProject.name = "Grey"
-          include(":app")
-          EOF
-
-          cat > build.gradle.kts << 'EOF'
-          plugins {
-              id("com.android.application")             version "8.9.1" apply false
-              id("org.jetbrains.kotlin.android")        version "2.2.0" apply false
-              id("org.jetbrains.kotlin.plugin.compose") version "2.2.0" apply false
-          }
-          EOF
-
-          cat > app/build.gradle.kts << EOF
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-              id("org.jetbrains.kotlin.plugin.compose")
-          }
-
-          android {
-              namespace  = "com.grey.browser"
-              compileSdk = 36
-
-              defaultConfig {
-                  applicationId = "com.grey.browser"
-                  minSdk        = 26
-                  targetSdk     = 36
-                  versionCode   = ${BUILD_NUMBER}
-                  versionName   = "${BUILD_NUMBER}"
-              }
-
-              signingConfigs {
-                  create("release") {
-                      storeFile     = file("dummy.keystore")
-                      storePassword = "password"
-                      keyAlias      = "dummy"
-                      keyPassword   = "password"
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                      isShrinkResources = false
-                      signingConfig  = signingConfigs.getByName("release")
-                  }
-              }
-
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions { jvmTarget = "17" }
-              buildFeatures { compose = true }
-
-              splits {
-                  abi {
-                      isEnable       = true
-                      reset()
-                      include("arm64-v8a")
-                      isUniversalApk = false
-                  }
-              }
-          }
-
-          dependencies {
-              implementation("androidx.core:core-ktx:1.15.0")
-              implementation("androidx.activity:activity-compose:1.10.1")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
-
-              val bom = platform("androidx.compose:compose-bom:2025.05.00")
-              implementation(bom)
-              implementation("androidx.compose.ui:ui")
-              implementation("androidx.compose.ui:ui-graphics")
-              implementation("androidx.compose.foundation:foundation")
-              implementation("androidx.compose.material3:material3")
-              implementation("androidx.compose.material:material-icons-extended")
-              implementation("androidx.compose.animation:animation")
-          }
-          EOF
-
-          cat > gradle.properties << 'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC
-          kotlin.code.style=official
-          android.suppressUnsupportedCompileSdk=36
-          EOF
-
-          cat > app/src/main/AndroidManifest.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-              <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-              <application
-                  android:allowBackup="false"
-                  android:label="@string/app_name"
-                  android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:theme="@style/AppTheme"
-                  android:hardwareAccelerated="true"
-                  android:largeHeap="true">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:configChanges="orientation|screenSize|keyboardHidden"
-                      android:windowSoftInputMode="adjustPan">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                      <intent-filter>
-                          <action android:name="android.intent.action.VIEW" />
-                          <category android:name="android.intent.category.DEFAULT" />
-                          <category android:name="android.intent.category.BROWSABLE" />
-                          <data android:scheme="http" />
-                          <data android:scheme="https" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-          cat > app/src/main/res/values/strings.xml << 'EOF'
-          <resources><string name="app_name">Grey</string></resources>
-          EOF
-
-          cat > app/src/main/res/values/themes.xml << 'EOF'
-          <resources>
-              <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
-                  <item name="android:windowBackground">#121212</item>
-                  <item name="android:statusBarColor">#121212</item>
-                  <item name="android:navigationBarColor">#121212</item>
-                  <item name="android:windowLightStatusBar">false</item>
-              </style>
-          </resources>
-          EOF
-
-      - name: Generate dummy keystore
-        run: |
-          keytool -genkey -v \
-            -keystore app/dummy.keystore \
-            -alias dummy \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass password \
-            -keypass password \
-            -dname "CN=Dummy, OU=Grey, O=Grey Browser, L=Test, S=Test, C=US"
-
-      - name: Generate launcher icons
-        run: |
-          rm -rf app/src/main/res/mipmap-*
+          echo "Fetching cache list..."
+          CACHES=$(gh cache list --limit 100 --json id --jq '.[].id')
           
-          pip install Pillow --quiet
-          python3 << 'PYEOF'
-          from PIL import Image, ImageDraw
-          import os
-
-          def make_icon(size):
-              BG = (18, 18, 18, 255)
-              WHITE = (255, 255, 255, 255)
-
-              img = Image.new('RGBA', (size, size), BG)
-              d = ImageDraw.Draw(img)
-
-              padding = size // 6
-              stroke_width = max(3, size // 12)
-              center = size // 2
-              
-              d.ellipse(
-                  [padding, padding, size - padding, size - padding],
-                  outline=WHITE,
-                  width=stroke_width
-              )
-
-              d.line(
-                  [(padding, center), (size - padding, center)],
-                  fill=WHITE,
-                  width=stroke_width
-              )
-
-              d.arc(
-                  [padding, padding, size - padding, size - padding],
-                  start=60, end=300,
-                  fill=WHITE,
-                  width=stroke_width
-              )
-
-              d.arc(
-                  [padding, padding, size - padding, size - padding],
-                  start=240, end=120,
-                  fill=WHITE,
-                  width=stroke_width
-              )
-
-              return img
-
-          sizes = {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}
-          for density, s in sizes.items():
-              path = f'app/src/main/res/mipmap-{density}'
-              os.makedirs(path, exist_ok=True)
-              icon = make_icon(s)
-              icon.save(f'{path}/ic_launcher.png')
-              icon.save(f'{path}/ic_launcher_round.png')
-
-          print("Icons generated!")
-          PYEOF
-
-      - name: Setup Gradle Wrapper
-        run: |
-          gradle wrapper --gradle-version=8.11.1 --distribution-type=bin
-          chmod +x gradlew
-
-      - name: Clean build
-        run: |
-          rm -rf app/build
-          ./gradlew clean --no-daemon
-
-      - name: Build signed release APK
-        run: ./gradlew assembleRelease --no-daemon
-
-      - name: Verify APK signing
-        run: |
-          APK_PATH="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
-          if [ -f "$APK_PATH" ]; then
-              echo "✅ Release APK generated"
-              echo "📦 APK size: $(ls -lh "$APK_PATH" | awk '{print $5}')"
-              $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs "$APK_PATH"
+          if [ -z "$CACHES" ]; then
+            echo "No caches found to delete"
           else
-              echo "❌ Release APK not found"
-              exit 1
+            echo "Found caches to delete:"
+            echo "$CACHES"
+            echo ""
+            for CACHE_ID in $CACHES; do
+              echo "Deleting cache $CACHE_ID..."
+              gh cache delete $CACHE_ID
+            done
+            echo ""
+            echo "All caches deleted successfully!"
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bundle APK + source
+      - name: Verify caches cleared
         run: |
-          mkdir -p Grey-release
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk Grey-release/Grey.apk
-          cp Browser.kt Grey-release/
-          cp .github/workflows/build.yml Grey-release/
-
-          APK_SIZE=$(ls -lh app/build/outputs/apk/release/app-arm64-v8a-release.apk | awk '{print $5}')
-
-          cat > Grey-release/BUILD_INFO.txt << EOF
-          Build:      #${{ github.run_number }}
-          Commit:     ${{ github.sha }}
-          Timestamp:  $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-          Signed:     Yes (dummy keys)
-          APK Size:   $APK_SIZE
-          Optimized:  No (ProGuard/R8 disabled)
-          EOF
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Grey-${{ github.run_number }}
-          path: Grey-release/
-          retention-days: 30
+          echo "Verifying no caches remain..."
+          REMAINING=$(gh cache list --limit 1 --json id --jq '.[].id')
+          if [ -z "$REMAINING" ]; then
+            echo "✅ All caches successfully cleared!"
+          else
+            echo "⚠️ Some caches still remain"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
