@@ -1304,7 +1304,6 @@ fun GreyBrowser() {
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!filtersEnabled) return false
-                if (!request.isRedirect) return false
                 
                 val url = request.url.toString()
                 val host = request.url.host ?: return false
@@ -1321,7 +1320,7 @@ fun GreyBrowser() {
                         if (rule.startsWith("@@")) continue
                         if (matchesAdBlockRule(url, host, rule)) {
                             totalBlocked++
-                            return true // BLOCK the redirect
+                            return true
                         }
                     }
                 }
