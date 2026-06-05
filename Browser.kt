@@ -2406,20 +2406,6 @@ fun ContentLayer() {
 
                     Spacer(Modifier.width(4.dp))
 
-                    val canGoForward = currentTab?.webView?.canGoForward() == true
-                    IconButton(
-                        onClick = { currentTab?.webView?.goForward() },
-                        enabled = canGoForward
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            "Forward",
-                            tint = if (canGoForward) WHITE else ACCENT_DIM
-                        )
-                    }
-
-                    Spacer(Modifier.width(4.dp))
-
                     val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
                     Box(
                         Modifier
@@ -2438,14 +2424,31 @@ fun ContentLayer() {
                                     }
                             )
                         }
+                        
+                        // Build display URL: strip scheme when unfocused
+                        val displayUrl = if (!isUrlFocused && currentTabIndex >= 0) {
+                            val url = currentTab?.url ?: ""
+                            url.removePrefix("https://").removePrefix("http://")
+                        } else {
+                            currentTab?.url ?: ""
+                        }
+                        
+                        // Show placeholder with scheme-stripped URL when unfocused and urlInput is empty
+                        val showPlaceholder = !isUrlFocused && urlInput.text.isEmpty() && currentTabIndex >= 0
+                        
                         OutlinedTextField(
                             value = urlInput,
                             onValueChange = { urlInput = it },
                             singleLine = true,
                             placeholder = {
                                 Text(
-                                    if (currentTabIndex == -1) "Search or enter URL"
-                                    else currentTab?.url?.removePrefix("https://")?.take(50) ?: "",
+                                    if (showPlaceholder) {
+                                        displayUrl.ifEmpty { "" }.take(50)
+                                    } else if (currentTabIndex == -1) {
+                                        "Search or enter URL"
+                                    } else {
+                                        ""
+                                    },
                                     color = WHITE.copy(alpha = 0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -2454,7 +2457,21 @@ fun ContentLayer() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester)
-                                .onFocusChanged { isUrlFocused = it.isFocused },
+                                .onFocusChanged { focusState ->
+                                    isUrlFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        // Show full URL when focused
+                                        val fullUrl = currentTab?.url ?: ""
+                                        if (fullUrl != "about:blank" && fullUrl.isNotBlank()) {
+                                            urlInput = TextFieldValue(fullUrl, selection = TextRange(fullUrl.length))
+                                        }
+                                    } else {
+                                        // Reset scroll to start when losing focus
+                                        if (urlInput.text.isNotBlank()) {
+                                            urlInput = TextFieldValue(urlInput.text, selection = TextRange(0))
+                                        }
+                                    }
+                                },
                             textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
                             shape = RectangleShape,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
