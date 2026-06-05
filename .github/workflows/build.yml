@@ -47,7 +47,6 @@ jobs:
           PKG=app/src/main/java/com/grey/browser
           mkdir -p $PKG
           mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
 
           cp Browser.kt $PKG/
@@ -213,14 +212,10 @@ jobs:
             -keypass password \
             -dname "CN=Dummy, OU=Grey, O=Grey Browser, L=Test, S=Test, C=US"
 
-      - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: pip-pillow-v3-${{ hashFiles('.github/workflows/build.yml') }}
-
-      - name: Generate launcher icons
+      - name: Generate launcher icons (always fresh)
         run: |
+          rm -rf app/src/main/res/mipmap-*
+          
           pip install Pillow --quiet
           python3 << 'PYEOF'
           from PIL import Image, ImageDraw
@@ -236,7 +231,6 @@ jobs:
               padding = size // 6
               stroke_width = max(3, size // 12)
               center = size // 2
-              radius = (size - 2 * padding) // 2
               
               d.ellipse(
                   [padding, padding, size - padding, size - padding],
@@ -274,7 +268,7 @@ jobs:
               icon.save(f'{path}/ic_launcher.png')
               icon.save(f'{path}/ic_launcher_round.png')
 
-          print("Material 3 browser icons generated successfully!")
+          print("Icons generated fresh!")
           PYEOF
 
       - name: Setup Gradle Wrapper
@@ -282,11 +276,10 @@ jobs:
           gradle wrapper --gradle-version=8.11.1 --distribution-type=bin
           chmod +x gradlew
 
-      - name: Clean build
-        run: ./gradlew clean --no-daemon
-
-      - name: Build signed release APK
-        run: ./gradlew assembleRelease --no-daemon
+      - name: Clean and build
+        run: |
+          ./gradlew clean --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Verify APK signing
         run: |
@@ -300,13 +293,16 @@ jobs:
               exit 1
           fi
 
-      - name: Bundle release
+      - name: Bundle release with entire repo
         run: |
-          mkdir -p Grey-release/.github/workflows
+          mkdir -p Grey-release
+          
+          # Copy the APK
           cp app/build/outputs/apk/release/app-arm64-v8a-release.apk Grey-release/Grey.apk
-          cp Browser.kt Grey-release/
-          cp .github/workflows/build.yml Grey-release/.github/workflows/
-
+          
+          # Copy the entire repository (excluding .git and build artifacts)
+          rsync -av --exclude='.git' --exclude='app/build' --exclude='.gradle' --exclude='Grey-release' ./ Grey-release/
+          
           APK_SIZE=$(ls -lh app/build/outputs/apk/release/app-arm64-v8a-release.apk | awk '{print $5}')
 
           cat > Grey-release/BUILD_INFO.txt << EOF
