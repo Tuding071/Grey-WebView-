@@ -1345,6 +1345,42 @@ fun GreyBrowser() {
         }
 
         wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
+                val url = request.url.toString().lowercase()
+                val host = request.url.host?.lowercase() ?: return false
+                val path = request.url.path?.lowercase() ?: ""
+                val query = request.url.query?.lowercase() ?: ""
+
+                // known popup/redirect ad domains
+                val popupDomains = listOf(
+                    "popads.net", "popcash.net", "propellerads.com", "adcash.com",
+                    "exoclick.com", "juicyads.com", "trafficjunky.com", "hilltopads.net",
+                    "trafficforce.com", "clickaine.com", "adsterra.com", "plugrush.com",
+                    "admaven.com", "ad-maven.com", "adskeeper.com", "popunder.net",
+                    "popdisplay.com", "adpop.io", "monetizer101.com", "clicksfly.com",
+                    "shorte.st", "adf.ly", "ouo.io", "bc.vc", "linkvertise.com"
+                )
+                if (popupDomains.any { host == it || host.endsWith(".$it") }) return true
+
+                // popup/redirect path patterns
+                val popupPaths = listOf(
+                    "/pop", "/popunder", "/popup", "/popads",
+                    "/pu/", "/ppu/", "/out.php", "/out/click"
+                )
+                if (popupPaths.any { path.startsWith(it) || path.contains(it) }) return true
+
+                // redirect-as-destination query patterns
+                val redirectParams = listOf(
+                    "url=http", "to=http", "target=http",
+                    "goto=http", "link=http", "dest=http",
+                    "destination=http", "redirect=http"
+                )
+                if (redirectParams.any { query.contains(it) }) return true
+
+                return false
+            }
+
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 tabState.url = url
                 tabState.progress = 5
