@@ -1410,7 +1410,15 @@ fun GreyBrowser() {
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
+                
                 val url = request.url.toString()
+                if (view.url == null || view.url == "about:blank") return false
+                if (url.substringBefore("#") == view.url?.substringBefore("#")) return false
+                
+                // If user tapped a link, allow normal navigation
+                if (request.hasGesture()) return false
+                
+                // Script redirect/pop-up: open in new tab, keep current page
                 val originalUrl = tabState.url
                 view.stopLoading()
                 val newWv = createWebView(url)
