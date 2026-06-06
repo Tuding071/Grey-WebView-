@@ -1272,6 +1272,7 @@ fun GreyBrowser() {
                 builtInZoomControls = true
                 displayZoomControls = false
                 setSupportZoom(true)
+                setSupportMultipleWindows(false)
             }
             loadUrl(url)
         }
@@ -1279,8 +1280,6 @@ fun GreyBrowser() {
 
     fun setupDelegates(tabState: TabState) {
         val wv = tabState.webView ?: return
-        var hideElementsFired = false
-        
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 tabState.progress = newProgress
@@ -1291,45 +1290,6 @@ fun GreyBrowser() {
                         tabState.thumbnailBytes = bytes
                         val idx = tabs.indexOf(tabState)
                         if (idx >= 0) thumbnailBitmapCache.remove(idx)
-                    }
-                }
-                if (newProgress >= 10 && !hideElementsFired && !tabState.isBlankTab) {
-                    hideElementsFired = true
-                    val url = tabState.url
-                    if (url != "about:blank") {
-                        val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
-                        val selectors = mutableListOf<String>()
-                        for (rule in customHideRules) {
-                            if (!rule.enabled) continue
-                            if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
-                                selectors.add(rule.selector)
-                            }
-                        }
-                        if (selectors.isNotEmpty()) {
-                            val selectorsJson = JSONArray()
-                            selectors.forEach { selectorsJson.put(it) }
-                            val selectorsJs = selectorsJson.toString()
-                            wv.evaluateJavascript("""
-                                (function() {
-                                    var selectors = $selectorsJs;
-                                    function hideElements() {
-                                        selectors.forEach(function(sel) {
-                                            try {
-                                                document.querySelectorAll(sel).forEach(function(el) {
-                                                    el.style.setProperty('display', 'none', 'important');
-                                                });
-                                            } catch(e) {}
-                                        });
-                                    }
-                                    hideElements();
-                                    var timer = null;
-                                    new MutationObserver(function() {
-                                        if (timer) clearTimeout(timer);
-                                        timer = setTimeout(hideElements, 500);
-                                    }).observe(document.documentElement, { childList: true, subtree: true });
-                                })();
-                            """.trimIndent(), null)
-                        }
                     }
                 }
             }
@@ -1347,7 +1307,6 @@ fun GreyBrowser() {
                 tabState.url = url
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
-                hideElementsFired = false
                 if (url != "about:blank") tabState.isBlankTab = false
                 if (showElementHider) showElementHider = false
                 wv.evaluateJavascript("""
@@ -1379,6 +1338,41 @@ fun GreyBrowser() {
                         val body = getScriptBody(script.code)
                         val wrapped = "try { (function() { $body })(); } catch(e) { }"
                         wv.evaluateJavascript(wrapped, null)
+                    }
+                }
+                if (url != "about:blank") {
+                    val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
+                    val selectors = mutableListOf<String>()
+                    for (rule in customHideRules) {
+                        if (!rule.enabled) continue
+                        if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
+                            selectors.add(rule.selector)
+                        }
+                    }
+                    if (selectors.isNotEmpty()) {
+                        val selectorsJson = JSONArray()
+                        selectors.forEach { selectorsJson.put(it) }
+                        val selectorsJs = selectorsJson.toString()
+                        wv.evaluateJavascript("""
+                            (function() {
+                                var selectors = $selectorsJs;
+                                function hideElements() {
+                                    selectors.forEach(function(sel) {
+                                        try {
+                                            document.querySelectorAll(sel).forEach(function(el) {
+                                                el.style.setProperty('display', 'none', 'important');
+                                            });
+                                        } catch(e) {}
+                                    });
+                                }
+                                hideElements();
+                                var timer = null;
+                                new MutationObserver(function() {
+                                    if (timer) clearTimeout(timer);
+                                    timer = setTimeout(hideElements, 500);
+                                }).observe(document.documentElement, { childList: true, subtree: true });
+                            })();
+                        """.trimIndent(), null)
                     }
                 }
             }
@@ -1450,14 +1444,10 @@ fun GreyBrowser() {
             wv.evaluateJavascript(
                 "(function(){" +
                 "var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
-                "var depth=0;" +
-                "while(el&&el!==document.documentElement&&depth<10){" +
-                "if(el.href&&el.href!=='')return el.href;" +
-                "if(el.tagName==='A'||el.tagName==='AREA')return el.href||'';" +
+                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){" +
                 "el=el.parentElement;" +
-                "depth++;" +
                 "}" +
-                "return window.location.href;" +
+                "return el?el.href:'';" +
                 "})()"
             ) { href ->
                 val clean = href.trim('"').trim()
