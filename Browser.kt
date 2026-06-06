@@ -1302,7 +1302,39 @@ fun GreyBrowser() {
                 request.deny()
             }
         }
+
+        var lastTouchX = 0f
+        var lastTouchY = 0f
+        var lastTouchTime = 0L
+
         wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                if (!filtersEnabled) return false
+                if (!request.isForMainFrame) return false
+                if (System.currentTimeMillis() - lastTouchTime < 800L) return false
+
+                val url = request.url.toString()
+                val host = request.url.host ?: return false
+
+                for (filter in filters) {
+                    if (!filter.enabled) continue
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) {
+                            val exceptionPattern = rule.removePrefix("@@")
+                            if (matchesAdBlockRule(url, host, exceptionPattern)) return false
+                        }
+                    }
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) continue
+                        if (matchesAdBlockRule(url, host, rule)) {
+                            totalBlocked++
+                            return true
+                        }
+                    }
+                }
+                return false
+            }
+
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 tabState.url = url
                 tabState.progress = 5
@@ -1407,6 +1439,7 @@ fun GreyBrowser() {
                 request: android.webkit.WebResourceRequest
             ): android.webkit.WebResourceResponse? {
                 if (!filtersEnabled) return null
+                if (request.isForMainFrame) return null
                 val requestUrl = request.url.toString()
                 val requestHost = request.url.host ?: return null
                 for (filter in filters) {
@@ -1431,12 +1464,11 @@ fun GreyBrowser() {
             }
         }
 
-        var lastTouchX = 0f
-        var lastTouchY = 0f
         wv.setOnTouchListener { _, event ->
             val scale = if (wv.scale > 0) wv.scale else 1f
             lastTouchX = event.x / scale
             lastTouchY = event.y / scale
+            lastTouchTime = System.currentTimeMillis()
             false
         }
 
