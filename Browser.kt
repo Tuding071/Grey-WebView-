@@ -356,30 +356,57 @@ data class Script(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class NetworkRule(
+    val pattern: String,
+    val isException: Boolean = false,
+    val isImportant: Boolean = false,
+    val options: RuleOptions = RuleOptions(),
+    val sourceText: String = ""
+)
+
+data class RuleOptions(
+    val types: Set<String> = emptySet(),
+    val thirdParty: Boolean? = null,
+    val domains: Map<String, Boolean> = emptyMap(),
+    val popup: Boolean = false,
+    val important: Boolean = false
+)
+
+data class CosmeticRule(
+    val domains: List<String> = emptyList(),
+    val selector: String,
+    val isException: Boolean = false,
+    val isExtended: Boolean = false,
+    val sourceText: String = ""
+)
+
+data class ScriptletRule(
+    val domains: List<String> = emptyList(),
+    val scriptletName: String,
+    val args: List<String> = emptyList(),
+    val isException: Boolean = false,
+    val sourceText: String = ""
+)
+
 data class Filter(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val rawText: String,
-    val networkRules: List<String>,
-    val cosmeticRules: List<String>,
+    val networkRules: List<<NetworkRule> = emptyList(),
+    val cosmeticRules: List<CosmeticRule> = emptyList(),
+    val scriptletRules: List<<ScriptletRule> = emptyList(),
     val enabled: Boolean = true,
-    val networkRuleCount: Int,
-    val cosmeticRuleCount: Int,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    val networkRuleCount: Int get() = networkRules.size
+    val cosmeticRuleCount: Int get() = cosmeticRules.size
+    val scriptletRuleCount: Int get() = scriptletRules.size
+}
 
 data class SavedTab(
     val url: String,
     val title: String,
     val thumbnailBytes: ByteArray? = null
-)
-
-data class CustomHideRule(
-    val id: String = UUID.randomUUID().toString(),
-    val domain: String,
-    val selector: String,
-    val enabled: Boolean = true,
-    val timestamp: Long = System.currentTimeMillis()
 )
 
 class TabState {
@@ -439,7 +466,7 @@ fun loadTabsData(context: Context): Triple<List<Pair<String, String>>, List<Stri
     return Triple(tabsList, pinnedList, lastActiveUrl)
 }
 
-fun saveBookmarks(context: Context, bookmarks: List<Bookmark>) {
+fun saveBookmarks(context: Context, bookmarks: List<<Bookmark>) {
     val arr = JSONArray()
     for (b in bookmarks) {
         val obj = JSONObject()
@@ -450,11 +477,11 @@ fun saveBookmarks(context: Context, bookmarks: List<Bookmark>) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_BOOKMARKS, arr.toString()).apply()
 }
 
-fun loadBookmarks(context: Context): List<Bookmark> {
+fun loadBookmarks(context: Context): List<<Bookmark> {
     val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_BOOKMARKS, null) ?: return emptyList()
     return try {
         val arr = JSONArray(json)
-        mutableListOf<Bookmark>().apply {
+        mutableListOf<<Bookmark>().apply {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 add(Bookmark(o.getString("id"), o.getString("url"), o.getString("title"), o.getLong("timestamp")))
@@ -463,7 +490,7 @@ fun loadBookmarks(context: Context): List<Bookmark> {
     } catch (e: Exception) { emptyList() }
 }
 
-fun saveHistory(context: Context, history: List<HistoryItem>) {
+fun saveHistory(context: Context, history: List<<HistoryItem>) {
     val arr = JSONArray()
     for (h in history) {
         val obj = JSONObject()
@@ -473,11 +500,11 @@ fun saveHistory(context: Context, history: List<HistoryItem>) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_HISTORY, arr.toString()).apply()
 }
 
-fun loadHistory(context: Context): List<HistoryItem> {
+fun loadHistory(context: Context): List<<HistoryItem> {
     val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_HISTORY, null) ?: return emptyList()
     return try {
         val arr = JSONArray(json)
-        mutableListOf<HistoryItem>().apply {
+        mutableListOf<<HistoryItem>().apply {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 add(HistoryItem(o.getString("url"), o.getString("title"), o.getLong("timestamp")))
@@ -486,7 +513,7 @@ fun loadHistory(context: Context): List<HistoryItem> {
     } catch (e: Exception) { emptyList() }
 }
 
-fun saveScripts(context: Context, scripts: List<Script>) {
+fun saveScripts(context: Context, scripts: List<<Script>) {
     val arr = JSONArray()
     for (s in scripts) {
         val obj = JSONObject()
@@ -498,11 +525,11 @@ fun saveScripts(context: Context, scripts: List<Script>) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_SCRIPTS, arr.toString()).apply()
 }
 
-fun loadScripts(context: Context): List<Script> {
+fun loadScripts(context: Context): List<<Script> {
     val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_SCRIPTS, null) ?: return emptyList()
     return try {
         val arr = JSONArray(json)
-        mutableListOf<Script>().apply {
+        mutableListOf<<Script>().apply {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 add(Script(
@@ -517,51 +544,38 @@ fun loadScripts(context: Context): List<Script> {
     } catch (e: Exception) { emptyList() }
 }
 
-fun saveFilters(context: Context, filters: List<Filter>) {
+fun saveFilters(context: Context, filters: List<<Filter>) {
     val arr = JSONArray()
     for (f in filters) {
         val obj = JSONObject()
         obj.put("id", f.id)
         obj.put("name", f.name)
         obj.put("rawText", f.rawText)
-        obj.put("networkRuleCount", f.networkRuleCount)
-        obj.put("cosmeticRuleCount", f.cosmeticRuleCount)
         obj.put("enabled", f.enabled)
         obj.put("timestamp", f.timestamp)
-        val networkArr = JSONArray()
-        for (r in f.networkRules) networkArr.put(r)
-        obj.put("networkRules", networkArr)
-        val cosmeticArr = JSONArray()
-        for (r in f.cosmeticRules) cosmeticArr.put(r)
-        obj.put("cosmeticRules", cosmeticArr)
         arr.put(obj)
     }
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FILTERS, arr.toString()).apply()
 }
 
-fun loadFilters(context: Context): List<Filter> {
+fun loadFilters(context: Context): List<<Filter> {
     val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_FILTERS, null) ?: return emptyList()
     return try {
         val arr = JSONArray(json)
-        mutableListOf<Filter>().apply {
+        mutableListOf<<Filter>().apply {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                val networkArr = o.getJSONArray("networkRules")
-                val networkList = mutableListOf<String>()
-                for (j in 0 until networkArr.length()) networkList.add(networkArr.getString(j))
-                val cosmeticArr = o.getJSONArray("cosmeticRules")
-                val cosmeticList = mutableListOf<String>()
-                for (j in 0 until cosmeticArr.length()) cosmeticList.add(cosmeticArr.getString(j))
+                val rawText = o.getString("rawText")
+                val (network, cosmetic, scriptlets) = FilterParser.parse(rawText)
                 add(Filter(
-                    o.getString("id"),
-                    o.getString("name"),
-                    o.getString("rawText"),
-                    networkList,
-                    cosmeticList,
-                    o.optBoolean("enabled", true),
-                    o.getInt("networkRuleCount"),
-                    o.getInt("cosmeticRuleCount"),
-                    o.getLong("timestamp")
+                    id = o.getString("id"),
+                    name = o.getString("name"),
+                    rawText = rawText,
+                    networkRules = network,
+                    cosmeticRules = cosmetic,
+                    scriptletRules = scriptlets,
+                    enabled = o.optBoolean("enabled", true),
+                    timestamp = o.optLong("timestamp", System.currentTimeMillis())
                 ))
             }
         }
@@ -641,79 +655,612 @@ fun shouldInjectScript(script: Script, url: String): Boolean {
     return false
 }
 
-fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
-    val networkRules = mutableListOf<String>()
-    val cosmeticRules = mutableListOf<String>()
-    for (line in rawText.lines()) {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
-        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
-            cosmeticRules.add(trimmed)
-        } else {
-            networkRules.add(trimmed)
-        }
-    }
-    return Pair(networkRules, cosmeticRules)
-}
+// ==================== UNIFIED FILTER ENGINE ====================
 
-fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
-    val trimmed = rule.trim()
-    if (trimmed.isEmpty()) return false
-    if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
-        val domain = trimmed.removePrefix("||").removeSuffix("^")
-        val cleanDomain = domain.substringBefore('$')
-        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
-        return false
-    }
-    if (trimmed.startsWith("||")) {
-        val domain = trimmed.removePrefix("||")
-        val cleanDomain = domain.substringBefore('$')
-        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
-        return false
-    }
-    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-        val exact = trimmed.removePrefix("|").removeSuffix("|")
-        return url == exact
-    }
-    if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
-        return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
-    }
-    if (url.contains(trimmed)) return true
-    return false
-}
+object FilterParser {
+    fun parse(rawText: String): Triple<List<<NetworkRule>, List<CosmeticRule>, List<<ScriptletRule>> {
+        val network = mutableListOf<<NetworkRule>()
+        val cosmetic = mutableListOf<CosmeticRule>()
+        val scriptlets = mutableListOf<<ScriptletRule>()
 
-fun getFiltersDir(): File {
-    val dir = File(getBackupDir(), FILTERS_DIR)
-    if (!dir.exists()) dir.mkdirs()
-    return dir
-}
+        for (line in rawText.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
 
-fun saveFilterToFile(name: String, rawText: String) {
-    try {
-        val file = File(getFiltersDir(), "$name.txt")
-        file.writeText(rawText)
-    } catch (e: Exception) { }
-}
+            // Scriptlet
+            if (trimmed.contains("##+js(") || trimmed.contains("#@#+js(")) {
+                val isException = trimmed.contains("#@#+js")
+                val hashIdx = trimmed.indexOf("#")
+                val domainPart = if (hashIdx > 0) trimmed.substring(0, hashIdx) else ""
+                val bodyStart = trimmed.indexOf("(")
+                val bodyEnd = trimmed.lastIndexOf(")")
+                if (bodyStart > 0 && bodyEnd > bodyStart) {
+                    val body = trimmed.substring(bodyStart + 1, bodyEnd)
+                    val parts = body.split(",").map { it.trim() }
+                    if (parts.isNotEmpty()) {
+                        val domains = if (domainPart.isNotBlank()) domainPart.split(",").map { it.trim() } else emptyList()
+                        scriptlets.add(ScriptletRule(
+                            domains = domains,
+                            scriptletName = parts[0],
+                            args = parts.drop(1),
+                            isException = isException,
+                            sourceText = trimmed
+                        ))
+                    }
+                }
+                continue
+            }
 
-fun loadFiltersFromDirectory(): List<Filter> {
-    return try {
-        val dir = getFiltersDir()
-        if (!dir.exists()) return emptyList()
-        val filters = mutableListOf<Filter>()
-        dir.listFiles()?.filter { it.extension == "txt" }?.forEach { file ->
-            val rawText = file.readText()
-            val (network, cosmetic) = parseFilterRules(rawText)
-            filters.add(Filter(
-                name = file.nameWithoutExtension,
-                rawText = rawText,
-                networkRules = network,
-                cosmeticRules = cosmetic,
-                networkRuleCount = network.size,
-                cosmeticRuleCount = cosmetic.size
+            // Extended cosmetic
+            if (trimmed.contains("#?#") || trimmed.contains("#@?#")) {
+                val isException = trimmed.contains("#@?#")
+                val hashIdx = if (isException) trimmed.indexOf("#@?#") else trimmed.indexOf("#?#")
+                val domainPart = if (hashIdx > 0) trimmed.substring(0, hashIdx) else ""
+                val selector = trimmed.substring(hashIdx + if (isException) 4 else 3)
+                val domains = if (domainPart.isNotBlank()) domainPart.split(",").map { it.trim() } else emptyList()
+                cosmetic.add(CosmeticRule(
+                    domains = domains,
+                    selector = selector,
+                    isException = isException,
+                    isExtended = true,
+                    sourceText = trimmed
+                ))
+                continue
+            }
+
+            // Standard cosmetic
+            if (trimmed.contains("##") || trimmed.contains("#@#")) {
+                val isException = trimmed.contains("#@#")
+                val hashIdx = if (isException) trimmed.indexOf("#@#") else trimmed.indexOf("##")
+                val domainPart = if (hashIdx > 0) trimmed.substring(0, hashIdx) else ""
+                val selector = trimmed.substring(hashIdx + if (isException) 3 else 2)
+                val domains = if (domainPart.isNotBlank()) domainPart.split(",").map { it.trim() } else emptyList()
+                cosmetic.add(CosmeticRule(
+                    domains = domains,
+                    selector = selector,
+                    isException = isException,
+                    isExtended = false,
+                    sourceText = trimmed
+                ))
+                continue
+            }
+
+            // Network rule
+            val isException = trimmed.startsWith("@@")
+            val ruleBody = if (isException) trimmed.substring(2) else trimmed
+            val (pattern, optionsStr) = splitOptions(ruleBody)
+            val options = parseOptions(optionsStr)
+            network.add(NetworkRule(
+                pattern = pattern,
+                isException = isException,
+                isImportant = options.important,
+                options = options,
+                sourceText = trimmed
             ))
         }
-        filters
-    } catch (e: Exception) { emptyList() }
+
+        return Triple(network, cosmetic, scriptlets)
+    }
+
+    private fun splitOptions(ruleBody: String): Pair<String, String> {
+        val dollarIdx = ruleBody.lastIndexOf("$")
+        if (dollarIdx <= 0) return Pair(ruleBody, "")
+        val after = ruleBody.substring(dollarIdx + 1)
+        val known = setOf("script", "image", "stylesheet", "xhr", "media", "font", "popup", "third-party", "~third-party", "important", "document", "subdocument", "websocket", "other", "all", "badfilter", "domain", "redirect", "redirect-rule", "csp", "replace", "mp4", "empty", "removeparam")
+        val parts = after.split(",")
+        val isOptions = parts.any { part ->
+            val clean = part.trim().removePrefix("~")
+            known.any { clean == it || clean.startsWith("$it=") || clean.startsWith("domain=") || clean.startsWith("redirect=") || clean.startsWith("replace=") }
+        }
+        return if (isOptions) Pair(ruleBody.substring(0, dollarIdx), after) else Pair(ruleBody, "")
+    }
+
+    private fun parseOptions(opts: String): RuleOptions {
+        if (opts.isBlank()) return RuleOptions()
+        val types = mutableSetOf<String>()
+        var thirdParty: Boolean? = null
+        val domains = mutableMapOf<String, Boolean>()
+        var popup = false
+        var important = false
+
+        for (part in opts.split(",").map { it.trim() }) {
+            when {
+                part == "third-party" -> thirdParty = true
+                part == "~third-party" -> thirdParty = false
+                part == "popup" -> popup = true
+                part == "important" -> important = true
+                part.startsWith("domain=") -> {
+                    val doms = part.removePrefix("domain=").split("|")
+                    for (d in doms) {
+                        val trimmed = d.trim()
+                        if (trimmed.startsWith("~")) {
+                            domains[trimmed.removePrefix("~")] = false
+                        } else if (trimmed.isNotBlank()) {
+                            domains[trimmed] = true
+                        }
+                    }
+                }
+                part in setOf("script", "image", "stylesheet", "xhr", "media", "font", "document", "subdocument", "websocket", "other", "all") -> types.add(part)
+                part.startsWith("~") -> {
+                    val inverted = part.removePrefix("~")
+                    if (inverted in setOf("script", "image", "stylesheet", "xhr", "media", "font")) {
+                        types.addAll(setOf("script", "image", "stylesheet", "xhr", "media", "font", "other"))
+                        types.remove(inverted)
+                    }
+                }
+            }
+        }
+
+        return RuleOptions(types, thirdParty, domains, popup, important)
+    }
+}
+
+class NetworkEngine(rules: List<<NetworkRule>) {
+    private val anchored = mutableMapOf<String, MutableList<<NetworkRule>>()
+    private val generics = mutableListOf<<NetworkRule>()
+    private val exceptions = mutableListOf<<NetworkRule>()
+
+    init {
+        for (rule in rules) {
+            if (rule.isException) {
+                exceptions.add(rule)
+                continue
+            }
+            val domain = extractDomainAnchor(rule.pattern)
+            if (domain != null) {
+                anchored.getOrPut(domain) { mutableListOf() }.add(rule)
+            } else {
+                generics.add(rule)
+            }
+        }
+    }
+
+    private fun extractDomainAnchor(pattern: String): String? {
+        if (!pattern.startsWith("||")) return null
+        val withoutPrefix = pattern.removePrefix("||")
+        val endIdx = withoutPrefix.indexOfFirst { it in setOf('/', '^', '$', '*', '|') }
+        val domain = if (endIdx >= 0) withoutPrefix.substring(0, endIdx) else withoutPrefix
+        return domain.removePrefix("www.")
+    }
+
+    fun shouldBlock(url: String, pageDomain: String, isPopup: Boolean = false): Boolean {
+        val requestHost = try {
+            Uri.parse(url).host?.removePrefix("www.") ?: ""
+        } catch (e: Exception) { "" }
+
+        // Check exceptions first
+        for (ex in exceptions) {
+            if (matchesRule(ex, url, requestHost, pageDomain, isPopup)) return false
+        }
+
+        // Check anchored rules for this domain and parents
+        val checked = mutableListOf<<NetworkRule>()
+        var host = requestHost
+        while (host.isNotEmpty()) {
+            anchored[host]?.let { checked.addAll(it) }
+            val dot = host.indexOf(".")
+            host = if (dot >= 0) host.substring(dot + 1) else ""
+        }
+
+        // Check generics
+        checked.addAll(generics)
+
+        // Sort: important first
+        val sorted = checked.sortedByDescending { it.isImportant }
+
+        for (rule in sorted) {
+            if (matchesRule(rule, url, requestHost, pageDomain, isPopup)) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun matchesRule(rule: NetworkRule, url: String, requestHost: String, pageDomain: String, isPopup: Boolean): Boolean {
+        if (!matchPattern(rule.pattern, url, requestHost)) return false
+        val opts = rule.options
+
+        // Type check
+        if (opts.types.isNotEmpty()) {
+            val reqType = guessRequestType(url)
+            if (!opts.types.contains(reqType)) return false
+        }
+
+        // Third-party check
+        if (opts.thirdParty != null) {
+            val is3p = requestHost.isNotEmpty() && pageDomain.isNotEmpty() && !requestHost.endsWith(".$pageDomain") && requestHost != pageDomain
+            if (is3p != opts.thirdParty) return false
+        }
+
+        // Domain option check (page domain)
+        if (opts.domains.isNotEmpty()) {
+            val hasAllow = opts.domains.values.any { it }
+            val hasBlock = opts.domains.values.any { !it }
+
+            if (hasBlock && !hasAllow) {
+                // Only negative domains: rule applies unless page matches a negative
+                if (opts.domains.any { (dom, allowed) -> !allowed && (pageDomain == dom || pageDomain.endsWith(".$dom")) }) return false
+            } else if (hasAllow) {
+                // Positive domains exist: rule only applies if page matches one
+                if (!opts.domains.any { (dom, allowed) -> allowed && (pageDomain == dom || pageDomain.endsWith(".$dom")) }) return false
+            }
+        }
+
+        // Popup check
+        if (opts.popup && !isPopup) return false
+
+        return true
+    }
+
+    private fun matchPattern(pattern: String, url: String, requestHost: String): Boolean {
+        return when {
+            pattern.startsWith("||") -> {
+                val rest = pattern.removePrefix("||")
+                val domainEnd = rest.indexOfFirst { it in setOf('/', '^', '$', '*', '|') }
+                val domain = if (domainEnd >= 0) rest.substring(0, domainEnd) else rest
+                val suffix = if (domainEnd >= 0) rest.substring(domainEnd) else ""
+
+                val hostMatch = requestHost == domain || requestHost.endsWith(".$domain")
+                if (!hostMatch) return false
+
+                if (suffix.isEmpty() || suffix == "^" || suffix == "|" || suffix == "/") return true
+                if (suffix.startsWith("^")) {
+                    val afterSep = suffix.removePrefix("^")
+                    if (afterSep.isEmpty()) return true
+                    val path = url.substringAfter("/", "")
+                    return matchSimple(afterSep, "/$path")
+                }
+                val path = url.substringAfter("/", "")
+                matchSimple(suffix, "/$path")
+            }
+            pattern.startsWith("|") && pattern.endsWith("|") -> {
+                url == pattern.removePrefix("|").removeSuffix("|")
+            }
+            pattern.startsWith("|") -> {
+                url.startsWith(pattern.removePrefix("|"))
+            }
+            pattern.endsWith("|") -> {
+                url.endsWith(pattern.removeSuffix("|"))
+            }
+            pattern.startsWith("/") && pattern.endsWith("/") -> {
+                try {
+                    Regex(pattern.removePrefix("/").removeSuffix("/"), RegexOption.IGNORE_CASE).containsMatchIn(url)
+                } catch (e: Exception) { false }
+            }
+            else -> url.contains(pattern)
+        }
+    }
+
+    private fun matchSimple(pattern: String, text: String): Boolean {
+        if (!pattern.contains("*")) return text.startsWith(pattern) || text == pattern
+        val parts = pattern.split("*")
+        var pos = 0
+        for (part in parts) {
+            if (part.isEmpty()) continue
+            val idx = text.indexOf(part, pos)
+            if (idx < 0) return false
+            pos = idx + part.length
+        }
+        return true
+    }
+
+    private fun guessRequestType(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            lower.endsWith(".js") || lower.contains(".js?") -> "script"
+            lower.endsWith(".css") -> "stylesheet"
+            lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".svg") || lower.endsWith(".ico") -> "image"
+            lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".m3u8") || lower.endsWith(".mp3") || lower.endsWith(".ogg") || lower.endsWith(".wav") -> "media"
+            lower.endsWith(".woff") || lower.endsWith(".woff2") || lower.endsWith(".ttf") || lower.endsWith(".otf") || lower.endsWith(".eot") -> "font"
+            else -> "other"
+        }
+    }
+}
+
+class CosmeticEngine(rules: List<CosmeticRule>) {
+    private val generic = mutableListOf<String>()
+    private val genericExceptions = mutableSetOf<String>()
+    private val domainSpecific = mutableMapOf<String, MutableList<String>>()
+    private val domainExceptions = mutableMapOf<String, MutableSet<String>>()
+
+    init {
+        for (rule in rules) {
+            if (rule.isException) {
+                if (rule.domains.isEmpty()) {
+                    genericExceptions.add(rule.selector)
+                } else {
+                    for (dom in rule.domains) {
+                        domainExceptions.getOrPut(dom) { mutableSetOf() }.add(rule.selector)
+                    }
+                }
+            } else if (rule.domains.isEmpty()) {
+                if (!genericExceptions.contains(rule.selector)) {
+                    generic.add(rule.selector)
+                }
+            } else {
+                for (dom in rule.domains) {
+                    domainSpecific.getOrPut(dom) { mutableListOf() }.add(rule.selector)
+                }
+            }
+        }
+    }
+
+    fun getCssForDomain(pageDomain: String): String {
+        val selectors = mutableListOf<String>()
+        selectors.addAll(generic)
+
+        var host = pageDomain
+        while (host.isNotEmpty()) {
+            domainSpecific[host]?.let { selectors.addAll(it) }
+            val dot = host.indexOf(".")
+            host = if (dot >= 0) host.substring(dot + 1) else ""
+        }
+
+        val exc = mutableSetOf<String>()
+        host = pageDomain
+        while (host.isNotEmpty()) {
+            domainExceptions[host]?.let { exc.addAll(it) }
+            val dot = host.indexOf(".")
+            host = if (dot >= 0) host.substring(dot + 1) else ""
+        }
+        exc.addAll(genericExceptions)
+
+        val final = selectors.filter { !exc.contains(it) }.distinct()
+        if (final.isEmpty()) return ""
+
+        return final.joinToString(",\n") + " { display: none !important; visibility: hidden !important; }"
+    }
+}
+
+class ScriptletEngine(rules: List<<ScriptletRule>) {
+    private val rulesByDomain = mutableMapOf<String, MutableList<<ScriptletRule>>()
+    private val generic = mutableListOf<<ScriptletRule>()
+
+    init {
+        for (rule in rules) {
+            if (rule.domains.isEmpty()) {
+                generic.add(rule)
+            } else {
+                for (dom in rule.domains) {
+                    rulesByDomain.getOrPut(dom) { mutableListOf() }.add(rule)
+                }
+            }
+        }
+    }
+
+    fun getScriptForDomain(pageDomain: String): String {
+        val applicable = mutableListOf<<ScriptletRule>()
+        applicable.addAll(generic)
+
+        var host = pageDomain
+        while (host.isNotEmpty()) {
+            rulesByDomain[host]?.let { applicable.addAll(it) }
+            val dot = host.indexOf(".")
+            host = if (dot >= 0) host.substring(dot + 1) else ""
+        }
+
+        val exceptions = applicable.filter { it.isException }.map { it.scriptletName to it.args.joinToString(",") }
+        val active = applicable.filter { !it.isException && !exceptions.contains(it.scriptletName to it.args.joinToString(",")) }
+
+        if (active.isEmpty()) return ""
+
+        val sb = StringBuilder()
+        sb.append("(function() {\n")
+        sb.append("  'use strict';\n")
+        for (rule in active) {
+            val fn = scriptletLibrary[rule.scriptletName]
+            if (fn != null) {
+                sb.append("  try {\n")
+                sb.append("    (")
+                sb.append(fn)
+                sb.append(")(")
+                sb.append(rule.args.joinToString(", ") { "\"${it.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\"" })
+                sb.append(");\n")
+                sb.append("  } catch(e) {}\n")
+            }
+        }
+        sb.append("})();")
+        return sb.toString()
+    }
+
+    private val scriptletLibrary = mapOf<String, String>(
+        "abort-on-property-read" to """
+            function(prop) {
+                var parts = prop.split('.');
+                var obj = window;
+                for (var i = 0; i < parts.length - 1; i++) {
+                    obj = obj[parts[i]];
+                    if (!obj) return;
+                }
+                var last = parts[parts.length - 1];
+                Object.defineProperty(obj, last, {
+                    get: function() { throw new ReferenceError(prop + ' aborted'); },
+                    set: function() {},
+                    configurable: true
+                });
+            }
+        """.trimIndent(),
+        "abort-on-property-write" to """
+            function(prop) {
+                var parts = prop.split('.');
+                var obj = window;
+                for (var i = 0; i < parts.length - 1; i++) {
+                    obj = obj[parts[i]];
+                    if (!obj) return;
+                }
+                var last = parts[parts.length - 1];
+                Object.defineProperty(obj, last, {
+                    set: function() { throw new ReferenceError(prop + ' aborted'); },
+                    get: function() { return undefined; },
+                    configurable: true
+                });
+            }
+        """.trimIndent(),
+        "set-constant" to """
+            function(prop, value) {
+                var parts = prop.split('.');
+                var obj = window;
+                for (var i = 0; i < parts.length - 1; i++) {
+                    if (!obj[parts[i]]) obj[parts[i]] = {};
+                    obj = obj[parts[i]];
+                }
+                var last = parts[parts.length - 1];
+                var val = value;
+                if (value === 'true') val = true;
+                else if (value === 'false') val = false;
+                else if (value === 'undefined') val = undefined;
+                else if (value === 'null') val = null;
+                else if (value === 'noopFunc') val = function(){};
+                else if (value === 'trueFunc') val = function(){ return true; };
+                else if (value === 'falseFunc') val = function(){ return false; };
+                Object.defineProperty(obj, last, {
+                    get: function() { return val; },
+                    set: function() {},
+                    configurable: true
+                });
+            }
+        """.trimIndent(),
+        "no-setTimeout-if" to """
+            function(pattern, delay) {
+                var orig = window.setTimeout;
+                window.setTimeout = function(fn, d) {
+                    if (typeof fn === 'string') {
+                        if (pattern && fn.indexOf(pattern) !== -1) return 0;
+                    } else if (fn && fn.toString) {
+                        if (pattern && fn.toString().indexOf(pattern) !== -1) return 0;
+                    }
+                    if (delay && d === parseInt(delay)) return 0;
+                    return orig.apply(this, arguments);
+                };
+            }
+        """.trimIndent(),
+        "no-setInterval-if" to """
+            function(pattern, delay) {
+                var orig = window.setInterval;
+                window.setInterval = function(fn, d) {
+                    if (typeof fn === 'string') {
+                        if (pattern && fn.indexOf(pattern) !== -1) return 0;
+                    } else if (fn && fn.toString) {
+                        if (pattern && fn.toString().indexOf(pattern) !== -1) return 0;
+                    }
+                    if (delay && d === parseInt(delay)) return 0;
+                    return orig.apply(this, arguments);
+                };
+            }
+        """.trimIndent(),
+        "nano-setInterval-booster" to """
+            function(interval, boost) {
+                var b = parseFloat(boost) || 0.05;
+                var orig = window.setInterval;
+                window.setInterval = function(fn, d) {
+                    if (d === parseInt(interval) || (interval && Math.abs(d - parseInt(interval)) < 5)) {
+                        d = d * b;
+                    }
+                    return orig.call(this, fn, d);
+                };
+            }
+        """.trimIndent(),
+        "prevent-fetch" to """
+            function(pattern) {
+                var orig = window.fetch;
+                window.fetch = function(url, opts) {
+                    if (typeof url === 'string' && pattern && url.indexOf(pattern) !== -1) {
+                        return Promise.reject(new TypeError('Blocked'));
+                    }
+                    return orig.apply(this, arguments);
+                };
+            }
+        """.trimIndent(),
+        "prevent-xhr" to """
+            function(pattern) {
+                var orig = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    if (typeof url === 'string' && pattern && url.indexOf(pattern) !== -1) {
+                        this._blocked = true;
+                    }
+                    return orig.apply(this, arguments);
+                };
+                var origSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.send = function() {
+                    if (this._blocked) return;
+                    return origSend.apply(this, arguments);
+                };
+            }
+        """.trimIndent(),
+        "remove-class" to """
+            function(className, selector) {
+                var rm = function() {
+                    var els = document.querySelectorAll(selector || '*');
+                    els.forEach(function(el) { el.classList.remove(className); });
+                };
+                rm();
+                var obs = new MutationObserver(rm);
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        """.trimIndent(),
+        "remove-attr" to """
+            function(attr, selector) {
+                var rm = function() {
+                    var els = document.querySelectorAll(selector || '*');
+                    els.forEach(function(el) { el.removeAttribute(attr); });
+                };
+                rm();
+                var obs = new MutationObserver(rm);
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        """.trimIndent(),
+        "json-prune" to """
+            function(props) {
+                var prune = function(obj) {
+                    if (!obj || typeof obj !== 'object') return;
+                    var keys = props.split(/,\\s*/);
+                    keys.forEach(function(k) {
+                        if (k.indexOf('.') === -1) {
+                            delete obj[k];
+                        } else {
+                            var parts = k.split('.');
+                            var o = obj;
+                            for (var i = 0; i < parts.length - 1; i++) {
+                                o = o[parts[i]];
+                                if (!o) return;
+                            }
+                            delete o[parts[parts.length - 1]];
+                        }
+                    });
+                };
+                var orig = JSON.parse;
+                JSON.parse = function(text) {
+                    var res = orig.apply(this, arguments);
+                    prune(res);
+                    return res;
+                };
+            }
+        """.trimIndent()
+    )
+}
+
+class CompiledFilters(filters: List<<Filter>) {
+    val network: NetworkEngine
+    val cosmetic: CosmeticEngine
+    val scriptlets: ScriptletEngine
+
+    init {
+        val netRules = mutableListOf<<NetworkRule>()
+        val cosRules = mutableListOf<CosmeticRule>()
+        val scrRules = mutableListOf<<ScriptletRule>()
+
+        for (f in filters) {
+            if (!f.enabled) continue
+            netRules.addAll(f.networkRules)
+            cosRules.addAll(f.cosmeticRules)
+            scrRules.addAll(f.scriptletRules)
+        }
+
+        network = NetworkEngine(netRules)
+        cosmetic = CosmeticEngine(cosRules)
+        scriptlets = ScriptletEngine(scrRules)
+    }
 }
 
 fun captureThumbnail(webView: WebView): ByteArray? {
@@ -745,7 +1292,40 @@ fun getBackupDir(): File {
 
 fun getBackupFile(): File = File(getBackupDir(), BACKUP_FILE)
 
-fun collectAllDomains(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: List<Bookmark>): Set<String> {
+fun getFiltersDir(): File {
+    val dir = File(getBackupDir(), FILTERS_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    return dir
+}
+
+fun saveFilterToFile(name: String, rawText: String) {
+    try {
+        val file = File(getFiltersDir(), "$name.txt")
+        file.writeText(rawText)
+    } catch (e: Exception) { }
+}
+
+fun loadFiltersFromDirectory(): List<<Filter> {
+    return try {
+        val dir = getFiltersDir()
+        if (!dir.exists()) return emptyList()
+        val filters = mutableListOf<<Filter>()
+        dir.listFiles()?.filter { it.extension == "txt" }?.forEach { file ->
+            val rawText = file.readText()
+            val (network, cosmetic, scriptlets) = FilterParser.parse(rawText)
+            filters.add(Filter(
+                name = file.nameWithoutExtension,
+                rawText = rawText,
+                networkRules = network,
+                cosmeticRules = cosmetic,
+                scriptletRules = scriptlets
+            ))
+        }
+        filters
+    } catch (e: Exception) { emptyList() }
+}
+
+fun collectAllDomains(tabs: List<TabState>, history: List<<HistoryItem>, bookmarks: List<<Bookmark>): Set<String> {
     val domains = mutableSetOf<String>()
     for (tab in tabs) {
         if (!tab.isBlankTab) {
@@ -764,7 +1344,7 @@ fun collectAllDomains(tabs: List<TabState>, history: List<HistoryItem>, bookmark
     return domains
 }
 
-fun exportCookies(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: List<Bookmark>): JSONArray {
+fun exportCookies(tabs: List<TabState>, history: List<<HistoryItem>, bookmarks: List<<Bookmark>): JSONArray {
     val cookieJson = JSONArray()
     try {
         val cookieManager = android.webkit.CookieManager.getInstance()
@@ -803,10 +1383,9 @@ fun importCookies(cookieJson: JSONArray) {
 fun exportBackup(
     context: Context,
     tabs: List<TabState>,
-    history: List<HistoryItem>,
-    bookmarks: List<Bookmark>,
-    customFilters: List<CustomHideRule>,
-    scripts: List<Script>,
+    history: List<<HistoryItem>,
+    bookmarks: List<<Bookmark>,
+    scripts: List<<Script>,
     lastActiveUrl: String
 ) {
     try {
@@ -845,17 +1424,6 @@ fun exportBackup(
             bookmarksArray.put(obj)
         }
         root.put("bookmarks", bookmarksArray)
-        val customFiltersArray = JSONArray()
-        for (cf in customFilters) {
-            val obj = JSONObject()
-            obj.put("id", cf.id)
-            obj.put("domain", cf.domain)
-            obj.put("selector", cf.selector)
-            obj.put("enabled", cf.enabled)
-            obj.put("timestamp", cf.timestamp)
-            customFiltersArray.put(obj)
-        }
-        root.put("customFilters", customFiltersArray)
         val scriptsArray = JSONArray()
         for (s in scripts) {
             val obj = JSONObject()
@@ -883,10 +1451,9 @@ fun exportBackup(
 
 data class BackupData(
     val tabs: List<SavedTab>,
-    val history: List<HistoryItem>,
-    val bookmarks: List<Bookmark>,
-    val customFilters: List<CustomHideRule>,
-    val scripts: List<Script>,
+    val history: List<<HistoryItem>,
+    val bookmarks: List<<Bookmark>,
+    val scripts: List<<Script>,
     val lastActiveUrl: String,
     val patternHash: String?,
     val lockEnabled: Boolean
@@ -912,7 +1479,7 @@ fun importBackup(context: Context): BackupData? {
                 tabsList.add(SavedTab(url = url, title = title, thumbnailBytes = thumbnailBytes))
             }
         }
-        val historyList = mutableListOf<HistoryItem>()
+        val historyList = mutableListOf<<HistoryItem>()
         val historyArray = root.optJSONArray("history")
         if (historyArray != null) {
             for (i in 0 until historyArray.length()) {
@@ -920,7 +1487,7 @@ fun importBackup(context: Context): BackupData? {
                 historyList.add(HistoryItem(obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
-        val bookmarksList = mutableListOf<Bookmark>()
+        val bookmarksList = mutableListOf<<Bookmark>()
         val bookmarksArray = root.optJSONArray("bookmarks")
         if (bookmarksArray != null) {
             for (i in 0 until bookmarksArray.length()) {
@@ -928,21 +1495,7 @@ fun importBackup(context: Context): BackupData? {
                 bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
             }
         }
-        val customFiltersList = mutableListOf<CustomHideRule>()
-        val customFiltersArray = root.optJSONArray("customFilters")
-        if (customFiltersArray != null) {
-            for (i in 0 until customFiltersArray.length()) {
-                val obj = customFiltersArray.getJSONObject(i)
-                customFiltersList.add(CustomHideRule(
-                    id = obj.optString("id", UUID.randomUUID().toString()),
-                    domain = obj.getString("domain"),
-                    selector = obj.getString("selector"),
-                    enabled = obj.optBoolean("enabled", true),
-                    timestamp = obj.optLong("timestamp", System.currentTimeMillis())
-                ))
-            }
-        }
-        val scriptsList = mutableListOf<Script>()
+        val scriptsList = mutableListOf<<Script>()
         val scriptsArray = root.optJSONArray("scripts")
         if (scriptsArray != null) {
             for (i in 0 until scriptsArray.length()) {
@@ -963,7 +1516,7 @@ fun importBackup(context: Context): BackupData? {
         if (cookieJson != null) {
             importCookies(cookieJson)
         }
-        BackupData(tabsList, historyList, bookmarksList, customFiltersList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
+        BackupData(tabsList, historyList, bookmarksList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
     } catch (e: Exception) { null }
 }
 //PART 4 END
@@ -981,18 +1534,18 @@ fun GreyBrowser() {
     var showLoadingScreen by remember { mutableStateOf(true) }
     var loadingLetterIndex by remember { mutableIntStateOf(0) }
 
-    val bookmarks = remember { mutableStateListOf<Bookmark>().apply { addAll(loadBookmarks(context)) } }
+    val bookmarks = remember { mutableStateListOf<<Bookmark>().apply { addAll(loadBookmarks(context)) } }
     var showBookmarks by remember { mutableStateOf(false) }
 
-    val history = remember { mutableStateListOf<HistoryItem>().apply { addAll(loadHistory(context)) } }
+    val history = remember { mutableStateListOf<<HistoryItem>().apply { addAll(loadHistory(context)) } }
     var showHistory by remember { mutableStateOf(false) }
 
-    val scripts = remember { mutableStateListOf<Script>().apply { addAll(loadScripts(context)) } }
+    val scripts = remember { mutableStateListOf<<Script>().apply { addAll(loadScripts(context)) } }
     var showScripts by remember { mutableStateOf(false) }
     var showScriptEditor by remember { mutableStateOf(false) }
-    var editingScript by remember { mutableStateOf<Script?>(null) }
+    var editingScript by remember { mutableStateOf<<Script?>(null) }
 
-    val filters = remember { mutableStateListOf<Filter>().apply { addAll(loadFilters(context)) } }
+    val filters = remember { mutableStateListOf<<Filter>().apply { addAll(loadFilters(context)) } }
     var showFilters by remember { mutableStateOf(false) }
     var filtersEnabled by remember {
         mutableStateOf(
@@ -1002,9 +1555,9 @@ fun GreyBrowser() {
     }
     var totalBlocked by remember { mutableIntStateOf(0) }
 
-    val customHideRules = remember { mutableStateListOf<CustomHideRule>() }
-    var showElementHider by remember { mutableStateOf(false) }
-    var showElementRules by remember { mutableStateOf(false) }
+    val compiledFilters = remember(filters.toList()) {
+        CompiledFilters(filters.toList())
+    }
 
     val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
 
@@ -1082,9 +1635,9 @@ fun GreyBrowser() {
     val blinkTargetDomain = remember { mutableStateOf("") }
 
     var showConfirmDialog by remember { mutableStateOf(false) }
-    var confirmAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var confirmAction by remember { mutableStateOf<<(() -> Unit)?>(null) }
     var confirmTitle by remember { mutableStateOf("") }
-    var confirmMessage by remember { mutableStateOf("") }
+    var confirmMessage by remember { mutableStateOf("")) }
 
     var showLinkMenu by remember { mutableStateOf(false) }
     var linkMenuUrl by remember { mutableStateOf<String?>(null) }
@@ -1143,8 +1696,6 @@ fun GreyBrowser() {
                 bookmarks.addAll(backup.bookmarks)
                 scripts.clear()
                 scripts.addAll(backup.scripts)
-                customHideRules.clear()
-                customHideRules.addAll(backup.customFilters)
                 val dirFilters = loadFiltersFromDirectory()
                 if (dirFilters.isNotEmpty()) {
                     filters.clear()
@@ -1173,7 +1724,7 @@ fun GreyBrowser() {
                     filters.addAll(dirFilters)
                 }
                 withContext(Dispatchers.IO) {
-                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
                 }
             }
             backupLoaded = true
@@ -1184,7 +1735,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1192,7 +1743,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1200,7 +1751,7 @@ fun GreyBrowser() {
         saveBookmarks(context, bookmarks)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1208,7 +1759,7 @@ fun GreyBrowser() {
         saveHistory(context, history)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1216,7 +1767,7 @@ fun GreyBrowser() {
         saveScripts(context, scripts)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1224,14 +1775,7 @@ fun GreyBrowser() {
         saveFilters(context, filters)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
-            }
-        }
-    }
-    LaunchedEffect(customHideRules.toList()) {
-        if (backupLoaded) {
-            withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1280,7 +1824,6 @@ fun GreyBrowser() {
 
     fun setupDelegates(tabState: TabState) {
         val wv = tabState.webView ?: return
-        var hideElementsFired = false
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -1292,45 +1835,6 @@ fun GreyBrowser() {
                         tabState.thumbnailBytes = bytes
                         val idx = tabs.indexOf(tabState)
                         if (idx >= 0) thumbnailBitmapCache.remove(idx)
-                    }
-                }
-                if (newProgress >= 10 && !hideElementsFired && !tabState.isBlankTab) {
-                    hideElementsFired = true
-                    val url = tabState.url
-                    if (url != "about:blank") {
-                        val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
-                        val selectors = mutableListOf<String>()
-                        for (rule in customHideRules) {
-                            if (!rule.enabled) continue
-                            if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
-                                selectors.add(rule.selector)
-                            }
-                        }
-                        if (selectors.isNotEmpty()) {
-                            val selectorsJson = JSONArray()
-                            selectors.forEach { selectorsJson.put(it) }
-                            val selectorsJs = selectorsJson.toString()
-                            wv.evaluateJavascript("""
-                                (function() {
-                                    var selectors = $selectorsJs;
-                                    function hideElements() {
-                                        selectors.forEach(function(sel) {
-                                            try {
-                                                document.querySelectorAll(sel).forEach(function(el) {
-                                                    el.style.setProperty('display', 'none', 'important');
-                                                });
-                                            } catch(e) {}
-                                        });
-                                    }
-                                    hideElements();
-                                    var timer = null;
-                                    new MutationObserver(function() {
-                                        if (timer) clearTimeout(timer);
-                                        timer = setTimeout(hideElements, 500);
-                                    }).observe(document.documentElement, { childList: true, subtree: true });
-                                })();
-                            """.trimIndent(), null)
-                        }
                     }
                 }
             }
@@ -1348,36 +1852,10 @@ fun GreyBrowser() {
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val url = request.url.toString().lowercase()
-                val host = request.url.host?.lowercase() ?: return false
-                val path = request.url.path?.lowercase() ?: ""
-                val query = request.url.query?.lowercase() ?: ""
-
-                // known popup/redirect ad domains
-                val popupDomains = listOf(
-                    "popads.net", "popcash.net", "propellerads.com", "adcash.com",
-                    "exoclick.com", "juicyads.com", "trafficjunky.com", "hilltopads.net",
-                    "trafficforce.com", "clickaine.com", "adsterra.com", "plugrush.com",
-                    "admaven.com", "ad-maven.com", "adskeeper.com", "popunder.net",
-                    "popdisplay.com", "adpop.io", "monetizer101.com", "clicksfly.com",
-                    "shorte.st", "adf.ly", "ouo.io", "bc.vc", "linkvertise.com"
-                )
-                if (popupDomains.any { host == it || host.endsWith(".$it") }) return true
-
-                // popup/redirect path patterns
-                val popupPaths = listOf(
-                    "/pop", "/popunder", "/popup", "/popads",
-                    "/pu/", "/ppu/", "/out.php", "/out/click"
-                )
-                if (popupPaths.any { path.startsWith(it) || path.contains(it) }) return true
-
-                // redirect-as-destination query patterns
-                val redirectParams = listOf(
-                    "url=http", "to=http", "target=http",
-                    "goto=http", "link=http", "dest=http",
-                    "destination=http", "redirect=http"
-                )
-                if (redirectParams.any { query.contains(it) }) return true
-
+                val pageDomain = try { Uri.parse(tabState.url).host?.removePrefix("www.") ?: "" } catch (e: Exception) { "" }
+                if (filtersEnabled && compiledFilters.network.shouldBlock(url, pageDomain, isPopup = true)) {
+                    return true
+                }
                 return false
             }
 
@@ -1385,9 +1863,10 @@ fun GreyBrowser() {
                 tabState.url = url
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
-                hideElementsFired = false
+                totalBlocked = 0
                 if (url != "about:blank") tabState.isBlankTab = false
-                if (showElementHider) showElementHider = false
+
+                // Inject dark mode spoof
                 wv.evaluateJavascript("""
                     (function() {
                         var originalMatchMedia = window.matchMedia;
@@ -1395,9 +1874,7 @@ fun GreyBrowser() {
                             var result = originalMatchMedia(query);
                             if (query.includes('prefers-color-scheme')) {
                                 return {
-                                    matches: true,
-                                    media: query,
-                                    onchange: null,
+                                    matches: true, media: query, onchange: null,
                                     addListener: function(cb) { cb(this); },
                                     removeListener: function() {},
                                     addEventListener: function(type, cb) { if (type === 'change') cb(this); },
@@ -1409,6 +1886,17 @@ fun GreyBrowser() {
                         };
                     })();
                 """.trimIndent(), null)
+
+                // Inject adblock scriptlets at document-start
+                if (filtersEnabled && url != "about:blank") {
+                    val pageDomain = try { Uri.parse(url).host?.removePrefix("www.") ?: "" } catch (e: Exception) { "" }
+                    val scriptletJs = compiledFilters.scriptlets.getScriptForDomain(pageDomain)
+                    if (scriptletJs.isNotBlank()) {
+                        wv.evaluateJavascript(scriptletJs, null)
+                    }
+                }
+
+                // Inject userscripts (document-start)
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
                     val meta = parseScriptHeader(script.code)
@@ -1420,6 +1908,7 @@ fun GreyBrowser() {
                     }
                 }
             }
+
             override fun onPageFinished(view: WebView, url: String) {
                 tabState.progress = 100
                 tabState.url = url
@@ -1435,6 +1924,33 @@ fun GreyBrowser() {
                     history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
                     if (history.size > MAX_HISTORY_ITEMS) history.removeAt(0)
                 }
+
+                // Inject adblock cosmetics
+                if (filtersEnabled && url != "about:blank") {
+                    val pageDomain = try { Uri.parse(url).host?.removePrefix("www.") ?: "" } catch (e: Exception) { "" }
+                    val cosmeticCss = compiledFilters.cosmetic.getCssForDomain(pageDomain)
+                    if (cosmeticCss.isNotBlank()) {
+                        val cssJs = """
+                            (function() {
+                                var style = document.getElementById('grey-cosmetic-css');
+                                if (!style) {
+                                    style = document.createElement('style');
+                                    style.id = 'grey-cosmetic-css';
+                                    if (document.head) document.head.appendChild(style);
+                                    else {
+                                        var t = setInterval(function() {
+                                            if (document.head) { document.head.appendChild(style); clearInterval(t); }
+                                        }, 50);
+                                    }
+                                }
+                                style.textContent = `${cosmeticCss.replace("`", "\\`")}`;
+                            })();
+                        """.trimIndent()
+                        wv.evaluateJavascript(cssJs, null)
+                    }
+                }
+
+                // Inject userscripts (document-end)
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
                     val meta = parseScriptHeader(script.code)
@@ -1446,31 +1962,20 @@ fun GreyBrowser() {
                     }
                 }
             }
+
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: android.webkit.WebResourceRequest
             ): android.webkit.WebResourceResponse? {
                 if (!filtersEnabled) return null
                 if (request.isForMainFrame) return null
-                val requestUrl = request.url.toString()
-                val requestHost = request.url.host ?: return null
-                for (filter in filters) {
-                    if (!filter.enabled) continue
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) {
-                            val exceptionPattern = rule.removePrefix("@@")
-                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) return null
-                        }
-                    }
-                    for (rule in filter.networkRules) {
-                        if (rule.startsWith("@@")) continue
-                        if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
-                            totalBlocked++
-                            return android.webkit.WebResourceResponse(
-                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
-                            )
-                        }
-                    }
+                val requestUrl = request.url.toString().lowercase()
+                val pageDomain = try { Uri.parse(tabState.url).host?.removePrefix("www.") ?: "" } catch (e: Exception) { "" }
+                if (compiledFilters.network.shouldBlock(requestUrl, pageDomain)) {
+                    totalBlocked++
+                    return android.webkit.WebResourceResponse(
+                        "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
+                    )
                 }
                 return null
             }
@@ -1861,7 +2366,7 @@ fun ContentLayer() {
                             prefs.edit().putBoolean("lock_enabled", true).apply()
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
                                 }
                             }
                         }
@@ -1870,7 +2375,7 @@ fun ContentLayer() {
                         patternDrawMode = "toggle_off"
                         scope.launch {
                             withContext(Dispatchers.IO) {
-                                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
                             }
                         }
                     }
@@ -1899,7 +2404,7 @@ fun ContentLayer() {
                             showToast("App lock disabled")
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
                                 }
                             }
                         }
@@ -1912,7 +2417,7 @@ fun ContentLayer() {
                     showToast("Pattern saved")
                     scope.launch {
                         withContext(Dispatchers.IO) {
-                            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
                         }
                     }
                 },
@@ -1999,17 +2504,16 @@ fun ContentLayer() {
                     showToast("Filter deleted")
                 },
                 onImportFilter = { name, rawText ->
-                    val (network, cosmetic) = parseFilterRules(rawText)
+                    val (network, cosmetic, scriptlets) = FilterParser.parse(rawText)
                     filters.add(Filter(
                         name = name,
                         rawText = rawText,
                         networkRules = network,
                         cosmeticRules = cosmetic,
-                        networkRuleCount = network.size,
-                        cosmeticRuleCount = cosmetic.size
+                        scriptletRules = scriptlets
                     ))
                     saveFilterToFile(name, rawText)
-                    showToast("Filter imported: ${network.size} rules")
+                    showToast("Filter imported: ${network.size} network, ${cosmetic.size} cosmetic, ${scriptlets.size} scriptlets")
                 }
             )
         }
@@ -2578,309 +3082,26 @@ fun ContentLayer() {
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (showElementHider) "Stop Hiding" else "Hide Element", color = WHITE) },
-                                    onClick = {
-                                        showMenu = false
-                                        showElementHider = !showElementHider
-                                        val wv = currentTab?.webView
-                                        if (showElementHider && wv != null) {
-                                            wv.evaluateJavascript("""
-                                                (function() {
-                                                    if (window.__GREY_PICKER__) return;
-                                                    window.__GREY_PICKER__ = true;
-                                                    
-                                                    var current = document.body;
-                                                    var highlight = null;
-                                                    var currentView = 'picker';
-                                                    
-                                                    function createHighlight() {
-                                                        var h = document.createElement('div');
-                                                        h.id = 'gp-highlight';
-                                                        Object.assign(h.style, {
-                                                            position: 'absolute', pointerEvents: 'none',
-                                                            zIndex: '2147483646', border: '2px solid #FF4444',
-                                                            background: 'rgba(255,68,68,0.25)',
-                                                            borderRadius: '0px', transition: 'all 0.12s ease',
-                                                            boxSizing: 'border-box', top: '0', left: '0'
-                                                        });
-                                                        document.body.appendChild(h);
-                                                        return h;
-                                                    }
-                                                    
-                                                    function moveHighlight(el) {
-                                                        if (!el || el === document.documentElement) return;
-                                                        if (!highlight) highlight = createHighlight();
-                                                        var r = el.getBoundingClientRect();
-                                                        Object.assign(highlight.style, {
-                                                            top: (r.top + window.scrollY) + 'px',
-                                                            left: (r.left + window.scrollX) + 'px',
-                                                            width: r.width + 'px',
-                                                            height: r.height + 'px',
-                                                            display: 'block'
-                                                        });
-                                                    }
-                                                    
-                                                    function buildSelector(el) {
-                                                        if (!el || el.nodeType !== 1) return '';
-                                                        var sel = el.tagName.toLowerCase();
-                                                        if (el.id) sel += '#' + el.id;
-                                                        else if (el.className) {
-                                                            var classes = Array.from(el.classList)
-                                                                .filter(function(c) { return c && c.indexOf(':') === -1; })
-                                                                .slice(0, 3).join('.');
-                                                            if (classes) sel += '.' + classes;
-                                                        }
-                                                        return sel;
-                                                    }
-                                                    
-                                                    function buildRule(el) {
-                                                        var host = location.hostname.replace(/^www\./, '');
-                                                        var sel = buildSelector(el);
-                                                        return sel ? host + '##' + sel : '';
-                                                    }
-                                                    
-                                                    function validEl(el) {
-                                                        var panel = document.getElementById('gp-panel');
-                                                        return el && el.nodeType === 1 && el !== panel && !(panel && panel.contains(el)) && el !== highlight;
-                                                    }
-                                                    
-                                                    function update(el) {
-                                                        if (!el || el === document.documentElement || el.id === 'gp-panel' || el.id === 'gp-highlight') return;
-                                                        if (document.getElementById('gp-panel') && document.getElementById('gp-panel').contains(el)) return;
-                                                        current = el;
-                                                        moveHighlight(el);
-                                                        var tagEl = document.getElementById('gp-tag');
-                                                        var selEl = document.getElementById('gp-sel');
-                                                        var ruleEl = document.getElementById('gp-rule');
-                                                        if (tagEl) tagEl.textContent = '<' + el.tagName.toLowerCase() + (el.id ? ' id="' + el.id + '"' : '') + (el.className ? ' class="' + el.className.slice(0,60) + '"' : '') + '>';
-                                                        if (selEl) selEl.textContent = buildSelector(el);
-                                                        if (ruleEl) ruleEl.textContent = buildRule(el);
-                                                    }
-                                                    
-                                                    function showPickerView() {
-                                                        currentView = 'picker';
-                                                        document.getElementById('gp-panel-body').innerHTML = 
-                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
-                                                            '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
-                                                            '<button id="gp-child" class="gp-btn">Child ▶</button>' +
-                                                            '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
-                                                            '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
-                                                            '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
-                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
-                                                            '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
-                                                            '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
-                                                            '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
-                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
-                                                            '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
-                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
-                                                            '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
-                                                            '<button id="gp-rules-btn" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
-                                                            '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
-                                                        bindPickerEvents();
-                                                        update(current);
-                                                    }
-                                                    
-                                                    function showRulesView(rules) {
-                                                        currentView = 'rules';
-                                                        var html = '<div style="max-height:350px;overflow-y:auto;margin-bottom:8px">';
-                                                        var domains = {};
-                                                        rules.forEach(function(r) {
-                                                            if (!domains[r.domain]) domains[r.domain] = [];
-                                                            domains[r.domain].push(r);
-                                                        });
-                                                        var sortedDomains = Object.keys(domains).sort(function(a, b) {
-                                                            var aMax = Math.max.apply(null, domains[a].map(function(r) { return r.timestamp || 0; }));
-                                                            var bMax = Math.max.apply(null, domains[b].map(function(r) { return r.timestamp || 0; }));
-                                                            return bMax - aMax;
-                                                        });
-                                                        if (sortedDomains.length === 0) {
-                                                            html += '<div style="color:#888;text-align:center;padding:20px">No rules saved yet</div>';
-                                                        } else {
-                                                            sortedDomains.forEach(function(domain) {
-                                                                html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
-                                                                var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
-                                                                domainRules.forEach(function(r) {
-                                                                    html += '<div style="padding:4px 0;font-size:11px">' +
-                                                                        '<span style="color:#FFF;font-family:monospace">' + r.selector + '</span>' +
-                                                                        '</div>';
-                                                                });
-                                                            });
-                                                        }
-                                                        html += '</div>' +
-                                                            '<button id="gp-back" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;width:100%">← Back to Picker</button>';
-                                                        document.getElementById('gp-panel-body').innerHTML = html;
-                                                        document.getElementById('gp-back').addEventListener('click', function() {
-                                                            showPickerView();
-                                                        });
-                                                    }
-                                                    
-                                                    function bindPickerEvents() {
-                                                        document.getElementById('gp-parent').addEventListener('click', function() {
-                                                            var p = current.parentElement;
-                                                            if (validEl(p) && p !== document.documentElement) update(p);
-                                                        });
-                                                        document.getElementById('gp-child').addEventListener('click', function() {
-                                                            var c = current.firstElementChild;
-                                                            if (validEl(c)) update(c);
-                                                        });
-                                                        document.getElementById('gp-prev').addEventListener('click', function() {
-                                                            var s = current.previousElementSibling;
-                                                            while (s && !validEl(s)) s = s.previousElementSibling;
-                                                            if (s) update(s);
-                                                        });
-                                                        document.getElementById('gp-next').addEventListener('click', function() {
-                                                            var s = current.nextElementSibling;
-                                                            while (s && !validEl(s)) s = s.nextElementSibling;
-                                                            if (s) update(s);
-                                                        });
-                                                        document.getElementById('gp-save').addEventListener('click', function() {
-                                                            var rule = buildRule(current);
-                                                            if (rule) {
-                                                                GreyPicker.onRuleGenerated(rule);
-                                                                document.getElementById('gp-msg').textContent = '✓ Saved!';
-                                                            }
-                                                        });
-                                                        document.getElementById('gp-rules-btn').addEventListener('click', function() {
-                                                            GreyPicker.onShowRules();
-                                                        });
-                                                    }
-                                                    
-                                                    var panel = document.createElement('div');
-                                                    panel.id = 'gp-panel';
-                                                    Object.assign(panel.style, {
-                                                        position: 'fixed', bottom: '16px', right: '12px',
-                                                        background: '#1E1E1E', color: '#FFFFFF',
-                                                        borderRadius: '0px', zIndex: '2147483647',
-                                                        fontSize: '11px', fontFamily: 'monospace',
-                                                        width: '290px', boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
-                                                        userSelect: 'none', border: '1px solid #333333'
-                                                    });
-                                                    
-                                                    panel.innerHTML = 
-                                                        '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
-                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span></div>' +
-                                                        '<div id="gp-panel-body" style="padding:12px"></div>';
-                                                    document.body.appendChild(panel);
-                                                    
-                                                    document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
-                                                    
-                                                    var header = document.getElementById('gp-header');
-                                                    var isDragging = false;
-                                                    var startX, startY, panelLeft, panelTop;
-                                                    
-                                                    header.addEventListener('touchstart', function(e) {
-                                                        isDragging = true;
-                                                        startX = e.touches[0].clientX;
-                                                        startY = e.touches[0].clientY;
-                                                        panelLeft = panel.offsetLeft;
-                                                        panelTop = panel.offsetTop;
-                                                        header.style.cursor = 'grabbing';
-                                                        e.preventDefault();
-                                                    });
-                                                    
-                                                    header.addEventListener('mousedown', function(e) {
-                                                        isDragging = true;
-                                                        startX = e.clientX;
-                                                        startY = e.clientY;
-                                                        panelLeft = panel.offsetLeft;
-                                                        panelTop = panel.offsetTop;
-                                                        header.style.cursor = 'grabbing';
-                                                        e.preventDefault();
-                                                    });
-                                                    
-                                                    window.addEventListener('touchmove', function(e) {
-                                                        if (!isDragging) return;
-                                                        var dx = e.touches[0].clientX - startX;
-                                                        var dy = e.touches[0].clientY - startY;
-                                                        panel.style.right = 'auto';
-                                                        panel.style.bottom = 'auto';
-                                                        panel.style.left = (panelLeft + dx) + 'px';
-                                                        panel.style.top = (panelTop + dy) + 'px';
-                                                    });
-                                                    
-                                                    window.addEventListener('mousemove', function(e) {
-                                                        if (!isDragging) return;
-                                                        var dx = e.clientX - startX;
-                                                        var dy = e.clientY - startY;
-                                                        panel.style.right = 'auto';
-                                                        panel.style.bottom = 'auto';
-                                                        panel.style.left = (panelLeft + dx) + 'px';
-                                                        panel.style.top = (panelTop + dy) + 'px';
-                                                    });
-                                                    
-                                                    window.addEventListener('touchend', function() {
-                                                        isDragging = false;
-                                                        header.style.cursor = 'grab';
-                                                    });
-                                                    
-                                                    window.addEventListener('mouseup', function() {
-                                                        isDragging = false;
-                                                        header.style.cursor = 'grab';
-                                                    });
-                                                    
-                                                    window.addEventListener('scroll', function() {
-                                                        if (current && currentView === 'picker') moveHighlight(current);
-                                                    }, true);
-                                                    window.addEventListener('resize', function() {
-                                                        if (current && currentView === 'picker') moveHighlight(current);
-                                                    });
-                                                    
-                                                    showPickerView();
-                                                    update(document.body.firstElementChild || document.body);
-                                                    
-                                                    document.addEventListener('click', function(e) {
-                                                        if (currentView !== 'picker') return;
-                                                        if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        update(e.target);
-                                                    }, true);
-                                                    
-                                                    window.__GREY_SHOW_RULES__ = function(rules) {
-                                                        document.getElementById('gp-title').textContent = '⬡ My Rules';
-                                                        showRulesView(rules);
-                                                    };
-                                                })();
-                                            """.trimIndent(), null)
-                                        } else if (!showElementHider && wv != null) {
-                                            wv.evaluateJavascript("""
-                                                (function() {
-                                                    var panel = document.getElementById('gp-panel');
-                                                    var hl = document.getElementById('gp-highlight');
-                                                    if (panel) panel.remove();
-                                                    if (hl) hl.remove();
-                                                    delete window.__GREY_PICKER__;
-                                                    delete window.__GREY_SHOW_RULES__;
-                                                })();
-                                            """.trimIndent(), null)
-                                        }
-                                    }
+                                    text = { Text("Bookmarks", color = WHITE) },
+                                    onClick = { showMenu = false; showBookmarks = true }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("History", color = WHITE) },
+                                    onClick = { showMenu = false; showHistory = true }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Scripts", color = WHITE) },
+                                    onClick = { showMenu = false; showScripts = true }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Filters", color = WHITE) },
+                                    onClick = { showMenu = false; showFilters = true }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("App Lock", color = WHITE) },
+                                    onClick = { showMenu = false; showAppLockSettings = true }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Element Rules", color = WHITE) },
-                                onClick = { showMenu = false; showElementRules = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Bookmarks", color = WHITE) },
-                                onClick = { showMenu = false; showBookmarks = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("History", color = WHITE) },
-                                onClick = { showMenu = false; showHistory = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Scripts", color = WHITE) },
-                                onClick = { showMenu = false; showScripts = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Filters", color = WHITE) },
-                                onClick = { showMenu = false; showFilters = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("App Lock", color = WHITE) },
-                                onClick = { showMenu = false; showAppLockSettings = true }
-                            )
                         }
                     }
                 }
@@ -2892,81 +3113,6 @@ fun ContentLayer() {
                 ContentLayer()
             }
         }
-    }
-
-    val currentWebView = currentTab?.webView
-    LaunchedEffect(currentWebView) {
-        currentWebView?.addJavascriptInterface(object {
-            @android.webkit.JavascriptInterface
-            fun onRuleGenerated(rule: String) {
-                scope.launch(Dispatchers.Main) {
-                    val domain = rule.substringBefore("##").trim()
-                    val selector = rule.substringAfter("##").trim()
-                    if (domain.isNotBlank() && selector.isNotBlank()) {
-                        customHideRules.removeAll { it.domain == domain && it.selector == selector }
-                        customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
-                        showToast("Saved: $rule")
-                        currentWebView?.evaluateJavascript("""
-                            try {
-                                document.querySelectorAll('$selector').forEach(function(el) {
-                                    el.style.setProperty('display', 'none', 'important');
-                                });
-                            } catch(e) {}
-                        """.trimIndent(), null)
-                    }
-                }
-            }
-
-            @android.webkit.JavascriptInterface
-            fun onPickerClosed() {
-                scope.launch(Dispatchers.Main) {
-                    showElementHider = false
-                }
-            }
-
-            @android.webkit.JavascriptInterface
-            fun onShowRules() {
-                scope.launch(Dispatchers.Main) {
-                    val wv = currentTab?.webView ?: return@launch
-                    val rulesJson = JSONArray()
-                    for (rule in customHideRules) {
-                        val obj = JSONObject()
-                        obj.put("id", rule.id)
-                        obj.put("domain", rule.domain)
-                        obj.put("selector", rule.selector)
-                        obj.put("enabled", rule.enabled)
-                        obj.put("timestamp", rule.timestamp)
-                        rulesJson.put(obj)
-                    }
-                    wv.evaluateJavascript(
-                        "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
-                        null
-                    )
-                }
-            }
-        }, "GreyPicker")
-    }
-
-    if (showElementRules) {
-        ElementRulesScreen(
-            rules = customHideRules,
-            onDismiss = { showElementRules = false },
-            onToggleRule = { id ->
-                val index = customHideRules.indexOfFirst { it.id == id }
-                if (index >= 0) {
-                    customHideRules[index] = customHideRules[index].copy(enabled = !customHideRules[index].enabled)
-                }
-            },
-            onDeleteRule = { id ->
-                customHideRules.removeAll { it.id == id }
-                showToast("Rule deleted")
-            },
-            onAddRule = { domain, selector ->
-                customHideRules.removeAll { it.domain == domain && it.selector == selector }
-                customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
-                showToast("Rule added")
-            }
-        )
     }
 
     if (showToast) {
@@ -3017,7 +3163,7 @@ fun ContentLayer() {
 //PART 9 START
 @Composable
 fun BookmarksUI(
-    bookmarks: List<Bookmark>,
+    bookmarks: List<<Bookmark>,
     onDismiss: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -3278,7 +3424,7 @@ fun SidebarGroupChip(
 
 @Composable
 fun HistoryUI(
-    history: List<HistoryItem>,
+    history: List<<HistoryItem>,
     onDismiss: () -> Unit,
     onOpenUrl: (String) -> Unit,
     faviconBitmaps: Map<String, Bitmap?>,
@@ -3805,7 +3951,7 @@ fun PatternDrawScreen(
 //PART 12 START
 @Composable
 fun ScriptsManagerScreen(
-    scripts: List<Script>,
+    scripts: List<<Script>,
     onDismiss: () -> Unit,
     onAddScript: () -> Unit,
     onEditScript: (Script) -> Unit,
@@ -4181,7 +4327,7 @@ for debugging via remote DevTools.
 //PART 13 START
 @Composable
 fun FiltersManagerScreen(
-    filters: List<Filter>,
+    filters: List<<Filter>,
     filtersEnabled: Boolean,
     totalBlocked: Int,
     onDismiss: () -> Unit,
@@ -4191,7 +4337,7 @@ fun FiltersManagerScreen(
     onImportFilter: (String, String) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var filterToDelete by remember { mutableStateOf<Filter?>(null) }
+    var filterToDelete by remember { mutableStateOf<<Filter?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm && filterToDelete != null) {
@@ -4202,8 +4348,9 @@ fun FiltersManagerScreen(
             text = {
                 Column {
                     Text(f.name, color = WHITE, fontSize = 14.sp)
-                    Text("${f.networkRuleCount} network rules", color = MUTED, fontSize = 12.sp)
-                    Text("${f.cosmeticRuleCount} cosmetic (skipped)", color = MUTED, fontSize = 12.sp)
+                    Text("${f.networkRuleCount} network", color = MUTED, fontSize = 12.sp)
+                    Text("${f.cosmeticRuleCount} cosmetic", color = MUTED, fontSize = 12.sp)
+                    Text("${f.scriptletRuleCount} scriptlets", color = MUTED, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("This cannot be undone.", color = MUTED, fontSize = 14.sp)
                 }
@@ -4275,7 +4422,7 @@ fun FiltersManagerScreen(
                         )
                         if (totalBlocked > 0) {
                             Text(
-                                "$totalBlocked blocked on this page",
+                                "$totalBlocked blocked",
                                 color = MUTED,
                                 fontSize = 11.sp
                             )
@@ -4332,13 +4479,8 @@ fun FiltersManagerScreen(
                                             )
                                             Spacer(Modifier.height(2.dp))
                                             Text(
-                                                "${filter.networkRuleCount} network rules",
+                                                "${filter.networkRuleCount} network · ${filter.cosmeticRuleCount} cosmetic · ${filter.scriptletRuleCount} scriptlets",
                                                 color = MUTED,
-                                                fontSize = 11.sp
-                                            )
-                                            Text(
-                                                "${filter.cosmeticRuleCount} cosmetic (skipped)",
-                                                color = MUTED.copy(alpha = 0.7f),
                                                 fontSize = 11.sp
                                             )
                                         }
@@ -4454,274 +4596,4 @@ fun FilterImportDialog(
                     onClick = { filePickerLauncher.launch("text/plain") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
-                ) {
-                    Text(
-                        if (selectedFileName.isEmpty()) "Select File"
-                        else selectedFileName,
-                        color = WHITE,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
-                        onImport(filterName, fileContent)
-                    }
-                },
-                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
-            ) {
-                Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = WHITE)
-            }
-        },
-        containerColor = SURFACE,
-        titleContentColor = WHITE,
-        textContentColor = WHITE,
-        shape = RectangleShape,
-        tonalElevation = 0.dp
-    )
-}
-//PART 13 END
-
-//PART 14 START
-@Composable
-fun ElementRulesScreen(
-    rules: List<CustomHideRule>,
-    onDismiss: () -> Unit,
-    onToggleRule: (String) -> Unit,
-    onDeleteRule: (String) -> Unit,
-    onAddRule: (String, String) -> Unit
-) {
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var ruleToDelete by remember { mutableStateOf<String?>(null) }
-    var showAddDialog by remember { mutableStateOf(false) }
-
-    if (showDeleteConfirm && ruleToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false; ruleToDelete = null },
-            title = { Text("Delete Rule?", color = WHITE, fontSize = 18.sp) },
-            text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
-            confirmButton = {
-                TextButton({
-                    onDeleteRule(ruleToDelete!!)
-                    showDeleteConfirm = false
-                    ruleToDelete = null
-                }) { Text("Delete", color = WHITE) }
-            },
-            dismissButton = {
-                TextButton({
-                    showDeleteConfirm = false
-                    ruleToDelete = null
-                }) { Text("Cancel", color = WHITE) }
-            },
-            containerColor = SURFACE,
-            titleContentColor = WHITE,
-            textContentColor = WHITE,
-            shape = RectangleShape,
-            tonalElevation = 0.dp
-        )
-    }
-
-    if (showAddDialog) {
-        var newDomain by remember { mutableStateOf("") }
-        var newSelector by remember { mutableStateOf("") }
-
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("Add Rule", color = WHITE, fontSize = 18.sp) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = newDomain,
-                        onValueChange = { newDomain = it },
-                        singleLine = true,
-                        placeholder = { Text("Domain (e.g. example.com or *)", color = WHITE.copy(alpha = 0.5f)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = FIELD_BG,
-                            unfocusedContainerColor = FIELD_BG,
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            cursorColor = WHITE
-                        )
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newSelector,
-                        onValueChange = { newSelector = it },
-                        singleLine = true,
-                        placeholder = { Text("CSS Selector", color = WHITE.copy(alpha = 0.5f)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
-                        shape = RectangleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = FIELD_BG,
-                            unfocusedContainerColor = FIELD_BG,
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            cursorColor = WHITE
-                        )
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (newDomain.isNotBlank() && newSelector.isNotBlank()) {
-                            onAddRule(newDomain.trim(), newSelector.trim())
-                            showAddDialog = false
-                        }
-                    },
-                    enabled = newDomain.isNotBlank() && newSelector.isNotBlank()
-                ) {
-                    Text("Add", color = if (newDomain.isNotBlank() && newSelector.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancel", color = WHITE)
-                }
-            },
-            containerColor = SURFACE,
-            titleContentColor = WHITE,
-            textContentColor = WHITE,
-            shape = RectangleShape,
-            tonalElevation = 0.dp
-        )
-    }
-
-    Popup(
-        alignment = Alignment.TopStart,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
-    ) {
-        Surface(
-            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
-            color = SURFACE
-        ) {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, "Close", tint = WHITE)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text("Element Rules", color = WHITE, fontSize = 18.sp)
-                    if (rules.isNotEmpty()) {
-                        Spacer(Modifier.width(8.dp))
-                        Text("(${rules.size})", color = MUTED, fontSize = 14.sp)
-                    }
-                }
-
-                if (rules.isEmpty()) {
-                    Box(
-                        Modifier.weight(1f).fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No rules", color = MUTED, fontSize = 16.sp)
-                            Spacer(Modifier.height(4.dp))
-                            Text("Use Hide Element or Add Rule", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
-                        }
-                    }
-                } else {
-                    val groupedRules = rules.groupBy { it.domain }
-                    val sortedDomains = groupedRules.keys.sortedByDescending { d ->
-                        groupedRules[d]?.maxOfOrNull { it.timestamp } ?: 0L
-                    }
-
-                    LazyColumn(
-                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
-                    ) {
-                        for (domain in sortedDomains) {
-                            val domainRules = groupedRules[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                            item(key = domain) {
-                                Text(
-                                    domain,
-                                    color = MUTED,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-                                )
-                            }
-
-                            items(domainRules, key = { it.id }) { rule ->
-                                Surface(
-                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                    color = ITEM_BG
-                                ) {
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Switch(
-                                            checked = rule.enabled,
-                                            onCheckedChange = { onToggleRule(rule.id) },
-                                            modifier = Modifier.padding(end = 4.dp),
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = WHITE,
-                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
-                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
-                                                uncheckedTrackColor = Color(0xFF444444)
-                                            )
-                                        )
-                                        Text(
-                                            rule.selector,
-                                            color = if (rule.enabled) WHITE else MUTED,
-                                            fontSize = 13.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        IconButton({
-                                            ruleToDelete = rule.id
-                                            showDeleteConfirm = true
-                                        }) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                "Delete",
-                                                tint = WHITE.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Surface(
-                    Modifier.fillMaxWidth().navigationBarsPadding(),
-                    color = SURFACE
-                ) {
-                    Button(
-                        onClick = { showAddDialog = true },
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
-                    ) {
-                        Icon(Icons.Default.Add, null, tint = WHITE)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Add Rule", color = WHITE)
-                    }
-                }
-            }
-        }
-    }
-}
-//PART 14 END
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG ‌‍
