@@ -4596,4 +4596,274 @@ fun FilterImportDialog(
                     onClick = { filePickerLauncher.launch("text/plain") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG ‌‍
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                ) {
+                    Text(
+                        if (selectedFileName.isEmpty()) "Select File"
+                        else selectedFileName,
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
+                        onImport(filterName, fileContent)
+                    }
+                },
+                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
+            ) {
+                Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = WHITE)
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
+    )
+}
+//PART 13 END
+
+//PART 14 START
+@Composable
+fun ElementRulesScreen(
+    rules: List<CustomHideRule>,
+    onDismiss: () -> Unit,
+    onToggleRule: (String) -> Unit,
+    onDeleteRule: (String) -> Unit,
+    onAddRule: (String, String) -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var ruleToDelete by remember { mutableStateOf<String?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm && ruleToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false; ruleToDelete = null },
+            title = { Text("Delete Rule?", color = WHITE, fontSize = 18.sp) },
+            text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
+            confirmButton = {
+                TextButton({
+                    onDeleteRule(ruleToDelete!!)
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    if (showAddDialog) {
+        var newDomain by remember { mutableStateOf("") }
+        var newSelector by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add Rule", color = WHITE, fontSize = 18.sp) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newDomain,
+                        onValueChange = { newDomain = it },
+                        singleLine = true,
+                        placeholder = { Text("Domain (e.g. example.com or *)", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newSelector,
+                        onValueChange = { newSelector = it },
+                        singleLine = true,
+                        placeholder = { Text("CSS Selector", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newDomain.isNotBlank() && newSelector.isNotBlank()) {
+                            onAddRule(newDomain.trim(), newSelector.trim())
+                            showAddDialog = false
+                        }
+                    },
+                    enabled = newDomain.isNotBlank() && newSelector.isNotBlank()
+                ) {
+                    Text("Add", color = if (newDomain.isNotBlank() && newSelector.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = WHITE)
+                }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Element Rules", color = WHITE, fontSize = 18.sp)
+                    if (rules.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${rules.size})", color = MUTED, fontSize = 14.sp)
+                    }
+                }
+
+                if (rules.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No rules", color = MUTED, fontSize = 16.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Use Hide Element or Add Rule", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    val groupedRules = rules.groupBy { it.domain }
+                    val sortedDomains = groupedRules.keys.sortedByDescending { d ->
+                        groupedRules[d]?.maxOfOrNull { it.timestamp } ?: 0L
+                    }
+
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        for (domain in sortedDomains) {
+                            val domainRules = groupedRules[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                            item(key = domain) {
+                                Text(
+                                    domain,
+                                    color = MUTED,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            items(domainRules, key = { it.id }) { rule ->
+                                Surface(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    color = ITEM_BG
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Switch(
+                                            checked = rule.enabled,
+                                            onCheckedChange = { onToggleRule(rule.id) },
+                                            modifier = Modifier.padding(end = 4.dp),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = WHITE,
+                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                                uncheckedTrackColor = Color(0xFF444444)
+                                            )
+                                        )
+                                        Text(
+                                            rule.selector,
+                                            color = if (rule.enabled) WHITE else MUTED,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton({
+                                            ruleToDelete = rule.id
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Delete",
+                                                tint = WHITE.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Button(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Rule", color = WHITE)
+                    }
+                }
+            }
+        }
+    }
+}
+//PART 14 END
