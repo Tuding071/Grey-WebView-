@@ -1,5 +1,5 @@
 //PART 0 START
-// Grey Browser - V5.0 — Theme Specification
+// Grey Browser - V4.0 — Theme Specification
 //
 // THEME: DeepSeek-Inspired Dark — No Borders, Layer-Based Separation
 //
@@ -231,6 +231,7 @@ object FaviconMemoryCache {
             return size > MAX_MEMORY_FAVICONS
         }
     }
+
     fun get(domain: String): Bitmap? = cache[domain]
     fun put(domain: String, bitmap: Bitmap) { cache[domain] = bitmap }
     fun clear() = cache.clear()
@@ -248,7 +249,9 @@ object FaviconCache {
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
+
     private fun getMetaFile(context: Context) = File(context.filesDir, META_FILE)
+
     private fun loadMeta(context: Context): MutableList<FaviconMeta> {
         val file = getMetaFile(context)
         if (!file.exists()) return mutableListOf()
@@ -262,6 +265,7 @@ object FaviconCache {
             }
         } catch (e: Exception) { mutableListOf() }
     }
+
     private fun saveMeta(context: Context, meta: List<FaviconMeta>) {
         val array = JSONArray()
         for (item in meta) {
@@ -272,8 +276,10 @@ object FaviconCache {
         }
         getMetaFile(context).writeText(array.toString())
     }
+
     fun getFaviconFile(context: Context, domain: String) =
         File(getFaviconDir(context), domain.replace(".", "_").replace("/", "_") + ".png")
+
     fun getFaviconBitmap(context: Context, domain: String): Bitmap? {
         val file = getFaviconFile(context, domain)
         if (!file.exists()) return null
@@ -288,6 +294,7 @@ object FaviconCache {
         saveMeta(context, meta)
         return BitmapFactory.decodeFile(file.absolutePath)
     }
+
     private fun tryDownload(urlStr: String): Bitmap? {
         return try {
             val url = URL(urlStr)
@@ -295,10 +302,12 @@ object FaviconCache {
             conn.connectTimeout = 4000; conn.readTimeout = 4000; conn.connect()
             if (conn.responseCode == 200) {
                 val b = BitmapFactory.decodeStream(conn.inputStream)
-                conn.inputStream.close(); conn.disconnect(); b
+                conn.inputStream.close(); conn.disconnect()
+                b
             } else { conn.disconnect(); null }
         } catch (e: Exception) { null }
     }
+
     suspend fun downloadAndCacheFavicon(context: Context, domain: String): Bitmap? = withContext(Dispatchers.IO) {
         val sources = listOf(
             "https://www.google.com/s2/favicons?domain=$domain&sz=64",
@@ -326,41 +335,6 @@ object FaviconCache {
 //PART 2 END
 
 //PART 3 START
-data class ParsedNetworkRule(
-    val rawPattern: String,
-    val isException: Boolean = false,
-    val domainAnchor: String? = null,
-    val resourceTypes: Set<String> = emptySet(),
-    val isThirdParty: Boolean? = null,
-    val allowedDomains: List<String> = emptyList(),
-    val excludedDomains: List<String> = emptyList(),
-    val isImportant: Boolean = false,
-    val isPopup: Boolean = false
-)
-
-data class ParsedCosmeticRule(
-    val domains: List<String> = emptyList(),
-    val excludedDomains: List<String> = emptyList(),
-    val isException: Boolean = false,
-    val isExtended: Boolean = false,
-    val selector: String
-)
-
-data class ParsedScriptletRule(
-    val domains: List<String> = emptyList(),
-    val isException: Boolean = false,
-    val scriptletName: String,
-    val args: List<String> = emptyList()
-)
-
-data class ParsedFilterList(
-    val networkByDomain: Map<String, List<ParsedNetworkRule>> = emptyMap(),
-    val genericNetwork: List<ParsedNetworkRule> = emptyList(),
-    val exceptionNetwork: List<ParsedNetworkRule> = emptyList(),
-    val cosmeticRules: List<ParsedCosmeticRule> = emptyList(),
-    val scriptletRules: List<ParsedScriptletRule> = emptyList()
-)
-
 data class Bookmark(
     val id: String = UUID.randomUUID().toString(),
     val url: String,
@@ -385,19 +359,27 @@ data class Script(
 data class Filter(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val rawText: String = "",
+    val rawText: String,
+    val networkRules: List<String>,
+    val cosmeticRules: List<String>,
     val enabled: Boolean = true,
-    val networkRuleCount: Int = 0,
-    val cosmeticRuleCount: Int = 0,
-    val scriptletRuleCount: Int = 0,
-    val timestamp: Long = System.currentTimeMillis(),
-    val parsedRules: ParsedFilterList? = null
+    val networkRuleCount: Int,
+    val cosmeticRuleCount: Int,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 data class SavedTab(
     val url: String,
     val title: String,
     val thumbnailBytes: ByteArray? = null
+)
+
+data class CustomHideRule(
+    val id: String = UUID.randomUUID().toString(),
+    val domain: String,
+    val selector: String,
+    val enabled: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 class TabState {
@@ -524,8 +506,11 @@ fun loadScripts(context: Context): List<Script> {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 add(Script(
-                    o.getString("id"), o.getString("title"), o.getString("code"),
-                    o.optBoolean("enabled", true), o.getLong("timestamp")
+                    o.getString("id"),
+                    o.getString("title"),
+                    o.getString("code"),
+                    o.optBoolean("enabled", true),
+                    o.getLong("timestamp")
                 ))
             }
         }
@@ -538,162 +523,49 @@ fun saveFilters(context: Context, filters: List<Filter>) {
         val obj = JSONObject()
         obj.put("id", f.id)
         obj.put("name", f.name)
+        obj.put("rawText", f.rawText)
         obj.put("networkRuleCount", f.networkRuleCount)
         obj.put("cosmeticRuleCount", f.cosmeticRuleCount)
-        obj.put("scriptletRuleCount", f.scriptletRuleCount)
         obj.put("enabled", f.enabled)
         obj.put("timestamp", f.timestamp)
+        val networkArr = JSONArray()
+        for (r in f.networkRules) networkArr.put(r)
+        obj.put("networkRules", networkArr)
+        val cosmeticArr = JSONArray()
+        for (r in f.cosmeticRules) cosmeticArr.put(r)
+        obj.put("cosmeticRules", cosmeticArr)
         arr.put(obj)
     }
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FILTERS, arr.toString()).apply()
 }
 
-fun loadFiltersMeta(context: Context): Map<String, Triple<String, Boolean, Long>> {
-    val meta = mutableMapOf<String, Triple<String, Boolean, Long>>()
-    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        .getString(KEY_FILTERS, null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    meta[o.getString("name")] = Triple(
-                        o.getString("id"),
-                        o.optBoolean("enabled", true),
-                        o.optLong("timestamp", System.currentTimeMillis())
-                    )
-                }
-            } catch (e: Exception) {}
-        }
-    return meta
-}
-
-data class BackupData(
-    val tabs: List<SavedTab>,
-    val history: List<HistoryItem>,
-    val bookmarks: List<Bookmark>,
-    val scripts: List<Script>,
-    val lastActiveUrl: String,
-    val patternHash: String?,
-    val lockEnabled: Boolean
-)
-
-fun exportBackup(
-    context: Context,
-    tabs: List<TabState>,
-    history: List<HistoryItem>,
-    bookmarks: List<Bookmark>,
-    scripts: List<Script>,
-    lastActiveUrl: String
-) {
-    try {
-        val root = JSONObject()
-        root.put("lastActiveUrl", lastActiveUrl)
-        val tabsArray = JSONArray()
-        for (tab in tabs) {
-            if (!tab.isBlankTab) {
-                val obj = JSONObject()
-                obj.put("url", tab.url)
-                obj.put("title", tab.title)
-                obj.put("parentTabIndex", tab.parentTabIndex)
-                tab.thumbnailBytes?.let { bytes ->
-                    obj.put("thumbnail", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
-                }
-                tabsArray.put(obj)
-            }
-        }
-        root.put("tabs", tabsArray)
-        val historyArray = JSONArray()
-        for (h in history) {
-            val obj = JSONObject()
-            obj.put("url", h.url); obj.put("title", h.title); obj.put("timestamp", h.timestamp)
-            historyArray.put(obj)
-        }
-        root.put("history", historyArray)
-        val bookmarksArray = JSONArray()
-        for (b in bookmarks) {
-            val obj = JSONObject()
-            obj.put("id", b.id); obj.put("url", b.url)
-            obj.put("title", b.title); obj.put("timestamp", b.timestamp)
-            bookmarksArray.put(obj)
-        }
-        root.put("bookmarks", bookmarksArray)
-        val scriptsArray = JSONArray()
-        for (s in scripts) {
-            val obj = JSONObject()
-            obj.put("id", s.id); obj.put("title", s.title)
-            obj.put("code", s.code); obj.put("enabled", s.enabled)
-            obj.put("timestamp", s.timestamp)
-            scriptsArray.put(obj)
-        }
-        root.put("scripts", scriptsArray)
-        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
-        val patternHash = prefs.getString("pattern_hash", null)
-        val lockEnabled = prefs.getBoolean("lock_enabled", false)
-        if (patternHash != null || lockEnabled) {
-            val patternObj = JSONObject()
-            patternObj.put("hash", patternHash ?: "")
-            patternObj.put("enabled", lockEnabled)
-            root.put("patternLock", patternObj)
-        }
-        root.put("cookies", exportCookies(tabs, history, bookmarks))
-        getBackupFile().writeText(root.toString(1))
-    } catch (e: Exception) { }
-}
-
-fun importBackup(context: Context): BackupData? {
+fun loadFilters(context: Context): List<Filter> {
+    val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_FILTERS, null) ?: return emptyList()
     return try {
-        val file = getBackupFile()
-        if (!file.exists()) return null
-        val root = JSONObject(file.readText())
-        val lastActiveUrl = root.optString("lastActiveUrl", "")
-        val tabsList = mutableListOf<SavedTab>()
-        val tabsArray = root.optJSONArray("tabs")
-        if (tabsArray != null) {
-            for (i in 0 until tabsArray.length()) {
-                val obj = tabsArray.getJSONObject(i)
-                val url = obj.getString("url")
-                val title = obj.optString("title", url)
-                val thumbnailBytes: ByteArray? = if (obj.has("thumbnail") && obj.getString("thumbnail").isNotEmpty()) {
-                    try { android.util.Base64.decode(obj.getString("thumbnail"), android.util.Base64.NO_WRAP) }
-                    catch (e: Exception) { null }
-                } else null
-                tabsList.add(SavedTab(url = url, title = title, thumbnailBytes = thumbnailBytes))
-            }
-        }
-        val historyList = mutableListOf<HistoryItem>()
-        val historyArray = root.optJSONArray("history")
-        if (historyArray != null) {
-            for (i in 0 until historyArray.length()) {
-                val obj = historyArray.getJSONObject(i)
-                historyList.add(HistoryItem(obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
-            }
-        }
-        val bookmarksList = mutableListOf<Bookmark>()
-        val bookmarksArray = root.optJSONArray("bookmarks")
-        if (bookmarksArray != null) {
-            for (i in 0 until bookmarksArray.length()) {
-                val obj = bookmarksArray.getJSONObject(i)
-                bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
-            }
-        }
-        val scriptsList = mutableListOf<Script>()
-        val scriptsArray = root.optJSONArray("scripts")
-        if (scriptsArray != null) {
-            for (i in 0 until scriptsArray.length()) {
-                val obj = scriptsArray.getJSONObject(i)
-                scriptsList.add(Script(
-                    obj.getString("id"), obj.getString("title"), obj.getString("code"),
-                    obj.optBoolean("enabled", true), obj.getLong("timestamp")
+        val arr = JSONArray(json)
+        mutableListOf<Filter>().apply {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val networkArr = o.getJSONArray("networkRules")
+                val networkList = mutableListOf<String>()
+                for (j in 0 until networkArr.length()) networkList.add(networkArr.getString(j))
+                val cosmeticArr = o.getJSONArray("cosmeticRules")
+                val cosmeticList = mutableListOf<String>()
+                for (j in 0 until cosmeticArr.length()) cosmeticList.add(cosmeticArr.getString(j))
+                add(Filter(
+                    o.getString("id"),
+                    o.getString("name"),
+                    o.getString("rawText"),
+                    networkList,
+                    cosmeticList,
+                    o.optBoolean("enabled", true),
+                    o.getInt("networkRuleCount"),
+                    o.getInt("cosmeticRuleCount"),
+                    o.getLong("timestamp")
                 ))
             }
         }
-        val patternObj = root.optJSONObject("patternLock")
-        val patternHash = patternObj?.optString("hash", null)?.ifEmpty { null }
-        val lockEnabled = patternObj?.optBoolean("enabled", false) ?: false
-        val cookieJson = root.optJSONArray("cookies")
-        if (cookieJson != null) importCookies(cookieJson)
-        BackupData(tabsList, historyList, bookmarksList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { emptyList() }
 }
 //PART 3 END
 
@@ -760,489 +632,55 @@ fun shouldInjectScript(script: Script, url: String): Boolean {
     val meta = parseScriptHeader(script.code)
     val matchPatterns = meta["match"]?.split("||") ?: listOf("*://*/*")
     val excludePatterns = meta["exclude"]?.split("||") ?: emptyList()
-    for (pattern in excludePatterns) { if (urlMatchesPattern(url, pattern)) return false }
-    for (pattern in matchPatterns) { if (urlMatchesPattern(url, pattern)) return true }
+    for (pattern in excludePatterns) {
+        if (urlMatchesPattern(url, pattern)) return false
+    }
+    for (pattern in matchPatterns) {
+        if (urlMatchesPattern(url, pattern)) return true
+    }
     return false
 }
 
-// ── Ad Block Parser ──────────────────────────────────────────────────────────
-
-fun parseNetworkRule(line: String): ParsedNetworkRule? {
-    if (line.isBlank()) return null
-    var rule = line.trim()
-    val isException = rule.startsWith("@@")
-    if (isException) rule = rule.removePrefix("@@")
-    if (rule.startsWith("!") || rule.startsWith("[")) return null
-
-    val pattern: String
-    val optionsStr: String?
-    val isRegexRule = rule.startsWith("/") && rule.length > 2 &&
-        rule.lastIndexOf('/') > 0 && rule.lastIndexOf('/') != 0
-
-    if (isRegexRule) {
-        val lastSlash = rule.lastIndexOf('/')
-        pattern = rule.substring(0, lastSlash + 1)
-        optionsStr = if (lastSlash + 2 <= rule.length) rule.substring(lastSlash + 2).ifBlank { null } else null
-    } else {
-        val dollarIdx = rule.lastIndexOf('$')
-        if (dollarIdx > 0) {
-            val candidate = rule.substring(dollarIdx + 1)
-            val looksLikeOptions = candidate.isNotBlank() &&
-                candidate.all { it.isLetterOrDigit() || it in ",-_=|~+." }
-            if (looksLikeOptions) {
-                pattern = rule.substring(0, dollarIdx)
-                optionsStr = candidate
-            } else {
-                pattern = rule; optionsStr = null
-            }
-        } else {
-            pattern = rule; optionsStr = null
-        }
-    }
-
-    if (pattern.isBlank()) return null
-
-    val resourceTypes = mutableSetOf<String>()
-    var isThirdParty: Boolean? = null
-    val allowedDomains = mutableListOf<String>()
-    val excludedDomains = mutableListOf<String>()
-    var isImportant = false
-    var isPopup = false
-
-    optionsStr?.split(",")?.forEach { opt ->
-        val o = opt.trim().lowercase()
-        when {
-            o == "third-party" || o == "3p" -> isThirdParty = true
-            o == "~third-party" || o == "~3p" || o == "first-party" || o == "1p" -> isThirdParty = false
-            o == "~first-party" || o == "~1p" -> isThirdParty = true
-            o == "important" -> isImportant = true
-            o == "popup" -> isPopup = true
-            o == "script" -> resourceTypes.add("script")
-            o == "image" || o == "img" -> resourceTypes.add("image")
-            o == "stylesheet" || o == "css" -> resourceTypes.add("stylesheet")
-            o == "xmlhttprequest" || o == "xhr" -> resourceTypes.add("xhr")
-            o == "media" -> resourceTypes.add("media")
-            o == "font" -> resourceTypes.add("font")
-            o == "document" || o == "doc" -> resourceTypes.add("document")
-            o == "websocket" || o == "ws" -> resourceTypes.add("websocket")
-            o == "other" || o == "ping" || o == "beacon" -> resourceTypes.add("other")
-            o.startsWith("domain=") -> {
-                o.removePrefix("domain=").split("|").forEach { d ->
-                    val td = d.trim()
-                    if (td.startsWith("~")) excludedDomains.add(td.removePrefix("~"))
-                    else if (td.isNotBlank()) allowedDomains.add(td)
-                }
-            }
-        }
-    }
-
-    val domainAnchor: String? = if (pattern.startsWith("||")) {
-        val withoutPrefix = pattern.removePrefix("||")
-        val endIdx = withoutPrefix.indexOfFirst { it == '^' || it == '/' || it == '?' || it == '*' || it == '=' }
-        when {
-            endIdx > 0 -> withoutPrefix.substring(0, endIdx).lowercase()
-            endIdx == -1 && withoutPrefix.isNotBlank() -> withoutPrefix.lowercase()
-            else -> null
-        }
-    } else null
-
-    return ParsedNetworkRule(
-        rawPattern = pattern,
-        isException = isException,
-        domainAnchor = domainAnchor,
-        resourceTypes = resourceTypes,
-        isThirdParty = isThirdParty,
-        allowedDomains = allowedDomains,
-        excludedDomains = excludedDomains,
-        isImportant = isImportant,
-        isPopup = isPopup
-    )
-}
-
-fun parseCosmeticRule(line: String): ParsedCosmeticRule? {
-    val (separator, isException, isExtended) = when {
-        line.contains("#@?#") -> Triple("#@?#", true, true)
-        line.contains("#@#")  -> Triple("#@#",  true, false)
-        line.contains("#?#")  -> Triple("#?#",  false, true)
-        line.contains("##")   -> Triple("##",   false, false)
-        else -> return null
-    }
-    val idx = line.indexOf(separator)
-    val domainPart = line.substring(0, idx).trim()
-    val selector = line.substring(idx + separator.length).trim()
-    if (selector.isBlank() || selector.startsWith("^")) return null
-
-    val domains = mutableListOf<String>()
-    val excludedDomains = mutableListOf<String>()
-    if (domainPart.isNotBlank()) {
-        domainPart.split(",").forEach { d ->
-            val t = d.trim()
-            if (t.startsWith("~")) excludedDomains.add(t.removePrefix("~").lowercase())
-            else if (t.isNotBlank()) domains.add(t.lowercase())
-        }
-    }
-    return ParsedCosmeticRule(domains, excludedDomains, isException, isExtended, selector)
-}
-
-fun parseScriptletRule(line: String): ParsedScriptletRule? {
-    val isException = line.contains("#@#+js(")
-    val separator = if (isException) "#@#+js(" else "##+js("
-    val sepIdx = line.indexOf(separator)
-    if (sepIdx < 0) return null
-
-    val domainPart = line.substring(0, sepIdx).trim()
-    val rest = line.substring(sepIdx + separator.length)
-    val content = if (rest.endsWith(")")) rest.dropLast(1) else rest
-    if (content.isBlank()) return null
-
-    val domains = mutableListOf<String>()
-    val excludedDomains = mutableListOf<String>()
-    if (domainPart.isNotBlank()) {
-        domainPart.split(",").forEach { d ->
-            val t = d.trim()
-            if (t.startsWith("~")) excludedDomains.add(t.removePrefix("~").lowercase())
-            else if (t.isNotBlank()) domains.add(t.lowercase())
-        }
-    }
-
-    val commaIdx = content.indexOf(',')
-    val scriptletName: String
-    val args = mutableListOf<String>()
-    if (commaIdx >= 0) {
-        scriptletName = content.substring(0, commaIdx).trim()
-        val argsStr = content.substring(commaIdx + 1).trim()
-        val current = StringBuilder()
-        var inQuote = false; var quoteChar = ' '
-        for (ch in argsStr) {
-            when {
-                !inQuote && (ch == '\'' || ch == '"') -> { inQuote = true; quoteChar = ch }
-                inQuote && ch == quoteChar -> inQuote = false
-                !inQuote && ch == ',' -> {
-                    val a = current.toString().trim()
-                    if (a.isNotEmpty()) args.add(a)
-                    current.clear()
-                }
-                else -> current.append(ch)
-            }
-        }
-        val last = current.toString().trim()
-        if (last.isNotEmpty()) args.add(last)
-    } else {
-        scriptletName = content.trim()
-    }
-
-    if (scriptletName.isBlank()) return null
-    val cleanName = scriptletName
-        .removePrefix("ublock-").removePrefix("ubo-")
-        .removePrefix("ublockorigin-")
-    return ParsedScriptletRule(domains, isException, cleanName, args)
-}
-
-fun parseFilterList(rawText: String): ParsedFilterList {
-    val networkRules = mutableListOf<ParsedNetworkRule>()
-    val cosmeticRules = mutableListOf<ParsedCosmeticRule>()
-    val scriptletRules = mutableListOf<ParsedScriptletRule>()
-
+fun parseFilterRules(rawText: String): Pair<List<String>, List<String>> {
+    val networkRules = mutableListOf<String>()
+    val cosmeticRules = mutableListOf<String>()
     for (line in rawText.lines()) {
-        val t = line.trim()
-        if (t.isEmpty() || t.startsWith("!") || t.startsWith("[")) continue
-        when {
-            t.contains("##+js(") || t.contains("#@#+js(") ->
-                parseScriptletRule(t)?.let { scriptletRules.add(it) }
-            t.contains("##^") || t.contains("#@#^") -> Unit // HTML filter, skip
-            t.contains("#@?#") || t.contains("#?#") || t.contains("#@#") || t.contains("##") ->
-                parseCosmeticRule(t)?.let { cosmeticRules.add(it) }
-            else -> parseNetworkRule(t)?.let { networkRules.add(it) }
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("[")) continue
+        if (trimmed.startsWith("##") || trimmed.startsWith("#@#") || trimmed.startsWith("##+js")) {
+            cosmeticRules.add(trimmed)
+        } else {
+            networkRules.add(trimmed)
         }
     }
-
-    val byDomain = mutableMapOf<String, MutableList<ParsedNetworkRule>>()
-    val generic = mutableListOf<ParsedNetworkRule>()
-    val exceptions = mutableListOf<ParsedNetworkRule>()
-
-    for (rule in networkRules) {
-        when {
-            rule.isException -> exceptions.add(rule)
-            rule.domainAnchor != null -> byDomain.getOrPut(rule.domainAnchor) { mutableListOf() }.add(rule)
-            else -> generic.add(rule)
-        }
-    }
-
-    return ParsedFilterList(byDomain, generic, exceptions, cosmeticRules, scriptletRules)
+    return Pair(networkRules, cosmeticRules)
 }
 
-// ── Network Matching ─────────────────────────────────────────────────────────
-
-fun matchWildcard(pattern: String, url: String): Boolean {
-    if (pattern.isEmpty()) return false
-    if (!pattern.contains('*') && !pattern.contains('^')) {
-        return url.contains(pattern, ignoreCase = true)
+fun matchesAdBlockRule(url: String, host: String, rule: String): Boolean {
+    val trimmed = rule.trim()
+    if (trimmed.isEmpty()) return false
+    if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
+        val domain = trimmed.removePrefix("||").removeSuffix("^")
+        val cleanDomain = domain.substringBefore('$')
+        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
+        return false
     }
-    return try {
-        val regex = buildString {
-            for (ch in pattern) when (ch) {
-                '*'  -> append(".*")
-                '^'  -> append("(?:[/?&#]|\$)")
-                '.'  -> append("\\.")
-                '?'  -> append("\\?")
-                '['  -> append("\\[")
-                ']'  -> append("\\]")
-                '('  -> append("\\(")
-                ')'  -> append("\\)")
-                '+'  -> append("\\+")
-                else -> append(ch)
-            }
-        }
-        Regex(regex, RegexOption.IGNORE_CASE).containsMatchIn(url)
-    } catch (e: Exception) {
-        url.contains(pattern.replace("*", "").replace("^", ""), ignoreCase = true)
+    if (trimmed.startsWith("||")) {
+        val domain = trimmed.removePrefix("||")
+        val cleanDomain = domain.substringBefore('$')
+        if (host == cleanDomain || host.endsWith(".$cleanDomain")) return true
+        return false
     }
-}
-
-fun matchesNetworkPattern(pattern: String, url: String): Boolean {
-    if (pattern.isBlank()) return false
-    if (pattern.length > 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
-        return try { Regex(pattern.drop(1).dropLast(1), RegexOption.IGNORE_CASE).containsMatchIn(url) }
-        catch (e: Exception) { false }
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        val exact = trimmed.removePrefix("|").removeSuffix("|")
+        return url == exact
     }
-    val clean = pattern.substringBefore('$')
-    if (clean.startsWith("|") && clean.endsWith("|") && !clean.startsWith("||")) {
-        return url.equals(clean.drop(1).dropLast(1), ignoreCase = true)
+    if (trimmed.startsWith("/") && trimmed.endsWith("/")) {
+        return url.contains(trimmed.removePrefix("/").removeSuffix("/"))
     }
-    if (clean.startsWith("||")) return matchWildcard(clean.removePrefix("||"), url)
-    if (clean.startsWith("|"))  return url.startsWith(clean.removePrefix("|").replace("^",""), ignoreCase = true)
-    return matchWildcard(clean, url)
-}
-
-fun ruleMatchesRequest(
-    rule: ParsedNetworkRule,
-    url: String,
-    host: String,
-    pageHost: String,
-    resourceType: String
-): Boolean {
-    if (rule.resourceTypes.isNotEmpty() &&
-        !rule.resourceTypes.contains(resourceType) &&
-        !rule.resourceTypes.contains("other")) return false
-    if (rule.isThirdParty != null) {
-        val isTP = host != pageHost && !host.endsWith(".$pageHost") && !pageHost.endsWith(".$host")
-        if (rule.isThirdParty != isTP) return false
-    }
-    if (rule.allowedDomains.isNotEmpty() &&
-        !rule.allowedDomains.any { d -> pageHost == d || pageHost.endsWith(".$d") }) return false
-    if (rule.excludedDomains.any { d -> pageHost == d || pageHost.endsWith(".$d") }) return false
-    return matchesNetworkPattern(rule.rawPattern, url)
-}
-
-fun checkNetworkBlocking(
-    filters: List<Filter>,
-    url: String,
-    host: String,
-    pageHost: String,
-    resourceType: String
-): Boolean {
-    // Exceptions first
-    for (filter in filters) {
-        if (!filter.enabled) continue
-        val parsed = filter.parsedRules ?: continue
-        for (rule in parsed.exceptionNetwork) {
-            if (ruleMatchesRequest(rule, url, host, pageHost, resourceType)) return false
-        }
-    }
-    // Blocking rules
-    for (filter in filters) {
-        if (!filter.enabled) continue
-        val parsed = filter.parsedRules ?: continue
-        // Domain-bucketed lookup
-        val hostParts = host.split(".")
-        for (i in 0..hostParts.size - 2) {
-            val domain = hostParts.drop(i).joinToString(".")
-            val domainRules = parsed.networkByDomain[domain] ?: continue
-            for (rule in domainRules) {
-                if (ruleMatchesRequest(rule, url, host, pageHost, resourceType)) return true
-            }
-        }
-        // Generic rules
-        for (rule in parsed.genericNetwork) {
-            if (ruleMatchesRequest(rule, url, host, pageHost, resourceType)) return true
-        }
-    }
+    if (url.contains(trimmed)) return true
     return false
 }
-
-fun getResourceType(request: android.webkit.WebResourceRequest): String {
-    val url = request.url.toString().lowercase()
-    val path = request.url.path?.lowercase() ?: ""
-    val accept = request.requestHeaders?.get("Accept") ?: ""
-    val xrw = request.requestHeaders?.get("X-Requested-With") ?: ""
-    val sec = request.requestHeaders?.get("Sec-Fetch-Dest")?.lowercase() ?: ""
-    if (sec.isNotEmpty()) return when (sec) {
-        "script" -> "script"
-        "style"  -> "stylesheet"
-        "image", "img" -> "image"
-        "media", "video", "audio" -> "media"
-        "font"   -> "font"
-        "empty", "fetch" -> "xhr"
-        "document", "iframe", "frame" -> "document"
-        else -> "other"
-    }
-    if (xrw.isNotEmpty()) return "xhr"
-    return when {
-        accept.contains("text/css") -> "stylesheet"
-        accept.contains("text/javascript") || accept.contains("application/javascript") -> "script"
-        accept.contains("image/") -> "image"
-        path.endsWith(".js") || path.contains(".js?") -> "script"
-        path.endsWith(".css") || path.contains(".css?") -> "stylesheet"
-        Regex(""".*\.(png|jpg|jpeg|gif|webp|svg|ico)(\?.*)?$""").matches(path) -> "image"
-        Regex(""".*\.(mp4|webm|ogg|mp3|wav|m3u8|ts)(\?.*)?$""").matches(path) -> "media"
-        Regex(""".*\.(woff2?|ttf|eot|otf)(\?.*)?$""").matches(path) -> "font"
-        else -> "other"
-    }
-}
-
-// ── Scriptlet Library ─────────────────────────────────────────────────────────
-
-fun buildScriptletJS(name: String, args: List<String>): String? {
-    fun e(s: String) = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "")
-    val a0 = e(args.getOrElse(0) { "" })
-    val a1 = e(args.getOrElse(1) { "" })
-    val a2 = e(args.getOrElse(2) { "" })
-    val n = name.trim().lowercase().replace("-","").replace("_","").replace(".","")
-    return when (n) {
-        "abortonpropertyread","aopr" -> """
-(function(){try{var p='$a0';if(!p)return;var pts=p.split('.');var o=window;
-for(var i=0;i<pts.length-1;i++){o=o[pts[i]];if(!o)return;}
-Object.defineProperty(o,pts[pts.length-1],{get:function(){throw new ReferenceError(p);},set:function(){},configurable:false});}catch(e){}})();""".trimIndent()
-
-        "abortonpropertywrites","aopw" -> """
-(function(){try{var p='$a0';if(!p)return;var pts=p.split('.');var o=window;
-for(var i=0;i<pts.length-1;i++){o=o[pts[i]];if(!o)return;}
-var orig=o[pts[pts.length-1]];
-Object.defineProperty(o,pts[pts.length-1],{get:function(){return orig;},set:function(v){throw new ReferenceError(p);},configurable:false});}catch(e){}})();""".trimIndent()
-
-        "abortcurrentinlinescript","acis" -> """
-(function(){try{var p='$a0',s='$a1';if(!p)return;var pts=p.split('.');var o=window;
-for(var i=0;i<pts.length-1;i++){o=o[pts[i]];if(!o)return;}
-var last=pts[pts.length-1];var orig=o[last];
-Object.defineProperty(o,last,{get:function(){var cs=document.currentScript;
-if(cs&&(!s||cs.textContent.includes(s))){throw new ReferenceError(p);}return orig;},
-set:function(v){orig=v;},configurable:false});}catch(e){}})();""".trimIndent()
-
-        "setconstant","sc" -> """
-(function(){try{var p='$a0',v='$a1';if(!p)return;
-var cv=v==='true'?true:v==='false'?false:v==='null'?null:v==='undefined'?undefined:v==='NaN'?NaN:isNaN(v)?v:Number(v);
-var pts=p.split('.');var o=window;
-for(var i=0;i<pts.length-1;i++){if(!o[pts[i]])o[pts[i]]={};o=o[pts[i]];}
-Object.defineProperty(o,pts[pts.length-1],{get:function(){return cv;},set:function(){},configurable:false});}catch(e){}})();""".trimIndent()
-
-        "nosettimeoutif","nostif","nosetintervalif","nosiif" -> {
-            val fn = if (n.contains("interval")) "setInterval" else "setTimeout"
-            """
-(function(){var m='$a0',d='$a1';var orig=window.$fn;
-window.$fn=function(fn,delay){try{if(typeof fn==='function'&&(!m||fn.toString().includes(m))&&(!d||String(delay)===d))return 0;}catch(e){}
-return orig.apply(this,arguments);};})(};""".trimIndent().replace("}(};","})();")
-        }
-
-        "removeclass","rc" -> """
-(function(){var cls='$a0',sel='$a1'||'[class]';if(!cls)return;var cl=cls.split('|');
-function rc(){document.querySelectorAll(sel).forEach(function(el){cl.forEach(function(c){el.classList.remove(c);});});}
-rc();new MutationObserver(rc).observe(document.documentElement,{childList:true,subtree:true,attributes:true});})();""".trimIndent()
-
-        "preventfetch","nofetchif","nofetch" -> """
-(function(){var m='$a0';var orig=window.fetch;if(!orig)return;
-window.fetch=function(){var url=arguments[0]instanceof Request?arguments[0].url:String(arguments[0]);
-if(!m||url.includes(m))return Promise.resolve(new Response('',{status:200,headers:{'Content-Type':'text/plain'}}));
-return orig.apply(this,arguments);};})();""".trimIndent()
-
-        "disablenewtablinks","disablenewtab" -> """
-(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');
-if(a&&(a.target==="_blank"||a.getAttribute("rel")==="noopener")){a.removeAttribute("target");a.removeAttribute("rel");}},true);})();""".trimIndent()
-
-        "setattr" -> """
-(function(){var sel='$a0',attr='$a1',val='$a2';if(!sel||!attr)return;
-function sa(){document.querySelectorAll(sel).forEach(function(el){el.setAttribute(attr,val);});}
-sa();new MutationObserver(sa).observe(document.documentElement,{childList:true,subtree:true});})();""".trimIndent()
-
-        "jsonprune" -> """
-(function(){var path='$a0';if(!path)return;var op=JSON.parse;
-JSON.parse=function(){var r=op.apply(this,arguments);
-try{var pts=path.split('.');var o=r;for(var i=0;i<pts.length-1;i++){o=o[pts[i]];if(!o)return r;}delete o[pts[pts.length-1]];}catch(e){}return r;};})();""".trimIndent()
-
-        "noopfunc","nooopfunc","noop","noopjs" -> "(function(){})()"
-
-        "truefunc" -> "(function(){return true;})()"
-
-        "preventwindowopen","nowindowopen" -> """
-(function(){window.open=function(){return null;};})();""".trimIndent()
-
-        else -> null
-    }
-}
-
-// ── Cosmetic & Scriptlet Injection Builders ───────────────────────────────────
-
-fun buildCosmeticJS(filters: List<Filter>, pageHost: String): String {
-    val normal = mutableSetOf<String>()
-    val extended = mutableSetOf<String>()
-    val exceptions = mutableSetOf<String>()
-
-    for (filter in filters) {
-        if (!filter.enabled) continue
-        val parsed = filter.parsedRules ?: continue
-        for (rule in parsed.cosmeticRules) {
-            val applies = rule.domains.isEmpty() ||
-                rule.domains.any { d -> pageHost == d || pageHost.endsWith(".$d") }
-            val excluded = rule.excludedDomains.any { d -> pageHost == d || pageHost.endsWith(".$d") }
-            if (!applies || excluded) continue
-            when {
-                rule.isException -> exceptions.add(rule.selector)
-                rule.isExtended  -> extended.add(rule.selector)
-                else             -> normal.add(rule.selector)
-            }
-        }
-    }
-
-    normal.removeAll(exceptions)
-    extended.removeAll(exceptions)
-    if (normal.isEmpty() && extended.isEmpty()) return ""
-
-    val sb = StringBuilder("(function(){")
-
-    if (normal.isNotEmpty()) {
-        val css = normal.joinToString(",") + "{display:none!important;visibility:hidden!important;}"
-        val b64 = Base64.encodeToString(css.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        sb.append("try{var s=document.createElement('style');s.textContent=atob('$b64');(document.head||document.documentElement).appendChild(s);}catch(e){}")
-    }
-
-    if (extended.isNotEmpty()) {
-        val json = JSONArray().also { arr -> extended.forEach { arr.put(it) } }.toString()
-        sb.append("try{var extSels=$json;function gHideExt(){extSels.forEach(function(sel){try{document.querySelectorAll(sel).forEach(function(el){el.style.setProperty('display','none','important');});}catch(e){}});}gHideExt();new MutationObserver(function(){clearTimeout(window.__GREY_ET__);window.__GREY_ET__=setTimeout(gHideExt,300);}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}")
-    }
-
-    sb.append("})()")
-    return sb.toString()
-}
-
-fun buildScriptletsJS(filters: List<Filter>, pageHost: String): String {
-    val sb = StringBuilder()
-    var hasAny = false
-    for (filter in filters) {
-        if (!filter.enabled) continue
-        val parsed = filter.parsedRules ?: continue
-        for (rule in parsed.scriptletRules) {
-            if (rule.isException) continue
-            val applies = rule.domains.isEmpty() ||
-                rule.domains.any { d -> pageHost == d || pageHost.endsWith(".$d") }
-            if (!applies) continue
-            val js = buildScriptletJS(rule.scriptletName, rule.args) ?: continue
-            sb.appendLine("try{$js}catch(__e__){}")
-            hasAny = true
-        }
-    }
-    return if (hasAny) "(function(){\n$sb})()" else ""
-}
-
-// ── Filter File Storage ───────────────────────────────────────────────────────
 
 fun getFiltersDir(): File {
     val dir = File(getBackupDir(), FILTERS_DIR)
@@ -1251,41 +689,32 @@ fun getFiltersDir(): File {
 }
 
 fun saveFilterToFile(name: String, rawText: String) {
-    try { File(getFiltersDir(), "$name.txt").writeText(rawText) } catch (e: Exception) { }
+    try {
+        val file = File(getFiltersDir(), "$name.txt")
+        file.writeText(rawText)
+    } catch (e: Exception) { }
 }
 
-fun loadFiltersFromDirectory(context: Context? = null): List<Filter> {
+fun loadFiltersFromDirectory(): List<Filter> {
     return try {
         val dir = getFiltersDir()
         if (!dir.exists()) return emptyList()
-        val meta = context?.let { loadFiltersMeta(it) } ?: emptyMap()
-        val result = mutableListOf<Filter>()
-        dir.listFiles()?.filter { it.extension == "txt" }?.sortedBy { it.name }?.forEach { file ->
-            try {
-                val name = file.nameWithoutExtension
-                val rawText = file.readText()
-                val parsed = parseFilterList(rawText)
-                val netCount = parsed.networkByDomain.values.sumOf { it.size } +
-                    parsed.genericNetwork.size + parsed.exceptionNetwork.size
-                val savedMeta = meta[name]
-                result.add(Filter(
-                    id = savedMeta?.first ?: UUID.randomUUID().toString(),
-                    name = name,
-                    rawText = rawText,
-                    enabled = savedMeta?.second ?: true,
-                    networkRuleCount = netCount,
-                    cosmeticRuleCount = parsed.cosmeticRules.size,
-                    scriptletRuleCount = parsed.scriptletRules.size,
-                    timestamp = savedMeta?.third ?: System.currentTimeMillis(),
-                    parsedRules = parsed
-                ))
-            } catch (e: Exception) { }
+        val filters = mutableListOf<Filter>()
+        dir.listFiles()?.filter { it.extension == "txt" }?.forEach { file ->
+            val rawText = file.readText()
+            val (network, cosmetic) = parseFilterRules(rawText)
+            filters.add(Filter(
+                name = file.nameWithoutExtension,
+                rawText = rawText,
+                networkRules = network,
+                cosmeticRules = cosmetic,
+                networkRuleCount = network.size,
+                cosmeticRuleCount = cosmetic.size
+            ))
         }
-        result
+        filters
     } catch (e: Exception) { emptyList() }
 }
-
-// ── Other Utilities ───────────────────────────────────────────────────────────
 
 fun captureThumbnail(webView: WebView): ByteArray? {
     return try {
@@ -1319,10 +748,19 @@ fun getBackupFile(): File = File(getBackupDir(), BACKUP_FILE)
 fun collectAllDomains(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: List<Bookmark>): Set<String> {
     val domains = mutableSetOf<String>()
     for (tab in tabs) {
-        if (!tab.isBlankTab) { try { Uri.parse(tab.url).host?.let { domains.add(it) } } catch (e: Exception) {} }
+        if (!tab.isBlankTab) {
+            val host = try { Uri.parse(tab.url).host } catch (e: Exception) { null }
+            if (host != null) domains.add(host)
+        }
     }
-    for (item in history) { try { Uri.parse(item.url).host?.let { domains.add(it) } } catch (e: Exception) {} }
-    for (bookmark in bookmarks) { try { Uri.parse(bookmark.url).host?.let { domains.add(it) } } catch (e: Exception) {} }
+    for (item in history) {
+        val host = try { Uri.parse(item.url).host } catch (e: Exception) { null }
+        if (host != null) domains.add(host)
+    }
+    for (bookmark in bookmarks) {
+        val host = try { Uri.parse(bookmark.url).host } catch (e: Exception) { null }
+        if (host != null) domains.add(host)
+    }
     return domains
 }
 
@@ -1330,11 +768,13 @@ fun exportCookies(tabs: List<TabState>, history: List<HistoryItem>, bookmarks: L
     val cookieJson = JSONArray()
     try {
         val cookieManager = android.webkit.CookieManager.getInstance()
-        for (domain in collectAllDomains(tabs, history, bookmarks)) {
+        val domains = collectAllDomains(tabs, history, bookmarks)
+        for (domain in domains) {
             val cookies = cookieManager.getCookie("https://$domain")
             if (cookies != null && cookies.isNotEmpty()) {
                 val obj = JSONObject()
-                obj.put("domain", domain); obj.put("cookies", cookies)
+                obj.put("domain", domain)
+                obj.put("cookies", cookies)
                 cookieJson.put(obj)
             }
         }
@@ -1351,11 +791,180 @@ fun importCookies(cookieJson: JSONArray) {
             val cookieStr = obj.getString("cookies")
             cookieStr.split(";").forEach { cookie ->
                 val trimmed = cookie.trim()
-                if (trimmed.isNotEmpty()) cookieManager.setCookie("https://$domain", trimmed)
+                if (trimmed.isNotEmpty()) {
+                    cookieManager.setCookie("https://$domain", trimmed)
+                }
             }
         }
         cookieManager.flush()
     } catch (e: Exception) { }
+}
+
+fun exportBackup(
+    context: Context,
+    tabs: List<TabState>,
+    history: List<HistoryItem>,
+    bookmarks: List<Bookmark>,
+    customFilters: List<CustomHideRule>,
+    scripts: List<Script>,
+    lastActiveUrl: String
+) {
+    try {
+        val root = JSONObject()
+        root.put("lastActiveUrl", lastActiveUrl)
+        val tabsArray = JSONArray()
+        for (tab in tabs) {
+            if (!tab.isBlankTab) {
+                val obj = JSONObject()
+                obj.put("url", tab.url)
+                obj.put("title", tab.title)
+                obj.put("parentTabIndex", tab.parentTabIndex)
+                tab.thumbnailBytes?.let { bytes ->
+                    obj.put("thumbnail", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                }
+                tabsArray.put(obj)
+            }
+        }
+        root.put("tabs", tabsArray)
+        val historyArray = JSONArray()
+        for (h in history) {
+            val obj = JSONObject()
+            obj.put("url", h.url)
+            obj.put("title", h.title)
+            obj.put("timestamp", h.timestamp)
+            historyArray.put(obj)
+        }
+        root.put("history", historyArray)
+        val bookmarksArray = JSONArray()
+        for (b in bookmarks) {
+            val obj = JSONObject()
+            obj.put("id", b.id)
+            obj.put("url", b.url)
+            obj.put("title", b.title)
+            obj.put("timestamp", b.timestamp)
+            bookmarksArray.put(obj)
+        }
+        root.put("bookmarks", bookmarksArray)
+        val customFiltersArray = JSONArray()
+        for (cf in customFilters) {
+            val obj = JSONObject()
+            obj.put("id", cf.id)
+            obj.put("domain", cf.domain)
+            obj.put("selector", cf.selector)
+            obj.put("enabled", cf.enabled)
+            obj.put("timestamp", cf.timestamp)
+            customFiltersArray.put(obj)
+        }
+        root.put("customFilters", customFiltersArray)
+        val scriptsArray = JSONArray()
+        for (s in scripts) {
+            val obj = JSONObject()
+            obj.put("id", s.id)
+            obj.put("title", s.title)
+            obj.put("code", s.code)
+            obj.put("enabled", s.enabled)
+            obj.put("timestamp", s.timestamp)
+            scriptsArray.put(obj)
+        }
+        root.put("scripts", scriptsArray)
+        val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
+        val patternHash = prefs.getString("pattern_hash", null)
+        val lockEnabled = prefs.getBoolean("lock_enabled", false)
+        if (patternHash != null || lockEnabled) {
+            val patternObj = JSONObject()
+            patternObj.put("hash", patternHash ?: "")
+            patternObj.put("enabled", lockEnabled)
+            root.put("patternLock", patternObj)
+        }
+        root.put("cookies", exportCookies(tabs, history, bookmarks))
+        getBackupFile().writeText(root.toString(1))
+    } catch (e: Exception) { }
+}
+
+data class BackupData(
+    val tabs: List<SavedTab>,
+    val history: List<HistoryItem>,
+    val bookmarks: List<Bookmark>,
+    val customFilters: List<CustomHideRule>,
+    val scripts: List<Script>,
+    val lastActiveUrl: String,
+    val patternHash: String?,
+    val lockEnabled: Boolean
+)
+
+fun importBackup(context: Context): BackupData? {
+    return try {
+        val file = getBackupFile()
+        if (!file.exists()) return null
+        val root = JSONObject(file.readText())
+        val lastActiveUrl = root.optString("lastActiveUrl", "")
+        val tabsList = mutableListOf<SavedTab>()
+        val tabsArray = root.optJSONArray("tabs")
+        if (tabsArray != null) {
+            for (i in 0 until tabsArray.length()) {
+                val obj = tabsArray.getJSONObject(i)
+                val url = obj.getString("url")
+                val title = obj.optString("title", url)
+                val thumbnailBytes: ByteArray? = if (obj.has("thumbnail") && obj.getString("thumbnail").isNotEmpty()) {
+                    try { android.util.Base64.decode(obj.getString("thumbnail"), android.util.Base64.NO_WRAP) }
+                    catch (e: Exception) { null }
+                } else null
+                tabsList.add(SavedTab(url = url, title = title, thumbnailBytes = thumbnailBytes))
+            }
+        }
+        val historyList = mutableListOf<HistoryItem>()
+        val historyArray = root.optJSONArray("history")
+        if (historyArray != null) {
+            for (i in 0 until historyArray.length()) {
+                val obj = historyArray.getJSONObject(i)
+                historyList.add(HistoryItem(obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
+            }
+        }
+        val bookmarksList = mutableListOf<Bookmark>()
+        val bookmarksArray = root.optJSONArray("bookmarks")
+        if (bookmarksArray != null) {
+            for (i in 0 until bookmarksArray.length()) {
+                val obj = bookmarksArray.getJSONObject(i)
+                bookmarksList.add(Bookmark(obj.getString("id"), obj.getString("url"), obj.getString("title"), obj.getLong("timestamp")))
+            }
+        }
+        val customFiltersList = mutableListOf<CustomHideRule>()
+        val customFiltersArray = root.optJSONArray("customFilters")
+        if (customFiltersArray != null) {
+            for (i in 0 until customFiltersArray.length()) {
+                val obj = customFiltersArray.getJSONObject(i)
+                customFiltersList.add(CustomHideRule(
+                    id = obj.optString("id", UUID.randomUUID().toString()),
+                    domain = obj.getString("domain"),
+                    selector = obj.getString("selector"),
+                    enabled = obj.optBoolean("enabled", true),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                ))
+            }
+        }
+        val scriptsList = mutableListOf<Script>()
+        val scriptsArray = root.optJSONArray("scripts")
+        if (scriptsArray != null) {
+            for (i in 0 until scriptsArray.length()) {
+                val obj = scriptsArray.getJSONObject(i)
+                scriptsList.add(Script(
+                    obj.getString("id"),
+                    obj.getString("title"),
+                    obj.getString("code"),
+                    obj.optBoolean("enabled", true),
+                    obj.getLong("timestamp")
+                ))
+            }
+        }
+        val patternObj = root.optJSONObject("patternLock")
+        val patternHash = patternObj?.optString("hash", null)?.ifEmpty { null }
+        val lockEnabled = patternObj?.optBoolean("enabled", false) ?: false
+        val cookieJson = root.optJSONArray("cookies")
+        if (cookieJson != null) {
+            importCookies(cookieJson)
+        }
+        BackupData(tabsList, historyList, bookmarksList, customFiltersList, scriptsList, lastActiveUrl, patternHash, lockEnabled)
+    } catch (e: Exception) { null }
 }
 //PART 4 END
 
@@ -1383,7 +992,7 @@ fun GreyBrowser() {
     var showScriptEditor by remember { mutableStateOf(false) }
     var editingScript by remember { mutableStateOf<Script?>(null) }
 
-    val filters = remember { mutableStateListOf<Filter>() }
+    val filters = remember { mutableStateListOf<Filter>().apply { addAll(loadFilters(context)) } }
     var showFilters by remember { mutableStateOf(false) }
     var filtersEnabled by remember {
         mutableStateOf(
@@ -1393,21 +1002,35 @@ fun GreyBrowser() {
     }
     var totalBlocked by remember { mutableIntStateOf(0) }
 
+    val customHideRules = remember { mutableStateListOf<CustomHideRule>() }
+    var showElementHider by remember { mutableStateOf(false) }
+    var showElementRules by remember { mutableStateOf(false) }
+
     val thumbnailBitmapCache = remember { mutableStateMapOf<Int, Bitmap?>() }
 
     var toastMessage by remember { mutableStateOf("") }
     var showToast by remember { mutableStateOf(false) }
 
-    fun showToast(msg: String) { toastMessage = msg; showToast = true }
+    fun showToast(msg: String) {
+        toastMessage = msg
+        showToast = true
+    }
 
     val baseWebView = remember {
         WebView(context).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#121212"))
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             with(settings) {
-                javaScriptEnabled = true; domStorageEnabled = true
-                loadWithOverviewMode = true; useWideViewPort = true
-                builtInZoomControls = true; displayZoomControls = false; setSupportZoom(true)
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                builtInZoomControls = true
+                displayZoomControls = false
+                setSupportZoom(true)
             }
             loadUrl("about:blank")
         }
@@ -1415,7 +1038,10 @@ fun GreyBrowser() {
 
     val webViewContainer = remember {
         android.widget.FrameLayout(context).apply {
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setBackgroundColor(android.graphics.Color.parseColor("#121212"))
         }
     }
@@ -1467,9 +1093,18 @@ fun GreyBrowser() {
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(showLoadingScreen) {
-        while (showLoadingScreen) { delay(200); loadingLetterIndex = (loadingLetterIndex + 1) % 4 }
+        while (showLoadingScreen) {
+            delay(200)
+            loadingLetterIndex = (loadingLetterIndex + 1) % 4
+        }
     }
-    LaunchedEffect(backupLoaded) { if (backupLoaded) { delay(300); showLoadingScreen = false } }
+
+    LaunchedEffect(backupLoaded) {
+        if (backupLoaded) {
+            delay(300)
+            showLoadingScreen = false
+        }
+    }
 
     LaunchedEffect(Unit) {
         var permissionRequested = false
@@ -1486,23 +1121,35 @@ fun GreyBrowser() {
                     context.startActivity(intent)
                     permissionRequested = true
                 }
-                delay(500); continue
+                delay(500)
+                continue
             }
             val backup = importBackup(context)
             if (backup != null) {
                 tabs.clear()
                 for (savedTab in backup.tabs) {
                     tabs.add(TabState().apply {
-                        this.url = savedTab.url; this.title = savedTab.title
+                        this.url = savedTab.url
+                        this.title = savedTab.title
                         this.thumbnailBytes = savedTab.thumbnailBytes
-                        isBlankTab = false; isDiscarded = true; webView = null
+                        isBlankTab = false
+                        isDiscarded = true
+                        webView = null
                     })
                 }
-                history.clear(); history.addAll(backup.history)
-                bookmarks.clear(); bookmarks.addAll(backup.bookmarks)
-                scripts.clear(); scripts.addAll(backup.scripts)
-                val dirFilters = withContext(Dispatchers.IO) { loadFiltersFromDirectory(context) }
-                if (dirFilters.isNotEmpty()) { filters.clear(); filters.addAll(dirFilters) }
+                history.clear()
+                history.addAll(backup.history)
+                bookmarks.clear()
+                bookmarks.addAll(backup.bookmarks)
+                scripts.clear()
+                scripts.addAll(backup.scripts)
+                customHideRules.clear()
+                customHideRules.addAll(backup.customFilters)
+                val dirFilters = loadFiltersFromDirectory()
+                if (dirFilters.isNotEmpty()) {
+                    filters.clear()
+                    filters.addAll(dirFilters)
+                }
                 currentTabIndex = -1
                 val backupLastUrl = backup.lastActiveUrl
                 highlightedTabIndex = tabs.indexOfFirst {
@@ -1514,14 +1161,19 @@ fun GreyBrowser() {
                     patternPrefs.edit().putString("pattern_hash", backup.patternHash).apply()
                     patternPrefs.edit().putBoolean("lock_enabled", backup.lockEnabled).apply()
                 }
-                saveBookmarks(context, bookmarks); saveHistory(context, history)
-                saveScripts(context, scripts); saveFilters(context, filters)
+                saveBookmarks(context, bookmarks)
+                saveHistory(context, history)
+                saveScripts(context, scripts)
+                saveFilters(context, filters)
                 saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
             } else {
-                val dirFilters = withContext(Dispatchers.IO) { loadFiltersFromDirectory(context) }
-                if (dirFilters.isNotEmpty()) { filters.clear(); filters.addAll(dirFilters) }
+                val dirFilters = loadFiltersFromDirectory()
+                if (dirFilters.isNotEmpty()) {
+                    filters.clear()
+                    filters.addAll(dirFilters)
+                }
                 withContext(Dispatchers.IO) {
-                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
                 }
             }
             backupLoaded = true
@@ -1532,7 +1184,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1540,7 +1192,7 @@ fun GreyBrowser() {
         saveTabsDataNow(context, tabs, pinnedDomains, lastActiveUrl)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1548,7 +1200,7 @@ fun GreyBrowser() {
         saveBookmarks(context, bookmarks)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1556,7 +1208,7 @@ fun GreyBrowser() {
         saveHistory(context, history)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
@@ -1564,30 +1216,43 @@ fun GreyBrowser() {
         saveScripts(context, scripts)
         if (backupLoaded) {
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
-    LaunchedEffect(filters.map { "${it.id}${it.enabled}${it.name}" }.joinToString()) {
+    LaunchedEffect(filters.toList()) {
+        saveFilters(context, filters)
         if (backupLoaded) {
-            saveFilters(context, filters)
             withContext(Dispatchers.IO) {
-                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl)
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
             }
         }
     }
+    LaunchedEffect(customHideRules.toList()) {
+        if (backupLoaded) {
+            withContext(Dispatchers.IO) {
+                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+            }
+        }
+    }
+
     LaunchedEffect(filtersEnabled) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_FILTERS_ENABLED, filtersEnabled).apply()
     }
+
     LaunchedEffect(currentTabIndex) {
         if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
             lastActiveUrl = tabs[currentTabIndex].url
             highlightedTabIndex = currentTabIndex
         }
     }
+
     if (showToast) {
-        LaunchedEffect(showToast) { delay(2000); showToast = false }
+        LaunchedEffect(showToast) {
+            delay(2000)
+            showToast = false
+        }
     }
 //PART 5 END
 
@@ -1595,12 +1260,19 @@ fun GreyBrowser() {
     fun createWebView(url: String): WebView {
         return WebView(context).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#121212"))
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             with(settings) {
-                javaScriptEnabled = true; domStorageEnabled = true
-                loadWithOverviewMode = true; useWideViewPort = true
-                builtInZoomControls = true; displayZoomControls = false
-                setSupportZoom(true); setSupportMultipleWindows(false)
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                builtInZoomControls = true
+                displayZoomControls = false
+                setSupportZoom(true)
+                setSupportMultipleWindows(false)
             }
             loadUrl(url)
         }
@@ -1608,6 +1280,7 @@ fun GreyBrowser() {
 
     fun setupDelegates(tabState: TabState) {
         val wv = tabState.webView ?: return
+        var hideElementsFired = false
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -1621,15 +1294,57 @@ fun GreyBrowser() {
                         if (idx >= 0) thumbnailBitmapCache.remove(idx)
                     }
                 }
+                if (newProgress >= 10 && !hideElementsFired && !tabState.isBlankTab) {
+                    hideElementsFired = true
+                    val url = tabState.url
+                    if (url != "about:blank") {
+                        val pageHost = Uri.parse(url).host?.removePrefix("www.") ?: ""
+                        val selectors = mutableListOf<String>()
+                        for (rule in customHideRules) {
+                            if (!rule.enabled) continue
+                            if (rule.domain == "*" || pageHost == rule.domain || pageHost.endsWith(".${rule.domain}")) {
+                                selectors.add(rule.selector)
+                            }
+                        }
+                        if (selectors.isNotEmpty()) {
+                            val selectorsJson = JSONArray()
+                            selectors.forEach { selectorsJson.put(it) }
+                            val selectorsJs = selectorsJson.toString()
+                            wv.evaluateJavascript("""
+                                (function() {
+                                    var selectors = $selectorsJs;
+                                    function hideElements() {
+                                        selectors.forEach(function(sel) {
+                                            try {
+                                                document.querySelectorAll(sel).forEach(function(el) {
+                                                    el.style.setProperty('display', 'none', 'important');
+                                                });
+                                            } catch(e) {}
+                                        });
+                                    }
+                                    hideElements();
+                                    var timer = null;
+                                    new MutationObserver(function() {
+                                        if (timer) clearTimeout(timer);
+                                        timer = setTimeout(hideElements, 500);
+                                    }).observe(document.documentElement, { childList: true, subtree: true });
+                                })();
+                            """.trimIndent(), null)
+                        }
+                    }
+                }
             }
             override fun onReceivedTitle(view: WebView, title: String?) {
-                if (!tabState.isBlankTab && title != null && title.isNotBlank()) tabState.title = title
+                if (!tabState.isBlankTab && title != null && title.isNotBlank()) {
+                    tabState.title = title
+                }
             }
-            override fun onPermissionRequest(request: android.webkit.PermissionRequest) { request.deny() }
+            override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
+                request.deny()
+            }
         }
 
         wv.webViewClient = object : WebViewClient() {
-
             override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val url = request.url.toString().lowercase()
@@ -1637,36 +1352,30 @@ fun GreyBrowser() {
                 val path = request.url.path?.lowercase() ?: ""
                 val query = request.url.query?.lowercase() ?: ""
 
-                // Check $popup rules from filter lists
-                if (filtersEnabled) {
-                    val pageHost = Uri.parse(tabState.url).host?.lowercase() ?: ""
-                    for (filter in filters) {
-                        if (!filter.enabled) continue
-                        val parsed = filter.parsedRules ?: continue
-                        for (rule in parsed.exceptionNetwork) {
-                            if (rule.isPopup && ruleMatchesRequest(rule, url, host, pageHost, "document")) return false
-                        }
-                        val domainRules = parsed.networkByDomain[host] ?: emptyList()
-                        for (rule in (domainRules + parsed.genericNetwork)) {
-                            if (rule.isPopup && ruleMatchesRequest(rule, url, host, pageHost, "document")) return true
-                        }
-                    }
-                }
-
-                // Hardcoded popup domain patterns
+                // known popup/redirect ad domains
                 val popupDomains = listOf(
-                    "popads.net","popcash.net","propellerads.com","adcash.com","exoclick.com",
-                    "juicyads.com","trafficjunky.com","hilltopads.net","trafficforce.com",
-                    "adsterra.com","plugrush.com","admaven.com","ad-maven.com",
-                    "adskeeper.com","popunder.net","adpop.io","clicksfly.com",
-                    "shorte.st","adf.ly","ouo.io","bc.vc","linkvertise.com"
+                    "popads.net", "popcash.net", "propellerads.com", "adcash.com",
+                    "exoclick.com", "juicyads.com", "trafficjunky.com", "hilltopads.net",
+                    "trafficforce.com", "clickaine.com", "adsterra.com", "plugrush.com",
+                    "admaven.com", "ad-maven.com", "adskeeper.com", "popunder.net",
+                    "popdisplay.com", "adpop.io", "monetizer101.com", "clicksfly.com",
+                    "shorte.st", "adf.ly", "ouo.io", "bc.vc", "linkvertise.com"
                 )
                 if (popupDomains.any { host == it || host.endsWith(".$it") }) return true
 
-                val popupPaths = listOf("/pop","/popunder","/popup","/popads","/pu/","/ppu/","/out.php","/out/click")
+                // popup/redirect path patterns
+                val popupPaths = listOf(
+                    "/pop", "/popunder", "/popup", "/popads",
+                    "/pu/", "/ppu/", "/out.php", "/out/click"
+                )
                 if (popupPaths.any { path.startsWith(it) || path.contains(it) }) return true
 
-                val redirectParams = listOf("url=http","to=http","target=http","goto=http","link=http","dest=http","redirect=http","destination=http")
+                // redirect-as-destination query patterns
+                val redirectParams = listOf(
+                    "url=http", "to=http", "target=http",
+                    "goto=http", "link=http", "dest=http",
+                    "destination=http", "redirect=http"
+                )
                 if (redirectParams.any { query.contains(it) }) return true
 
                 return false
@@ -1676,23 +1385,9 @@ fun GreyBrowser() {
                 tabState.url = url
                 tabState.progress = 5
                 tabState.lastUpdated = System.currentTimeMillis()
+                hideElementsFired = false
                 if (url != "about:blank") tabState.isBlankTab = false
-
-                val pageHost = Uri.parse(url).host?.lowercase()?.removePrefix("www.") ?: ""
-
-                // Inject scriptlets at document-start
-                if (filtersEnabled && pageHost.isNotBlank()) {
-                    val scriptletsJS = buildScriptletsJS(filters, pageHost)
-                    if (scriptletsJS.isNotBlank()) wv.evaluateJavascript(scriptletsJS, null)
-                }
-
-                // Inject cosmetic CSS
-                if (filtersEnabled && pageHost.isNotBlank()) {
-                    val cosmeticJS = buildCosmeticJS(filters, pageHost)
-                    if (cosmeticJS.isNotBlank()) wv.evaluateJavascript(cosmeticJS, null)
-                }
-
-                // matchMedia dark mode override
+                if (showElementHider) showElementHider = false
                 wv.evaluateJavascript("""
                     (function() {
                         var originalMatchMedia = window.matchMedia;
@@ -1700,7 +1395,9 @@ fun GreyBrowser() {
                             var result = originalMatchMedia(query);
                             if (query.includes('prefers-color-scheme')) {
                                 return {
-                                    matches: true, media: query, onchange: null,
+                                    matches: true,
+                                    media: query,
+                                    onchange: null,
                                     addListener: function(cb) { cb(this); },
                                     removeListener: function() {},
                                     addEventListener: function(type, cb) { if (type === 'change') cb(this); },
@@ -1712,19 +1409,17 @@ fun GreyBrowser() {
                         };
                     })();
                 """.trimIndent(), null)
-
-                // Userscripts at document-start
                 for (script in scripts) {
                     if (!shouldInjectScript(script, url)) continue
                     val meta = parseScriptHeader(script.code)
                     val runAt = meta["run-at"] ?: "document-end"
                     if (runAt == "document-start") {
                         val body = getScriptBody(script.code)
-                        wv.evaluateJavascript("try { (function() { $body })(); } catch(e) { }", null)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
                     }
                 }
             }
-
             override fun onPageFinished(view: WebView, url: String) {
                 tabState.progress = 100
                 tabState.url = url
@@ -1732,7 +1427,9 @@ fun GreyBrowser() {
                 if (url != "about:blank") {
                     tabState.isBlankTab = false
                     lastActiveUrl = url
-                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) highlightedTabIndex = currentTabIndex
+                    if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                        highlightedTabIndex = currentTabIndex
+                    }
                     val cleanUrl = url.substringBefore("#")
                     history.removeAll { it.url.substringBefore("#") == cleanUrl }
                     history.add(HistoryItem(url = url, title = tabState.title.ifBlank { url }))
@@ -1744,11 +1441,11 @@ fun GreyBrowser() {
                     val runAt = meta["run-at"] ?: "document-end"
                     if (runAt == "document-end" || runAt == "document-idle") {
                         val body = getScriptBody(script.code)
-                        wv.evaluateJavascript("try { (function() { $body })(); } catch(e) { }", null)
+                        val wrapped = "try { (function() { $body })(); } catch(e) { }"
+                        wv.evaluateJavascript(wrapped, null)
                     }
                 }
             }
-
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: android.webkit.WebResourceRequest
@@ -1756,13 +1453,26 @@ fun GreyBrowser() {
                 if (!filtersEnabled) return null
                 if (request.isForMainFrame) return null
                 val requestUrl = request.url.toString()
-                val requestHost = request.url.host?.lowercase() ?: return null
-                val pageHost = Uri.parse(tabState.url).host?.lowercase() ?: ""
-                val resourceType = getResourceType(request)
-                return if (checkNetworkBlocking(filters, requestUrl, requestHost, pageHost, resourceType)) {
-                    totalBlocked++
-                    android.webkit.WebResourceResponse("text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
-                } else null
+                val requestHost = request.url.host ?: return null
+                for (filter in filters) {
+                    if (!filter.enabled) continue
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) {
+                            val exceptionPattern = rule.removePrefix("@@")
+                            if (matchesAdBlockRule(requestUrl, requestHost, exceptionPattern)) return null
+                        }
+                    }
+                    for (rule in filter.networkRules) {
+                        if (rule.startsWith("@@")) continue
+                        if (matchesAdBlockRule(requestUrl, requestHost, rule)) {
+                            totalBlocked++
+                            return android.webkit.WebResourceResponse(
+                                "text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0))
+                            )
+                        }
+                    }
+                }
+                return null
             }
         }
 
@@ -1777,13 +1487,18 @@ fun GreyBrowser() {
 
         wv.setOnLongClickListener {
             wv.evaluateJavascript(
-                "(function(){var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
-                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){el=el.parentElement;}" +
-                "return el?el.href:'';})()"
+                "(function(){" +
+                "var el=document.elementFromPoint($lastTouchX,$lastTouchY);" +
+                "while(el&&el.tagName!=='A'&&el.tagName!=='AREA'){" +
+                "el=el.parentElement;" +
+                "}" +
+                "return el?el.href:'';" +
+                "})()"
             ) { href ->
                 val clean = href.trim('"').trim()
-                if (clean.isNotEmpty() && clean != "null" && clean != "undefined") {
-                    linkMenuUrl = clean; showLinkMenu = true
+                if (clean.isNotEmpty() && clean != "null" && clean != "undefined" && clean != "") {
+                    linkMenuUrl = clean
+                    showLinkMenu = true
                 }
             }
             true
@@ -1792,7 +1507,9 @@ fun GreyBrowser() {
 
     fun removeDuplicateTab(url: String) {
         val cleanUrl = url.substringBefore("#")
-        val oldIndex = tabs.indexOfFirst { it.url.substringBefore("#") == cleanUrl && !it.isBlankTab }
+        val oldIndex = tabs.indexOfFirst {
+            it.url.substringBefore("#") == cleanUrl && !it.isBlankTab
+        }
         if (oldIndex >= 0) {
             tabs[oldIndex].webView?.destroy()
             tabs.removeAt(oldIndex)
@@ -1804,9 +1521,11 @@ fun GreyBrowser() {
             if (highlightedTabIndex >= oldIndex && highlightedTabIndex >= 0) highlightedTabIndex--
             val updated = mutableMapOf<Int, Long>()
             for ((idx, time) in pendingDeletions) {
-                if (idx > oldIndex) updated[idx - 1] = time else if (idx < oldIndex) updated[idx] = time
+                if (idx > oldIndex) updated[idx - 1] = time
+                else if (idx < oldIndex) updated[idx] = time
             }
-            pendingDeletions.clear(); pendingDeletions.putAll(updated)
+            pendingDeletions.clear()
+            pendingDeletions.putAll(updated)
         }
     }
 
@@ -1819,10 +1538,17 @@ fun GreyBrowser() {
             setupDelegates(activeTab)
             activeTab.lastUpdated = System.currentTimeMillis()
         }
-        val warmTabs = tabs.filterIndexed { i, t -> i != activeIndex && !t.isDiscarded && t.webView != null }
+        val warmTabs = tabs.filterIndexed { i, t ->
+            i != activeIndex && !t.isDiscarded && t.webView != null
+        }
         if (warmTabs.size >= MAX_WARM_WEBVIEWS) {
             val toDiscard = warmTabs.sortedBy { it.lastUpdated }.take(warmTabs.size - (MAX_WARM_WEBVIEWS - 1))
-            for (tab in toDiscard) { tab.webView?.destroy(); tab.webView = null; tab.isDiscarded = true; tab.progress = 100 }
+            for (tab in toDiscard) {
+                tab.webView?.destroy()
+                tab.webView = null
+                tab.isDiscarded = true
+                tab.progress = 100
+            }
         }
     }
 
@@ -1832,8 +1558,12 @@ fun GreyBrowser() {
         val parentIdx = if (insertAfterIndex >= 0) insertAfterIndex else -1
         val wv = createWebView(url)
         val newTab = TabState().apply {
-            webView = wv; this.url = url; isBlankTab = false
-            isDiscarded = false; lastUpdated = System.currentTimeMillis(); parentTabIndex = parentIdx
+            webView = wv
+            this.url = url
+            isBlankTab = false
+            isDiscarded = false
+            lastUpdated = System.currentTimeMillis()
+            parentTabIndex = parentIdx
         }
         tabs.add(insertIdx, newTab)
         setupDelegates(newTab)
@@ -1842,8 +1572,15 @@ fun GreyBrowser() {
         manageTabLifecycle(currentTabIndex)
     }
 
-    fun requestDeleteTab(index: Int) { if (index >= 0 && index < tabs.size) pendingDeletions[index] = System.currentTimeMillis() }
-    fun undoDeleteTab(index: Int) { pendingDeletions.remove(index) }
+    fun requestDeleteTab(index: Int) {
+        if (index >= 0 && index < tabs.size) {
+            pendingDeletions[index] = System.currentTimeMillis()
+        }
+    }
+
+    fun undoDeleteTab(index: Int) {
+        pendingDeletions.remove(index)
+    }
 
     fun loadFavicon(domain: String) {
         if (domain.isBlank()) return
@@ -1852,9 +1589,11 @@ fun GreyBrowser() {
         if (!faviconBitmaps.containsKey(domain) && faviconLoading[domain] != true) {
             faviconLoading[domain] = true
             scope.launch {
-                val bitmap = FaviconCache.getFaviconBitmap(context, domain) ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+                val bitmap = FaviconCache.getFaviconBitmap(context, domain)
+                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
                 if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
-                faviconBitmaps[domain] = bitmap; faviconLoading[domain] = false
+                faviconBitmaps[domain] = bitmap
+                faviconLoading[domain] = false
             }
         }
     }
@@ -1866,9 +1605,11 @@ fun GreyBrowser() {
         if (!tabFavicons.containsKey(domain) && tabFaviconLoading[domain] != true) {
             tabFaviconLoading[domain] = true
             scope.launch {
-                val bitmap = FaviconCache.getFaviconBitmap(context, domain) ?: FaviconCache.downloadAndCacheFavicon(context, domain)
+                val bitmap = FaviconCache.getFaviconBitmap(context, domain)
+                    ?: FaviconCache.downloadAndCacheFavicon(context, domain)
                 if (bitmap != null) FaviconMemoryCache.put(domain, bitmap)
-                tabFavicons[domain] = bitmap; tabFaviconLoading[domain] = false
+                tabFavicons[domain] = bitmap
+                tabFaviconLoading[domain] = false
             }
         }
     }
@@ -1881,17 +1622,26 @@ fun GreyBrowser() {
             for (index in toRemove.sortedDescending()) {
                 pendingDeletions.remove(index)
                 val tab = tabs.getOrNull(index) ?: continue
-                tab.webView?.destroy(); tabs.removeAt(index)
+                tab.webView?.destroy()
+                tabs.removeAt(index)
                 for (t in tabs) {
                     if (t.parentTabIndex == index) t.parentTabIndex = -1
                     else if (t.parentTabIndex > index) t.parentTabIndex--
                 }
                 val updated = mutableMapOf<Int, Long>()
-                for ((oldIdx, time) in pendingDeletions) { updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time }
-                pendingDeletions.clear(); pendingDeletions.putAll(updated)
-                if (tabs.isEmpty()) { currentTabIndex = -1; selectedDomain = "" }
-                else if (currentTabIndex > index) currentTabIndex--
-                else if (currentTabIndex == index && tabs.isNotEmpty()) currentTabIndex = minOf(currentTabIndex, tabs.lastIndex)
+                for ((oldIdx, time) in pendingDeletions) {
+                    updated[if (oldIdx > index) oldIdx - 1 else oldIdx] = time
+                }
+                pendingDeletions.clear()
+                pendingDeletions.putAll(updated)
+                if (tabs.isEmpty()) {
+                    currentTabIndex = -1
+                    selectedDomain = ""
+                } else if (currentTabIndex > index) {
+                    currentTabIndex--
+                } else if (currentTabIndex == index && tabs.isNotEmpty()) {
+                    currentTabIndex = minOf(currentTabIndex, tabs.lastIndex)
+                }
                 if (highlightedTabIndex == index) highlightedTabIndex = -1
                 else if (highlightedTabIndex > index) highlightedTabIndex--
                 if (selectedDomain.isNotBlank()) {
@@ -1903,10 +1653,15 @@ fun GreyBrowser() {
     }
 
     LaunchedEffect(showTabManager, currentTabIndex) {
-        if (showTabManager) { tabs.forEach { it.webView?.onPause() }; baseWebView.onPause() }
-        else {
+        if (showTabManager) {
+            tabs.forEach { it.webView?.onPause() }
+            baseWebView.onPause()
+        } else {
             baseWebView.onResume()
-            if (currentTabIndex >= 0) { tabs.getOrNull(currentTabIndex)?.webView?.onResume(); manageTabLifecycle(currentTabIndex) }
+            if (currentTabIndex >= 0) {
+                tabs.getOrNull(currentTabIndex)?.webView?.onResume()
+                manageTabLifecycle(currentTabIndex)
+            }
         }
     }
 //PART 6 END
@@ -1914,7 +1669,8 @@ fun GreyBrowser() {
 //PART 7 START
 fun closeTabAndFixParents(index: Int) {
     if (index < 0 || index >= tabs.size) return
-    tabs[index].webView?.destroy(); tabs.removeAt(index)
+    tabs[index].webView?.destroy()
+    tabs.removeAt(index)
     for (t in tabs) {
         if (t.parentTabIndex == index) t.parentTabIndex = -1
         else if (t.parentTabIndex > index) t.parentTabIndex--
@@ -1941,11 +1697,21 @@ BackHandler {
                 else if (highlightedTabIndex > closingIdx) highlightedTabIndex--
                 pendingDeletions.remove(closingIdx)
                 val updated = mutableMapOf<Int, Long>()
-                for ((idx, time) in pendingDeletions) { updated[if (idx > closingIdx) idx - 1 else idx] = time }
-                pendingDeletions.clear(); pendingDeletions.putAll(updated)
+                for ((idx, time) in pendingDeletions) {
+                    updated[if (idx > closingIdx) idx - 1 else idx] = time
+                }
+                pendingDeletions.clear()
+                pendingDeletions.putAll(updated)
                 closeTabAndFixParents(closingIdx)
-                currentTabIndex = if (parentIdx >= 0 && parentIdx < tabs.size) parentIdx else -1
-                if (tabs.isEmpty()) { currentTabIndex = -1; selectedDomain = "" }
+                if (parentIdx >= 0 && parentIdx < tabs.size) {
+                    currentTabIndex = parentIdx
+                } else {
+                    currentTabIndex = -1
+                }
+                if (tabs.isEmpty()) {
+                    currentTabIndex = -1
+                    selectedDomain = ""
+                }
             }
         }
     }
@@ -1957,24 +1723,45 @@ fun ContentLayer() {
         AndroidView(
             factory = { webViewContainer },
             update = { container ->
-                val target = if (currentTabIndex == -1) baseWebView
-                             else tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+                val target = if (currentTabIndex == -1) {
+                    baseWebView
+                } else {
+                    tabs.getOrNull(currentTabIndex)?.webView ?: baseWebView
+                }
                 if (container.childCount == 0 || container.getChildAt(0) != target) {
                     val old = if (container.childCount > 0) container.getChildAt(0) as? WebView else null
-                    old?.onPause(); container.removeAllViews(); container.addView(target); target.onResume()
+                    old?.onPause()
+                    container.removeAllViews()
+                    container.addView(target)
+                    target.onResume()
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
         if (currentTabIndex == -1) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Grey", color = WHITE.copy(alpha = 0.15f), fontSize = 48.sp, fontWeight = FontWeight.Bold)
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Grey",
+                    color = WHITE.copy(alpha = 0.15f),
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
         if (isUrlFocused) {
-            Box(Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                focusManager.clearFocus()
-            })
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        focusManager.clearFocus()
+                    }
+            )
         }
     }
 }
@@ -1993,9 +1780,13 @@ fun ContentLayer() {
     SideEffect {
         if (!isUrlFocused && currentTabIndex >= 0) {
             val tabUrl = currentTab?.url ?: ""
-            if (tabUrl != "about:blank" && tabUrl != urlInput.text) urlInput = TextFieldValue(tabUrl, selection = TextRange(0))
+            if (tabUrl != "about:blank" && tabUrl != urlInput.text) {
+                urlInput = TextFieldValue(tabUrl, selection = TextRange(0))
+            }
         }
-        if (!isUrlFocused && currentTabIndex == -1 && urlInput.text.isNotEmpty()) urlInput = TextFieldValue("", selection = TextRange(0))
+        if (!isUrlFocused && currentTabIndex == -1 && urlInput.text.isNotEmpty()) {
+            urlInput = TextFieldValue("", selection = TextRange(0))
+        }
     }
 
     var showAppLockSettings by remember { mutableStateOf(false) }
@@ -2006,7 +1797,9 @@ fun ContentLayer() {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val lockEnabled = prefs.getBoolean("lock_enabled", false)
             val hasPattern = prefs.getString("pattern_hash", null) != null
-            if (lockEnabled && hasPattern) patternDrawMode = "unlock"
+            if (lockEnabled && hasPattern) {
+                patternDrawMode = "unlock"
+            }
         }
     }
 
@@ -2018,10 +1811,12 @@ fun ContentLayer() {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val savedHash = prefs.getString("pattern_hash", null)
             PatternDrawScreen(
-                mode = "unlock", savedHash = savedHash,
+                mode = "unlock",
+                savedHash = savedHash,
                 onDismiss = { activity?.finish() },
                 onPatternVerified = { patternDrawMode = "" },
-                onPatternSet = {}, onPatternRemoved = {}
+                onPatternSet = {},
+                onPatternRemoved = {}
             )
         }
 
@@ -2031,13 +1826,20 @@ fun ContentLayer() {
                 title = { Text(confirmTitle, color = WHITE, fontSize = 18.sp) },
                 text = { Text(confirmMessage, color = MUTED, fontSize = 14.sp) },
                 confirmButton = {
-                    TextButton({ val a = confirmAction; showConfirmDialog = false; confirmAction = null; a?.invoke() }) {
-                        Text("Confirm", color = WHITE)
+                    TextButton({
+                        val a = confirmAction; showConfirmDialog = false; confirmAction = null; a?.invoke()
+                    }) { Text("Confirm", color = WHITE) }
+                },
+                dismissButton = {
+                    TextButton({ showConfirmDialog = false; confirmAction = null }) {
+                        Text("Cancel", color = WHITE)
                     }
                 },
-                dismissButton = { TextButton({ showConfirmDialog = false; confirmAction = null }) { Text("Cancel", color = WHITE) } },
-                containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE,
-                shape = RectangleShape, tonalElevation = 0.dp
+                containerColor = SURFACE,
+                titleContentColor = WHITE,
+                textContentColor = WHITE,
+                shape = RectangleShape,
+                tonalElevation = 0.dp
             )
         }
 
@@ -2045,46 +1847,74 @@ fun ContentLayer() {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val lockEnabled = prefs.getBoolean("lock_enabled", false)
             val hasPattern = prefs.getString("pattern_hash", null) != null
+
             AppLockSettingsScreen(
-                lockEnabled = lockEnabled, hasPattern = hasPattern,
+                lockEnabled = lockEnabled,
+                hasPattern = hasPattern,
                 onDismiss = { showAppLockSettings = false },
                 onToggleChange = { newValue ->
                     if (newValue) {
-                        if (!hasPattern) { showAppLockSettings = false; patternDrawMode = "set" }
-                        else {
+                        if (!hasPattern) {
+                            showAppLockSettings = false
+                            patternDrawMode = "set"
+                        } else {
                             prefs.edit().putBoolean("lock_enabled", true).apply()
-                            scope.launch { withContext(Dispatchers.IO) { exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl) } }
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                }
+                            }
                         }
                     } else {
-                        showAppLockSettings = false; patternDrawMode = "toggle_off"
-                        scope.launch { withContext(Dispatchers.IO) { exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl) } }
+                        showAppLockSettings = false
+                        patternDrawMode = "toggle_off"
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                            }
+                        }
                     }
                 },
-                onChangePattern = { showAppLockSettings = false; patternDrawMode = "change_verify" }
+                onChangePattern = {
+                    showAppLockSettings = false
+                    patternDrawMode = "change_verify"
+                }
             )
         }
 
         if (patternDrawMode in listOf("set", "change_verify", "change_set", "toggle_off")) {
             val prefs = context.getSharedPreferences("pattern_lock", Context.MODE_PRIVATE)
             val savedHash = prefs.getString("pattern_hash", null)
+
             PatternDrawScreen(
-                mode = patternDrawMode, savedHash = savedHash,
+                mode = patternDrawMode,
+                savedHash = savedHash,
                 onDismiss = { patternDrawMode = "" },
                 onPatternVerified = {
                     when (patternDrawMode) {
                         "change_verify" -> patternDrawMode = "change_set"
                         "toggle_off" -> {
                             prefs.edit().putBoolean("lock_enabled", false).apply()
-                            patternDrawMode = ""; showToast("App lock disabled")
-                            scope.launch { withContext(Dispatchers.IO) { exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl) } }
+                            patternDrawMode = ""
+                            showToast("App lock disabled")
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                                }
+                            }
                         }
                     }
                 },
                 onPatternSet = { hash ->
                     prefs.edit().putString("pattern_hash", hash).apply()
                     prefs.edit().putBoolean("lock_enabled", true).apply()
-                    patternDrawMode = ""; showToast("Pattern saved")
-                    scope.launch { withContext(Dispatchers.IO) { exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), scripts.toList(), lastActiveUrl) } }
+                    patternDrawMode = ""
+                    showToast("Pattern saved")
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            exportBackup(context, tabs.toList(), history.toList(), bookmarks.toList(), customHideRules.toList(), scripts.toList(), lastActiveUrl)
+                        }
+                    }
                 },
                 onPatternRemoved = {}
             )
@@ -2096,12 +1926,23 @@ fun ContentLayer() {
             ScriptsManagerScreen(
                 scripts = scripts,
                 onDismiss = { showScripts = false },
-                onAddScript = { editingScript = null; showScriptEditor = true },
-                onEditScript = { script -> editingScript = script; showScriptEditor = true },
-                onDeleteScript = { id -> scripts.removeAll { it.id == id }; showToast("Script deleted") },
+                onAddScript = {
+                    editingScript = null
+                    showScriptEditor = true
+                },
+                onEditScript = { script ->
+                    editingScript = script
+                    showScriptEditor = true
+                },
+                onDeleteScript = { id ->
+                    scripts.removeAll { it.id == id }
+                    showToast("Script deleted")
+                },
                 onToggleScript = { id ->
                     val index = scripts.indexOfFirst { it.id == id }
-                    if (index >= 0) scripts[index] = scripts[index].copy(enabled = !scripts[index].enabled)
+                    if (index >= 0) {
+                        scripts[index] = scripts[index].copy(enabled = !scripts[index].enabled)
+                    }
                 }
             )
         }
@@ -2116,11 +1957,22 @@ fun ContentLayer() {
                         val nameMatch = Regex("""@name\s+(.+)""").find(code)
                         finalTitle = nameMatch?.groupValues?.get(1)?.trim() ?: ""
                     }
-                    if (finalTitle.isBlank()) { showToast("Enter a script name"); return@ScriptEditorScreen }
+                    if (finalTitle.isBlank()) {
+                        showToast("Enter a script name")
+                        return@ScriptEditorScreen
+                    }
                     if (editingScript != null) {
                         val index = scripts.indexOfFirst { it.id == editingScript!!.id }
-                        if (index >= 0) scripts[index] = scripts[index].copy(title = finalTitle, code = code, timestamp = System.currentTimeMillis())
-                    } else { scripts.add(Script(title = finalTitle, code = code)) }
+                        if (index >= 0) {
+                            scripts[index] = scripts[index].copy(
+                                title = finalTitle,
+                                code = code,
+                                timestamp = System.currentTimeMillis()
+                            )
+                        }
+                    } else {
+                        scripts.add(Script(title = finalTitle, code = code))
+                    }
                     showScriptEditor = false
                     showToast(if (editingScript != null) "Script updated" else "Script added")
                 }
@@ -2138,27 +1990,26 @@ fun ContentLayer() {
                 onToggleMaster = { filtersEnabled = it },
                 onToggleFilter = { id ->
                     val index = filters.indexOfFirst { it.id == id }
-                    if (index >= 0) filters[index] = filters[index].copy(enabled = !filters[index].enabled)
+                    if (index >= 0) {
+                        filters[index] = filters[index].copy(enabled = !filters[index].enabled)
+                    }
                 },
                 onDeleteFilter = { id ->
-                    val filter = filters.find { it.id == id }
                     filters.removeAll { it.id == id }
-                    filter?.let { try { File(getFiltersDir(), "${it.name}.txt").delete() } catch (e: Exception) {} }
                     showToast("Filter deleted")
                 },
                 onImportFilter = { name, rawText ->
-                    val parsed = parseFilterList(rawText)
-                    val netCount = parsed.networkByDomain.values.sumOf { it.size } +
-                        parsed.genericNetwork.size + parsed.exceptionNetwork.size
+                    val (network, cosmetic) = parseFilterRules(rawText)
                     filters.add(Filter(
-                        name = name, rawText = rawText, enabled = true,
-                        networkRuleCount = netCount,
-                        cosmeticRuleCount = parsed.cosmeticRules.size,
-                        scriptletRuleCount = parsed.scriptletRules.size,
-                        parsedRules = parsed
+                        name = name,
+                        rawText = rawText,
+                        networkRules = network,
+                        cosmeticRules = cosmetic,
+                        networkRuleCount = network.size,
+                        cosmeticRuleCount = cosmetic.size
                     ))
                     saveFilterToFile(name, rawText)
-                    showToast("Imported: $netCount net · ${parsed.cosmeticRules.size} cos · ${parsed.scriptletRules.size} js")
+                    showToast("Filter imported: ${network.size} rules")
                 }
             )
         }
@@ -2167,18 +2018,25 @@ fun ContentLayer() {
 //PART 8.5 START
         if (showBookmarks) {
             BookmarksUI(
-                bookmarks = bookmarks, onDismiss = { showBookmarks = false },
+                bookmarks = bookmarks,
+                onDismiss = { showBookmarks = false },
                 onOpenUrl = { url -> createForegroundTab(url) },
-                onDelete = { id -> bookmarks.removeAll { it.id == id }; showToast("Bookmark deleted") },
-                faviconBitmaps = faviconBitmaps, loadFavicon = { loadFavicon(it) }
+                onDelete = { id ->
+                    bookmarks.removeAll { it.id == id }
+                    showToast("Bookmark deleted")
+                },
+                faviconBitmaps = faviconBitmaps,
+                loadFavicon = { loadFavicon(it) }
             )
         }
 
         if (showHistory) {
             HistoryUI(
-                history = history, onDismiss = { showHistory = false },
+                history = history,
+                onDismiss = { showHistory = false },
                 onOpenUrl = { url -> createForegroundTab(url) },
-                faviconBitmaps = faviconBitmaps, loadFavicon = { loadFavicon(it) }
+                faviconBitmaps = faviconBitmaps,
+                loadFavicon = { loadFavicon(it) }
             )
         }
 
@@ -2188,15 +2046,30 @@ fun ContentLayer() {
                 onDismissRequest = { showLinkMenu = false; linkMenuUrl = null },
                 properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)
             ) {
-                Surface(modifier = Modifier.width(240.dp), color = SURFACE, shape = RectangleShape, tonalElevation = 0.dp) {
+                Surface(
+                    modifier = Modifier
+                        .width(240.dp),
+                    color = SURFACE,
+                    shape = RectangleShape,
+                    tonalElevation = 0.dp
+                ) {
                     Column {
                         DropdownMenuItem(
                             text = { Text("New Tab", color = WHITE) },
-                            onClick = { createForegroundTab(linkMenuUrl!!, currentTabIndex); showLinkMenu = false; linkMenuUrl = null }
+                            onClick = {
+                                createForegroundTab(linkMenuUrl!!, currentTabIndex)
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
                         )
                         DropdownMenuItem(
                             text = { Text("Copy Link", color = WHITE) },
-                            onClick = { clipboardManager.setText(AnnotatedString(linkMenuUrl!!)); showToast("Link copied"); showLinkMenu = false; linkMenuUrl = null }
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(linkMenuUrl!!))
+                                showToast("Link copied")
+                                showLinkMenu = false
+                                linkMenuUrl = null
+                            }
                         )
                     }
                 }
@@ -2213,10 +2086,17 @@ fun ContentLayer() {
                     .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
             )
             val allSidebarItems = sortedDomains
-            val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) getDomainName(tabs[highlightedTabIndex].url) else ""
-            val groupedTabs = buildList { for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) } }
+            val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                getDomainName(tabs[highlightedTabIndex].url)
+            } else ""
 
-            LaunchedEffect(Unit) { sortedDomains.forEach { domain -> loadFavicon(domain) } }
+            val groupedTabs = buildList {
+                for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) }
+            }
+
+            LaunchedEffect(Unit) {
+                sortedDomains.forEach { domain -> loadFavicon(domain) }
+            }
 
             LaunchedEffect(showTabManager) {
                 realTabs.forEachIndexed { index, tab ->
@@ -2224,8 +2104,12 @@ fun ContentLayer() {
                         withContext(Dispatchers.IO) {
                             try {
                                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                withContext(Dispatchers.Main) { thumbnailBitmapCache[index] = bmp }
-                            } catch (e: Exception) { thumbnailBitmapCache[index] = null }
+                                withContext(Dispatchers.Main) {
+                                    thumbnailBitmapCache[index] = bmp
+                                }
+                            } catch (e: Exception) {
+                                thumbnailBitmapCache[index] = null
+                            }
                         }
                     }
                 }
@@ -2236,26 +2120,36 @@ fun ContentLayer() {
                 onDismissRequest = { showTabManager = false },
                 properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
             ) {
-                Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+                Surface(
+                    Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+                    color = SURFACE
+                ) {
                     Column(Modifier.fillMaxSize()) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton({ showTabManager = false }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
+                            IconButton({ showTabManager = false }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Default.Close, "Close", tint = WHITE)
+                            }
                             Spacer(Modifier.width(4.dp))
                             Text("Tabs", color = WHITE, fontSize = 18.sp)
-                            if (realTabs.isNotEmpty()) { Spacer(Modifier.width(8.dp)); Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp) }
+                            if (realTabs.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("(${realTabs.size})", color = MUTED, fontSize = 14.sp)
+                            }
                         }
 
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
                         val domainCount = displayOrder.size
+
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
                         LaunchedEffect(selectedChipDomain) {
@@ -2268,26 +2162,22 @@ fun ContentLayer() {
 
                         LaunchedEffect(Unit) {
                             if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
-                            delay(250)
-                            val targetUrl = tabs[highlightedTabIndex].url
+                            val targetUrl    = tabs[highlightedTabIndex].url
                             val targetDomain = getDomainName(targetUrl)
-                            val domainIdx = displayOrder.indexOf(targetDomain)
+                            val domainIdx    = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
-                            val tabsInGroup = groupedForDisplay[targetDomain] ?: emptyList()
+
+                            val tabsInGroup   = groupedForDisplay[targetDomain] ?: emptyList()
                             val tabIdxInGroup = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
-                            tabListState.scrollToItem(domainIdx); delay(100)
-                            val viewportPx = tabListState.layoutInfo.viewportSize.height.toFloat()
+
+                            val viewportPx  = tabListState.layoutInfo.viewportSize.height.toFloat()
                             val tabHeightPx = with(density) { 92.dp.toPx() }
-                            val contentItemInfo = tabListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == domainIdx }
-                            if (contentItemInfo == null) {
-                                tabListState.animateScrollToItem(domainIdx, (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f).toInt().coerceAtLeast(0))
-                            } else {
-                                tabListState.animateScrollBy(contentItemInfo.offset.toFloat() + tabIdxInGroup * tabHeightPx + tabHeightPx / 2f - viewportPx / 2f)
-                            }
-                            delay(150)
+                            val offset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f).toInt().coerceAtLeast(0)
+                            tabListState.scrollToItem(domainIdx, offset)
+
                             if (domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
-                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
+                                chipScrollState.scrollTo((progress * chipScrollState.maxValue).toInt())
                             }
                         }
 
@@ -2298,21 +2188,29 @@ fun ContentLayer() {
                         } else {
                             LazyColumn(
                                 state = tabListState,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .pointerInput(displayOrder.toList()) {
                                         fun domainAtY(y: Float): String {
-                                            val item = tabListState.layoutInfo.visibleItemsInfo.lastOrNull { it.offset <= y.toInt() } ?: return ""
-                                            val idx = item.index.coerceIn(0, (domainCount - 1).coerceAtLeast(0))
+                                            val item = tabListState.layoutInfo.visibleItemsInfo
+                                                .lastOrNull { it.offset <= y.toInt() } ?: return ""
+                                            val idx = item.index
+                                                .coerceIn(0, (domainCount - 1).coerceAtLeast(0))
                                             return displayOrder.getOrElse(idx) { "" }
                                         }
                                         awaitEachGesture {
                                             val down = awaitFirstDown(requireUnconsumed = false)
-                                            domainAtY(down.position.y).takeIf { it.isNotBlank() }?.let { selectedChipDomain = it }
+                                            domainAtY(down.position.y)
+                                                .takeIf { it.isNotBlank() }
+                                                ?.let { selectedChipDomain = it }
                                             do {
                                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                                 if (!change.pressed) break
-                                                domainAtY(change.position.y).takeIf { it.isNotBlank() }?.let { selectedChipDomain = it }
+                                                domainAtY(change.position.y)
+                                                    .takeIf { it.isNotBlank() }
+                                                    ?.let { selectedChipDomain = it }
                                             } while (true)
                                         }
                                     },
@@ -2320,58 +2218,113 @@ fun ContentLayer() {
                             ) {
                                 for (domain in displayOrder) {
                                     val groupTabs = groupedForDisplay[domain] ?: continue
+
                                     item(key = domain) {
                                         Column(Modifier.padding(bottom = 48.dp)) {
                                             groupTabs.forEach { tab ->
-                                                val tabIndex = tabs.indexOf(tab)
+                                                val tabIndex      = tabs.indexOf(tab)
                                                 val isHighlighted = tabIndex == highlightedTabIndex
-                                                val isPending = pendingDeletions.containsKey(tabIndex)
-                                                val tabDomain = getDomainName(tab.url)
+                                                val isPending     = pendingDeletions.containsKey(tabIndex)
+                                                val tabDomain     = getDomainName(tab.url)
                                                 LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
                                                 val tabFav = tabFavicons[tabDomain]
                                                 val thumbBmp = thumbnailBitmapCache[tabIndex]
 
                                                 Box(
-                                                    Modifier.fillMaxWidth().padding(vertical = 2.dp, horizontal = 8.dp)
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 2.dp)
+                                                        .padding(horizontal = 8.dp)
                                                         .drawWithContent {
                                                             drawRect(if (isPending) DELETE_BG else ITEM_BG)
-                                                            if (isHighlighted) drawRect(color = Color.White, size = Size(4.dp.toPx(), size.height))
+                                                            if (isHighlighted) {
+                                                                drawRect(
+                                                                    color = Color.White,
+                                                                    size = Size(4.dp.toPx(), size.height)
+                                                                )
+                                                            }
                                                             drawContent()
                                                         }
                                                 ) {
                                                     Row(
-                                                        Modifier.fillMaxWidth().padding(10.dp)
-                                                            .clickable(enabled = !isPending) { currentTabIndex = tabIndex; showTabManager = false },
+                                                        Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(10.dp)
+                                                            .clickable(enabled = !isPending) {
+                                                                currentTabIndex = tabIndex
+                                                                showTabManager = false
+                                                            },
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         if (thumbBmp != null) {
-                                                            Image(thumbBmp.asImageBitmap(), "Thumbnail",
-                                                                Modifier.size(80.dp, 72.dp).border(0.8.dp, Color.DarkGray, RectangleShape).clip(RectangleShape),
-                                                                contentScale = ContentScale.Crop)
+                                                            Image(
+                                                                thumbBmp.asImageBitmap(),
+                                                                "Thumbnail",
+                                                                Modifier
+                                                                    .size(80.dp, 72.dp)
+                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
+                                                                    .clip(RectangleShape),
+                                                                contentScale = ContentScale.Crop
+                                                            )
                                                         } else {
-                                                            Box(Modifier.size(80.dp, 72.dp).background(Color(0xFF121212), RectangleShape))
+                                                            Box(
+                                                                Modifier
+                                                                    .size(80.dp, 72.dp)
+                                                                    .background(Color(0xFF121212), RectangleShape)
+                                                            )
                                                         }
+
                                                         Spacer(Modifier.width(10.dp))
+
                                                         if (tabFav != null) {
-                                                            Image(tabFav.asImageBitmap(), tabDomain, Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Fit)
+                                                            Image(
+                                                                tabFav.asImageBitmap(), tabDomain,
+                                                                Modifier.size(32.dp).clip(CircleShape),
+                                                                contentScale = ContentScale.Fit
+                                                            )
                                                         } else {
-                                                            Box(Modifier.size(32.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                                                Text(tabDomain.take(1).uppercase(), color = WHITE, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                                            Box(
+                                                                Modifier.size(32.dp).clip(CircleShape)
+                                                                    .background(Color.DarkGray),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Text(
+                                                                    tabDomain.take(1).uppercase(),
+                                                                    color = WHITE,
+                                                                    fontSize = 14.sp,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
                                                             }
                                                         }
+
                                                         Spacer(Modifier.width(12.dp))
+
                                                         Column(Modifier.weight(1f)) {
                                                             Text(
                                                                 if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
-                                                                color = WHITE, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
+                                                                color = WHITE,
+                                                                fontSize = 14.sp,
+                                                                maxLines = 2,
+                                                                overflow = TextOverflow.Ellipsis
                                                             )
                                                             Spacer(Modifier.height(2.dp))
-                                                            Text(tabDomain, color = MUTED.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                            Text(
+                                                                tabDomain,
+                                                                color = MUTED.copy(alpha = 0.7f),
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
                                                         }
+
                                                         if (isPending) {
-                                                            IconButton({ undoDeleteTab(tabIndex) }) { Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp)) }
+                                                            IconButton({ undoDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                            }
                                                         } else {
-                                                            IconButton({ requestDeleteTab(tabIndex) }) { Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp)) }
+                                                            IconButton({ requestDeleteTab(tabIndex) }) {
+                                                                Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -2389,21 +2342,33 @@ fun ContentLayer() {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isActiveTabDomain = domain == highlightDomain
-                                    val isSelectedDomain = domain == selectedChipDomain
-                                    val isPinned = pinnedDomains.contains(domain)
-                                    val tabCount = domainGroups[domain]?.size ?: 0
-                                    val fav = faviconBitmaps[domain]
+                                    val isSelectedDomain  = domain == selectedChipDomain
+                                    val isPinned  = pinnedDomains.contains(domain)
+                                    val tabCount  = domainGroups[domain]?.size ?: 0
+                                    val fav       = faviconBitmaps[domain]
+
                                     Box(
-                                        Modifier.padding(horizontal = 4.dp)
+                                        Modifier
+                                            .padding(horizontal = 4.dp)
                                             .drawWithContent {
                                                 drawRect(if (isSelectedDomain) Color.DarkGray else ITEM_BG)
-                                                if (isActiveTabDomain) drawRect(color = Color.White, topLeft = Offset(0f, size.height - 4.dp.toPx()), size = Size(size.width, 4.dp.toPx()))
+                                                if (isActiveTabDomain) {
+                                                    drawRect(
+                                                        color = Color.White,
+                                                        topLeft = Offset(0f, size.height - 4.dp.toPx()),
+                                                        size = Size(size.width, 4.dp.toPx())
+                                                    )
+                                                }
                                                 drawContent()
                                             }
                                             .clickable {
                                                 selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
-                                                if (domainIdx >= 0) coroutineScope.launch { tabListState.animateScrollToItem(domainIdx) }
+                                                if (domainIdx >= 0) {
+                                                    coroutineScope.launch {
+                                                        tabListState.animateScrollToItem(domainIdx)
+                                                    }
+                                                }
                                             }
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
@@ -2446,77 +2411,143 @@ fun ContentLayer() {
 //PART 8.6 END
 
 //PART 8.7 START
-        Column(Modifier.fillMaxSize().systemBarsPadding().background(BG)) {
-            Surface(color = SURFACE, shadowElevation = 0.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ focusManager.clearFocus(); scope.launch { delay(50); showTabManager = true } }) {
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().background(BG)
+        ) {
+            Surface(
+                color = SURFACE,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({
+                        focusManager.clearFocus()
+                        scope.launch {
+                            delay(50)
+                            showTabManager = true
+                        }
+                    }) {
                         Icon(Icons.Default.Tab, "Tabs", tint = WHITE)
                     }
+
                     Spacer(Modifier.width(4.dp))
+
                     val isLoading = currentTabIndex >= 0 && (currentTab?.progress ?: 100) in 1..99
-                    Box(Modifier.weight(1f).background(FIELD_BG)) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .background(FIELD_BG)
+                    ) {
                         if (isLoading) {
-                            Box(Modifier.matchParentSize().drawBehind {
-                                drawRect(color = Color.White, size = Size(size.width * (currentTab?.progress ?: 100) / 100f, size.height))
-                            })
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .drawBehind {
+                                        drawRect(
+                                            color = Color.White,
+                                            size = Size(size.width * (currentTab?.progress ?: 100) / 100f, size.height)
+                                        )
+                                    }
+                            )
                         }
                         OutlinedTextField(
-                            value = urlInput, onValueChange = { urlInput = it }, singleLine = true,
+                            value = urlInput,
+                            onValueChange = { urlInput = it },
+                            singleLine = true,
                             placeholder = {
                                 Text(
                                     if (currentTabIndex == -1) "Search or enter URL"
                                     else currentTab?.url?.removePrefix("https://")?.take(50) ?: "",
-                                    color = WHITE.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    color = WHITE.copy(alpha = 0.5f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).onFocusChanged { isUrlFocused = it.isFocused },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { isUrlFocused = it.isFocused },
                             textStyle = TextStyle(color = if (isLoading) Color.Gray else WHITE, fontSize = 14.sp),
                             shape = RectangleShape,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = {
-                                val input = urlInput.text
-                                if (input.isNotBlank()) {
-                                    focusManager.clearFocus()
-                                    urlInput = urlInput.copy(selection = TextRange(0))
-                                    val uri = resolveUrl(input)
-                                    if (currentTabIndex == -1) {
-                                        createForegroundTab(uri)
-                                    } else {
-                                        val cleanUri = uri.substringBefore("#")
-                                        val existingIndex = tabs.indexOfFirst { it.url.substringBefore("#") == cleanUri && !it.isBlankTab }
-                                        if (existingIndex >= 0 && existingIndex != currentTabIndex) {
-                                            removeDuplicateTab(uri); createForegroundTab(uri)
-                                        } else { currentTab?.webView?.loadUrl(uri) }
+                            keyboardActions = KeyboardActions(
+                                onGo = {
+                                    val input = urlInput.text
+                                    if (input.isNotBlank()) {
+                                        focusManager.clearFocus()
+                                        urlInput = urlInput.copy(selection = TextRange(0))
+                                        val uri = resolveUrl(input)
+                                        if (currentTabIndex == -1) {
+                                            createForegroundTab(uri)
+                                        } else {
+                                            val cleanUri = uri.substringBefore("#")
+                                            val existingIndex = tabs.indexOfFirst {
+                                                it.url.substringBefore("#") == cleanUri && !it.isBlankTab
+                                            }
+                                            if (existingIndex >= 0 && existingIndex != currentTabIndex) {
+                                                removeDuplicateTab(uri)
+                                                createForegroundTab(uri)
+                                            } else {
+                                                currentTab?.webView?.loadUrl(uri)
+                                            }
+                                        }
                                     }
                                 }
-                            }),
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                                focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
                                 cursorColor = if (isLoading) Color.Gray else WHITE
                             ),
                             trailingIcon = {
                                 if (isLoading) {
-                                    IconButton({ currentTab?.webView?.stopLoading() }) { Icon(Icons.Default.Close, "Stop", tint = WHITE) }
+                                    IconButton({ currentTab?.webView?.stopLoading() }) {
+                                        Icon(Icons.Default.Close, "Stop", tint = WHITE)
+                                    }
                                 } else {
-                                    IconButton({ urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length)); focusRequester.requestFocus() }) {
+                                    IconButton({
+                                        urlInput = urlInput.copy(selection = TextRange(0, urlInput.text.length))
+                                        focusRequester.requestFocus()
+                                    }) {
                                         Icon(Icons.Default.SelectAll, "Select all", tint = WHITE)
                                     }
                                 }
                             }
                         )
                     }
+
                     Spacer(Modifier.width(4.dp))
-                    IconButton({ currentTabIndex = -1 }) { Icon(Icons.Default.Add, "New Tab", tint = WHITE) }
+
+                    IconButton({ currentTabIndex = -1 }) {
+                        Icon(Icons.Default.Add, "New Tab", tint = WHITE)
+                    }
+
                     Spacer(Modifier.width(4.dp))
+
                     Box {
-                        IconButton({ showMenu = true }) { Icon(Icons.Default.MoreVert, "Menu", tint = WHITE) }
+                        IconButton({ showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "Menu", tint = WHITE)
+                        }
                         DropdownMenu(
-                            expanded = showMenu, onDismissRequest = { showMenu = false },
-                            offset = DpOffset((-500).dp, 0.dp), containerColor = SURFACE, shape = RectangleShape
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            offset = DpOffset((-500).dp, 0.dp),
+                            containerColor = SURFACE,
+                            shape = RectangleShape
                         ) {
                             if (currentTabIndex >= 0) {
-                                DropdownMenuItem(text = { Text("Refresh", color = WHITE) }, onClick = { showMenu = false; currentTab?.webView?.reload() })
+                                DropdownMenuItem(
+                                    text = { Text("Refresh", color = WHITE) },
+                                    onClick = {
+                                        showMenu = false
+                                        currentTab?.webView?.reload()
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Add to Bookmark", color = WHITE) },
                                     onClick = {
@@ -2529,19 +2560,438 @@ fun ContentLayer() {
                                         }
                                     }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text(if (showElementHider) "Stop Hiding" else "Hide Element", color = WHITE) },
+                                    onClick = {
+                                        showMenu = false
+                                        showElementHider = !showElementHider
+                                        val wv = currentTab?.webView
+                                        if (showElementHider && wv != null) {
+                                            wv.evaluateJavascript("""
+                                                (function() {
+                                                    if (window.__GREY_PICKER__) return;
+                                                    window.__GREY_PICKER__ = true;
+                                                    
+                                                    var current = document.body;
+                                                    var highlight = null;
+                                                    var currentView = 'picker';
+                                                    
+                                                    function createHighlight() {
+                                                        var h = document.createElement('div');
+                                                        h.id = 'gp-highlight';
+                                                        Object.assign(h.style, {
+                                                            position: 'absolute', pointerEvents: 'none',
+                                                            zIndex: '2147483646', border: '2px solid #FF4444',
+                                                            background: 'rgba(255,68,68,0.25)',
+                                                            borderRadius: '0px', transition: 'all 0.12s ease',
+                                                            boxSizing: 'border-box', top: '0', left: '0'
+                                                        });
+                                                        document.body.appendChild(h);
+                                                        return h;
+                                                    }
+                                                    
+                                                    function moveHighlight(el) {
+                                                        if (!el || el === document.documentElement) return;
+                                                        if (!highlight) highlight = createHighlight();
+                                                        var r = el.getBoundingClientRect();
+                                                        Object.assign(highlight.style, {
+                                                            top: (r.top + window.scrollY) + 'px',
+                                                            left: (r.left + window.scrollX) + 'px',
+                                                            width: r.width + 'px',
+                                                            height: r.height + 'px',
+                                                            display: 'block'
+                                                        });
+                                                    }
+                                                    
+                                                    function buildSelector(el) {
+                                                        if (!el || el.nodeType !== 1) return '';
+                                                        var sel = el.tagName.toLowerCase();
+                                                        if (el.id) sel += '#' + el.id;
+                                                        else if (el.className) {
+                                                            var classes = Array.from(el.classList)
+                                                                .filter(function(c) { return c && c.indexOf(':') === -1; })
+                                                                .slice(0, 3).join('.');
+                                                            if (classes) sel += '.' + classes;
+                                                        }
+                                                        return sel;
+                                                    }
+                                                    
+                                                    function buildRule(el) {
+                                                        var host = location.hostname.replace(/^www\./, '');
+                                                        var sel = buildSelector(el);
+                                                        return sel ? host + '##' + sel : '';
+                                                    }
+                                                    
+                                                    function validEl(el) {
+                                                        var panel = document.getElementById('gp-panel');
+                                                        return el && el.nodeType === 1 && el !== panel && !(panel && panel.contains(el)) && el !== highlight;
+                                                    }
+                                                    
+                                                    function update(el) {
+                                                        if (!el || el === document.documentElement || el.id === 'gp-panel' || el.id === 'gp-highlight') return;
+                                                        if (document.getElementById('gp-panel') && document.getElementById('gp-panel').contains(el)) return;
+                                                        current = el;
+                                                        moveHighlight(el);
+                                                        var tagEl = document.getElementById('gp-tag');
+                                                        var selEl = document.getElementById('gp-sel');
+                                                        var ruleEl = document.getElementById('gp-rule');
+                                                        if (tagEl) tagEl.textContent = '<' + el.tagName.toLowerCase() + (el.id ? ' id="' + el.id + '"' : '') + (el.className ? ' class="' + el.className.slice(0,60) + '"' : '') + '>';
+                                                        if (selEl) selEl.textContent = buildSelector(el);
+                                                        if (ruleEl) ruleEl.textContent = buildRule(el);
+                                                    }
+                                                    
+                                                    function showPickerView() {
+                                                        currentView = 'picker';
+                                                        document.getElementById('gp-panel-body').innerHTML = 
+                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
+                                                            '<button id="gp-parent" class="gp-btn">◀ Parent</button>' +
+                                                            '<button id="gp-child" class="gp-btn">Child ▶</button>' +
+                                                            '<button id="gp-prev" class="gp-btn">◀ Prev</button>' +
+                                                            '<button id="gp-next" class="gp-btn">Next ▶</button></div>' +
+                                                            '<div style="background:#121212;padding:8px;margin-bottom:8px">' +
+                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">ELEMENT</div>' +
+                                                            '<div id="gp-tag" style="color:#7DD3FC;font-size:12px;word-break:break-all;margin-bottom:2px"></div>' +
+                                                            '<div id="gp-sel" style="color:#86EFAC;font-size:11px;word-break:break-all"></div></div>' +
+                                                            '<div style="background:#121212;padding:8px;margin-bottom:10px">' +
+                                                            '<div style="color:#888;font-size:10px;margin-bottom:3px">RULE</div>' +
+                                                            '<div id="gp-rule" style="color:#FBBF24;font-size:11px;word-break:break-all"></div></div>' +
+                                                            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">' +
+                                                            '<button id="gp-save" style="background:#FF4444;color:white;border:none;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;font-weight:bold">✓ Hide & Save</button>' +
+                                                            '<button id="gp-rules-btn" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace">☰ Rules</button></div>' +
+                                                            '<div id="gp-msg" style="text-align:center;font-size:11px;color:#4ADE80;height:14px"></div>';
+                                                        bindPickerEvents();
+                                                        update(current);
+                                                    }
+                                                    
+                                                    function showRulesView(rules) {
+                                                        currentView = 'rules';
+                                                        var html = '<div style="max-height:350px;overflow-y:auto;margin-bottom:8px">';
+                                                        var domains = {};
+                                                        rules.forEach(function(r) {
+                                                            if (!domains[r.domain]) domains[r.domain] = [];
+                                                            domains[r.domain].push(r);
+                                                        });
+                                                        var sortedDomains = Object.keys(domains).sort(function(a, b) {
+                                                            var aMax = Math.max.apply(null, domains[a].map(function(r) { return r.timestamp || 0; }));
+                                                            var bMax = Math.max.apply(null, domains[b].map(function(r) { return r.timestamp || 0; }));
+                                                            return bMax - aMax;
+                                                        });
+                                                        if (sortedDomains.length === 0) {
+                                                            html += '<div style="color:#888;text-align:center;padding:20px">No rules saved yet</div>';
+                                                        } else {
+                                                            sortedDomains.forEach(function(domain) {
+                                                                html += '<div style="color:#888;font-size:10px;padding:6px 0 3px 0;border-top:1px solid #333">' + domain + '</div>';
+                                                                var domainRules = domains[domain].sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+                                                                domainRules.forEach(function(r) {
+                                                                    html += '<div style="padding:4px 0;font-size:11px">' +
+                                                                        '<span style="color:#FFF;font-family:monospace">' + r.selector + '</span>' +
+                                                                        '</div>';
+                                                                });
+                                                            });
+                                                        }
+                                                        html += '</div>' +
+                                                            '<button id="gp-back" style="background:#1E1E2E;color:#CCC;border:1px solid #333;padding:8px;cursor:pointer;font-size:12px;font-family:monospace;width:100%">← Back to Picker</button>';
+                                                        document.getElementById('gp-panel-body').innerHTML = html;
+                                                        document.getElementById('gp-back').addEventListener('click', function() {
+                                                            showPickerView();
+                                                        });
+                                                    }
+                                                    
+                                                    function bindPickerEvents() {
+                                                        document.getElementById('gp-parent').addEventListener('click', function() {
+                                                            var p = current.parentElement;
+                                                            if (validEl(p) && p !== document.documentElement) update(p);
+                                                        });
+                                                        document.getElementById('gp-child').addEventListener('click', function() {
+                                                            var c = current.firstElementChild;
+                                                            if (validEl(c)) update(c);
+                                                        });
+                                                        document.getElementById('gp-prev').addEventListener('click', function() {
+                                                            var s = current.previousElementSibling;
+                                                            while (s && !validEl(s)) s = s.previousElementSibling;
+                                                            if (s) update(s);
+                                                        });
+                                                        document.getElementById('gp-next').addEventListener('click', function() {
+                                                            var s = current.nextElementSibling;
+                                                            while (s && !validEl(s)) s = s.nextElementSibling;
+                                                            if (s) update(s);
+                                                        });
+                                                        document.getElementById('gp-save').addEventListener('click', function() {
+                                                            var rule = buildRule(current);
+                                                            if (rule) {
+                                                                GreyPicker.onRuleGenerated(rule);
+                                                                document.getElementById('gp-msg').textContent = '✓ Saved!';
+                                                            }
+                                                        });
+                                                        document.getElementById('gp-rules-btn').addEventListener('click', function() {
+                                                            GreyPicker.onShowRules();
+                                                        });
+                                                    }
+                                                    
+                                                    var panel = document.createElement('div');
+                                                    panel.id = 'gp-panel';
+                                                    Object.assign(panel.style, {
+                                                        position: 'fixed', bottom: '16px', right: '12px',
+                                                        background: '#1E1E1E', color: '#FFFFFF',
+                                                        borderRadius: '0px', zIndex: '2147483647',
+                                                        fontSize: '11px', fontFamily: 'monospace',
+                                                        width: '290px', boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
+                                                        userSelect: 'none', border: '1px solid #333333'
+                                                    });
+                                                    
+                                                    panel.innerHTML = 
+                                                        '<div id="gp-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px 12px;cursor:grab;border-bottom:1px solid #333">' +
+                                                        '<span id="gp-title" style="font-weight:bold;color:#FF4444;font-size:13px;pointer-events:none">⬡ Element Picker</span></div>' +
+                                                        '<div id="gp-panel-body" style="padding:12px"></div>';
+                                                    document.body.appendChild(panel);
+                                                    
+                                                    document.head.insertAdjacentHTML('beforeend', '<style>.gp-btn{background:#1E1E2E;color:#CCC;border:1px solid #333;padding:6px 4px;cursor:pointer;font-size:10px;font-family:monospace}</style>');
+                                                    
+                                                    var header = document.getElementById('gp-header');
+                                                    var isDragging = false;
+                                                    var startX, startY, panelLeft, panelTop;
+                                                    
+                                                    header.addEventListener('touchstart', function(e) {
+                                                        isDragging = true;
+                                                        startX = e.touches[0].clientX;
+                                                        startY = e.touches[0].clientY;
+                                                        panelLeft = panel.offsetLeft;
+                                                        panelTop = panel.offsetTop;
+                                                        header.style.cursor = 'grabbing';
+                                                        e.preventDefault();
+                                                    });
+                                                    
+                                                    header.addEventListener('mousedown', function(e) {
+                                                        isDragging = true;
+                                                        startX = e.clientX;
+                                                        startY = e.clientY;
+                                                        panelLeft = panel.offsetLeft;
+                                                        panelTop = panel.offsetTop;
+                                                        header.style.cursor = 'grabbing';
+                                                        e.preventDefault();
+                                                    });
+                                                    
+                                                    window.addEventListener('touchmove', function(e) {
+                                                        if (!isDragging) return;
+                                                        var dx = e.touches[0].clientX - startX;
+                                                        var dy = e.touches[0].clientY - startY;
+                                                        panel.style.right = 'auto';
+                                                        panel.style.bottom = 'auto';
+                                                        panel.style.left = (panelLeft + dx) + 'px';
+                                                        panel.style.top = (panelTop + dy) + 'px';
+                                                    });
+                                                    
+                                                    window.addEventListener('mousemove', function(e) {
+                                                        if (!isDragging) return;
+                                                        var dx = e.clientX - startX;
+                                                        var dy = e.clientY - startY;
+                                                        panel.style.right = 'auto';
+                                                        panel.style.bottom = 'auto';
+                                                        panel.style.left = (panelLeft + dx) + 'px';
+                                                        panel.style.top = (panelTop + dy) + 'px';
+                                                    });
+                                                    
+                                                    window.addEventListener('touchend', function() {
+                                                        isDragging = false;
+                                                        header.style.cursor = 'grab';
+                                                    });
+                                                    
+                                                    window.addEventListener('mouseup', function() {
+                                                        isDragging = false;
+                                                        header.style.cursor = 'grab';
+                                                    });
+                                                    
+                                                    window.addEventListener('scroll', function() {
+                                                        if (current && currentView === 'picker') moveHighlight(current);
+                                                    }, true);
+                                                    window.addEventListener('resize', function() {
+                                                        if (current && currentView === 'picker') moveHighlight(current);
+                                                    });
+                                                    
+                                                    showPickerView();
+                                                    update(document.body.firstElementChild || document.body);
+                                                    
+                                                    document.addEventListener('click', function(e) {
+                                                        if (currentView !== 'picker') return;
+                                                        if (e.target.id === 'gp-panel' || (e.target.closest && e.target.closest('#gp-panel')) || e.target === highlight) return;
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        update(e.target);
+                                                    }, true);
+                                                    
+                                                    window.__GREY_SHOW_RULES__ = function(rules) {
+                                                        document.getElementById('gp-title').textContent = '⬡ My Rules';
+                                                        showRulesView(rules);
+                                                    };
+                                                })();
+                                            """.trimIndent(), null)
+                                        } else if (!showElementHider && wv != null) {
+                                            wv.evaluateJavascript("""
+                                                (function() {
+                                                    var panel = document.getElementById('gp-panel');
+                                                    var hl = document.getElementById('gp-highlight');
+                                                    if (panel) panel.remove();
+                                                    if (hl) hl.remove();
+                                                    delete window.__GREY_PICKER__;
+                                                    delete window.__GREY_SHOW_RULES__;
+                                                })();
+                                            """.trimIndent(), null)
+                                        }
+                                    }
+                                )
                             }
-                            DropdownMenuItem(text = { Text("Bookmarks", color = WHITE) }, onClick = { showMenu = false; showBookmarks = true })
-                            DropdownMenuItem(text = { Text("History", color = WHITE) }, onClick = { showMenu = false; showHistory = true })
-                            DropdownMenuItem(text = { Text("Scripts", color = WHITE) }, onClick = { showMenu = false; showScripts = true })
-                            DropdownMenuItem(text = { Text("Filters", color = WHITE) }, onClick = { showMenu = false; showFilters = true })
-                            DropdownMenuItem(text = { Text("App Lock", color = WHITE) }, onClick = { showMenu = false; showAppLockSettings = true })
+                            DropdownMenuItem(
+                                text = { Text("Element Rules", color = WHITE) },
+                                onClick = { showMenu = false; showElementRules = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Bookmarks", color = WHITE) },
+                                onClick = { showMenu = false; showBookmarks = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("History", color = WHITE) },
+                                onClick = { showMenu = false; showHistory = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Scripts", color = WHITE) },
+                                onClick = { showMenu = false; showScripts = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Filters", color = WHITE) },
+                                onClick = { showMenu = false; showFilters = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("App Lock", color = WHITE) },
+                                onClick = { showMenu = false; showAppLockSettings = true }
+                            )
                         }
                     }
                 }
             }
 
             Box(Modifier.fillMaxWidth().height(0.5.dp).background(MUTED))
-            Box(Modifier.weight(1f).fillMaxWidth()) { ContentLayer() }
+
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                ContentLayer()
+            }
+        }
+    }
+
+    val currentWebView = currentTab?.webView
+    LaunchedEffect(currentWebView) {
+        currentWebView?.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun onRuleGenerated(rule: String) {
+                scope.launch(Dispatchers.Main) {
+                    val domain = rule.substringBefore("##").trim()
+                    val selector = rule.substringAfter("##").trim()
+                    if (domain.isNotBlank() && selector.isNotBlank()) {
+                        customHideRules.removeAll { it.domain == domain && it.selector == selector }
+                        customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
+                        showToast("Saved: $rule")
+                        currentWebView?.evaluateJavascript("""
+                            try {
+                                document.querySelectorAll('$selector').forEach(function(el) {
+                                    el.style.setProperty('display', 'none', 'important');
+                                });
+                            } catch(e) {}
+                        """.trimIndent(), null)
+                    }
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onPickerClosed() {
+                scope.launch(Dispatchers.Main) {
+                    showElementHider = false
+                }
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onShowRules() {
+                scope.launch(Dispatchers.Main) {
+                    val wv = currentTab?.webView ?: return@launch
+                    val rulesJson = JSONArray()
+                    for (rule in customHideRules) {
+                        val obj = JSONObject()
+                        obj.put("id", rule.id)
+                        obj.put("domain", rule.domain)
+                        obj.put("selector", rule.selector)
+                        obj.put("enabled", rule.enabled)
+                        obj.put("timestamp", rule.timestamp)
+                        rulesJson.put(obj)
+                    }
+                    wv.evaluateJavascript(
+                        "if (window.__GREY_SHOW_RULES__) window.__GREY_SHOW_RULES__(${rulesJson});",
+                        null
+                    )
+                }
+            }
+        }, "GreyPicker")
+    }
+
+    if (showElementRules) {
+        ElementRulesScreen(
+            rules = customHideRules,
+            onDismiss = { showElementRules = false },
+            onToggleRule = { id ->
+                val index = customHideRules.indexOfFirst { it.id == id }
+                if (index >= 0) {
+                    customHideRules[index] = customHideRules[index].copy(enabled = !customHideRules[index].enabled)
+                }
+            },
+            onDeleteRule = { id ->
+                customHideRules.removeAll { it.id == id }
+                showToast("Rule deleted")
+            },
+            onAddRule = { domain, selector ->
+                customHideRules.removeAll { it.domain == domain && it.selector == selector }
+                customHideRules.add(0, CustomHideRule(domain = domain, selector = selector))
+                showToast("Rule added")
+            }
+        )
+    }
+
+    if (showToast) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Surface(
+                modifier = Modifier.padding(bottom = 80.dp),
+                color = TOAST_BG,
+                shape = RectangleShape
+            ) {
+                Text(
+                    toastMessage,
+                    color = TOAST_TEXT,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
+
+    if (showLoadingScreen) {
+        Box(
+            Modifier.fillMaxSize().background(BG),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row {
+                    val letters = listOf("G", "R", "E", "Y")
+                    letters.forEachIndexed { index, letter ->
+                        Text(
+                            letter,
+                            color = if (index <= loadingLetterIndex) WHITE else MUTED,
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("browser", color = MUTED, fontSize = 16.sp)
+            }
         }
     }
 }
@@ -2550,8 +3000,12 @@ fun ContentLayer() {
 //PART 9 START
 @Composable
 fun BookmarksUI(
-    bookmarks: List<Bookmark>, onDismiss: () -> Unit, onOpenUrl: (String) -> Unit,
-    onDelete: (String) -> Unit, faviconBitmaps: Map<String, Bitmap?>, loadFavicon: (String) -> Unit
+    bookmarks: List<Bookmark>,
+    onDismiss: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    faviconBitmaps: Map<String, Bitmap?>,
+    loadFavicon: (String) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var bookmarkToDelete by remember { mutableStateOf<String?>(null) }
@@ -2561,41 +3015,125 @@ fun BookmarksUI(
             onDismissRequest = { showDeleteConfirm = false; bookmarkToDelete = null },
             title = { Text("Delete Bookmark?", color = WHITE, fontSize = 18.sp) },
             text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
-            confirmButton = { TextButton({ onDelete(bookmarkToDelete!!); showDeleteConfirm = false; bookmarkToDelete = null }) { Text("Delete", color = WHITE) } },
-            dismissButton = { TextButton({ showDeleteConfirm = false; bookmarkToDelete = null }) { Text("Cancel", color = WHITE) } },
-            containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE, shape = RectangleShape, tonalElevation = 0.dp
+            confirmButton = {
+                TextButton({
+                    onDelete(bookmarkToDelete!!)
+                    showDeleteConfirm = false
+                    bookmarkToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    bookmarkToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
         )
     }
 
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("Bookmarks", color = WHITE, fontSize = 18.sp)
-                    if (bookmarks.isNotEmpty()) { Spacer(Modifier.width(8.dp)); Text("(${bookmarks.size})", color = MUTED, fontSize = 14.sp) }
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Bookmarks", color = WHITE, fontSize = 18.sp)
+                    if (bookmarks.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${bookmarks.size})", color = MUTED, fontSize = 14.sp)
+                    }
                 }
                 if (bookmarks.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("No bookmarks", color = MUTED, fontSize = 16.sp) }
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No bookmarks", color = MUTED, fontSize = 16.sp)
+                    }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
                         items(bookmarks.reversed()) { item ->
                             val domain = getDomainName(item.url)
                             LaunchedEffect(item.url) { loadFavicon(domain) }
                             val fav = faviconBitmaps[domain]
-                            Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), color = ITEM_BG) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp).clickable { onOpenUrl(item.url); onDismiss() }, verticalAlignment = Alignment.CenterVertically) {
-                                    if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                    else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                        .clickable {
+                                            onOpenUrl(item.url)
+                                            onDismiss()
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (fav != null) {
+                                        Image(
+                                            fav.asImageBitmap(),
+                                            domain,
+                                            Modifier.size(20.dp).clip(CircleShape),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Box(
+                                            Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                domain.take(1).uppercase(),
+                                                color = WHITE,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(item.title.ifBlank { item.url }, color = WHITE, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(item.url, color = MUTED.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            item.title.ifBlank { item.url },
+                                            color = WHITE,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            item.url,
+                                            color = MUTED.copy(alpha = 0.7f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-                                    IconButton({ bookmarkToDelete = item.id; showDeleteConfirm = true }) {
-                                        Icon(Icons.Default.Close, "Delete", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                    IconButton({
+                                        bookmarkToDelete = item.id
+                                        showDeleteConfirm = true
+                                    }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            "Delete",
+                                            tint = WHITE.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
                             }
@@ -2611,70 +3149,211 @@ fun BookmarksUI(
 //PART 10 START
 @Composable
 fun AllGroupChip(isSelected: Boolean, tabCount: Int, onClick: () -> Unit) {
-    Surface(Modifier.padding(vertical = 4.dp).width(52.dp).clickable { onClick() }, color = if (isSelected) WHITE else ITEM_BG) {
-        Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("All", color = if (isSelected) Color.Black else WHITE, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    Surface(
+        Modifier.padding(vertical = 4.dp).width(52.dp)
+            .clickable { onClick() },
+        color = if (isSelected) WHITE else ITEM_BG
+    ) {
+        Column(
+            Modifier.padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "All",
+                color = if (isSelected) Color.Black else WHITE,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
             Spacer(Modifier.height(2.dp))
-            Box(Modifier.background(if (isSelected) Color.LightGray else Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                Text(tabCount.toString(), color = if (isSelected) Color.Black else WHITE, fontSize = 9.sp)
+            Box(
+                Modifier
+                    .background(if (isSelected) Color.LightGray else Color.DarkGray)
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    tabCount.toString(),
+                    color = if (isSelected) Color.Black else WHITE,
+                    fontSize = 9.sp
+                )
             }
         }
     }
 }
 
 @Composable
-fun SidebarGroupChip(domain: String, isSelected: Boolean, tabCount: Int, onClick: () -> Unit, favicon: Bitmap?, onAppear: () -> Unit, isBlinking: Boolean, isPinned: Boolean) {
+fun SidebarGroupChip(
+    domain: String,
+    isSelected: Boolean,
+    tabCount: Int,
+    onClick: () -> Unit,
+    favicon: Bitmap?,
+    onAppear: () -> Unit,
+    isBlinking: Boolean,
+    isPinned: Boolean
+) {
     LaunchedEffect(domain) { onAppear() }
+
     val blinkAlpha by rememberInfiniteTransition().animateFloat(
-        initialValue = 0.3f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(400), repeatMode = RepeatMode.Reverse)
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400),
+            repeatMode = RepeatMode.Reverse
+        )
     )
+
     val bg = if (isSelected) WHITE else ITEM_BG
-    Surface(Modifier.padding(vertical = 4.dp).width(52.dp).clickable { onClick() }, color = bg) {
+    Surface(
+        Modifier.padding(vertical = 4.dp).width(52.dp)
+            .clickable { onClick() },
+        color = bg
+    ) {
         Box(Modifier.padding(6.dp)) {
-            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = if (isSelected) Color.Black else WHITE, modifier = Modifier.size(12.dp).align(Alignment.TopStart))
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (isPinned) {
+                Icon(
+                    Icons.Default.PushPin,
+                    "Pinned",
+                    tint = if (isSelected) Color.Black else WHITE,
+                    modifier = Modifier.size(12.dp).align(Alignment.TopStart)
+                )
+            }
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Spacer(Modifier.height(4.dp))
-                if (favicon != null) Image(favicon.asImageBitmap(), domain, Modifier.size(24.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                else Box(Modifier.size(24.dp).clip(CircleShape).background(if (isSelected) Color.LightGray else Color.DarkGray), contentAlignment = Alignment.Center) {
-                    Text(domain.take(1).uppercase(), color = if (isSelected) Color.Black else WHITE, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                if (favicon != null) {
+                    Image(
+                        favicon.asImageBitmap(),
+                        domain,
+                        Modifier.size(24.dp).clip(CircleShape),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Box(
+                        Modifier.size(24.dp).clip(CircleShape)
+                            .background(if (isSelected) Color.LightGray else Color.DarkGray),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            domain.take(1).uppercase(),
+                            color = if (isSelected) Color.Black else WHITE,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
-            Box(Modifier.align(Alignment.BottomEnd).background(if (isSelected) Color.LightGray else Color.DarkGray).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                Text(tabCount.toString(), color = if (isSelected) Color.Black else WHITE, fontSize = 9.sp)
+            Box(
+                Modifier.align(Alignment.BottomEnd)
+                    .background(if (isSelected) Color.LightGray else Color.DarkGray)
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    tabCount.toString(),
+                    color = if (isSelected) Color.Black else WHITE,
+                    fontSize = 9.sp
+                )
             }
         }
     }
 }
 
 @Composable
-fun HistoryUI(history: List<HistoryItem>, onDismiss: () -> Unit, onOpenUrl: (String) -> Unit, faviconBitmaps: Map<String, Bitmap?>, loadFavicon: (String) -> Unit) {
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+fun HistoryUI(
+    history: List<HistoryItem>,
+    onDismiss: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    faviconBitmaps: Map<String, Bitmap?>,
+    loadFavicon: (String) -> Unit
+) {
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("History", color = WHITE, fontSize = 18.sp)
-                    if (history.isNotEmpty()) { Spacer(Modifier.width(8.dp)); Text("(${history.size})", color = MUTED, fontSize = 14.sp) }
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("History", color = WHITE, fontSize = 18.sp)
+                    if (history.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${history.size})", color = MUTED, fontSize = 14.sp)
+                    }
                 }
                 if (history.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("No history", color = MUTED, fontSize = 16.sp) }
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No history", color = MUTED, fontSize = 16.sp)
+                    }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
                         items(history.reversed()) { item ->
                             val domain = getDomainName(item.url)
                             LaunchedEffect(item.url) { loadFavicon(domain) }
                             val fav = faviconBitmaps[domain]
-                            Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), color = ITEM_BG) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp).clickable { onOpenUrl(item.url); onDismiss() }, verticalAlignment = Alignment.CenterVertically) {
-                                    if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
-                                    else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
-                                        Text(domain.take(1).uppercase(), color = WHITE, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                        .clickable {
+                                            onOpenUrl(item.url)
+                                            onDismiss()
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (fav != null) {
+                                        Image(
+                                            fav.asImageBitmap(),
+                                            domain,
+                                            Modifier.size(20.dp).clip(CircleShape),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Box(
+                                            Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                domain.take(1).uppercase(),
+                                                color = WHITE,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(item.title.ifBlank { item.url }, color = WHITE, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(item.url, color = MUTED.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            item.title.ifBlank { item.url },
+                                            color = WHITE,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            item.url,
+                                            color = MUTED.copy(alpha = 0.7f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }
@@ -2695,32 +3374,101 @@ fun hashPattern(pattern: String): String {
 }
 
 @Composable
-fun AppLockSettingsScreen(lockEnabled: Boolean, hasPattern: Boolean, onDismiss: () -> Unit, onToggleChange: (Boolean) -> Unit, onChangePattern: () -> Unit) {
+fun AppLockSettingsScreen(
+    lockEnabled: Boolean,
+    hasPattern: Boolean,
+    onDismiss: () -> Unit,
+    onToggleChange: (Boolean) -> Unit,
+    onChangePattern: () -> Unit
+) {
     var toggleChecked by remember { mutableStateOf(lockEnabled) }
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("App Lock", color = WHITE, fontSize = 18.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("App Lock", color = WHITE, fontSize = 18.sp)
                 }
+
                 Divider(color = DIVIDER_COLOR, thickness = 1.dp)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(if (toggleChecked) "Enabled" else "Disabled", color = WHITE, fontSize = 14.sp)
-                    Switch(checked = toggleChecked, onCheckedChange = { newVal -> toggleChecked = newVal; onToggleChange(newVal) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = WHITE, checkedTrackColor = WHITE.copy(alpha = 0.3f), uncheckedThumbColor = WHITE.copy(alpha = 0.5f), uncheckedTrackColor = Color(0xFF444444)))
+
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        if (toggleChecked) "Enabled" else "Disabled",
+                        color = WHITE,
+                        fontSize = 14.sp
+                    )
+                    Switch(
+                        checked = toggleChecked,
+                        onCheckedChange = { newVal ->
+                            toggleChecked = newVal
+                            onToggleChange(newVal)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = WHITE,
+                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                            uncheckedTrackColor = Color(0xFF444444)
+                        )
+                    )
                 }
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp); Spacer(Modifier.height(24.dp))
+
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+
+                Spacer(Modifier.height(24.dp))
+
                 if (toggleChecked) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Button(onClick = { if (hasPattern) onChangePattern() else onToggleChange(true) }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) {
-                            Text(if (hasPattern) "Change Pattern" else "Set Pattern", color = WHITE, fontSize = 14.sp)
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Button(
+                            onClick = {
+                                if (hasPattern) {
+                                    onChangePattern()
+                                } else {
+                                    onToggleChange(true)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                        ) {
+                            Text(
+                                if (hasPattern) "Change Pattern" else "Set Pattern",
+                                color = WHITE,
+                                fontSize = 14.sp
+                            )
                         }
                     }
                 } else {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("Enable app lock to set a pattern", color = MUTED, fontSize = 14.sp)
+                    Box(
+                        Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Enable app lock to set a pattern",
+                            color = MUTED,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }
@@ -2729,21 +3477,36 @@ fun AppLockSettingsScreen(lockEnabled: Boolean, hasPattern: Boolean, onDismiss: 
 }
 
 @Composable
-fun PatternDrawScreen(mode: String, savedHash: String?, onDismiss: () -> Unit, onPatternVerified: () -> Unit, onPatternSet: (String) -> Unit, onPatternRemoved: () -> Unit) {
-    val dotSpacing = 80.dp; val dotSize = 24.dp
-    val gridColumns = 3; val gridRows = 3
+fun PatternDrawScreen(
+    mode: String,
+    savedHash: String?,
+    onDismiss: () -> Unit,
+    onPatternVerified: () -> Unit,
+    onPatternSet: (String) -> Unit,
+    onPatternRemoved: () -> Unit
+) {
+    val dotSpacing = 80.dp
+    val dotSize = 24.dp
+    val gridColumns = 3
+    val gridRows = 3
     val density = LocalDensity.current
+
     val selectedDots = remember { mutableStateListOf<Int>() }
     var firstPattern by remember { mutableStateOf("") }
     var errorState by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var promptText by remember { mutableStateOf("") }
     var step by remember { mutableStateOf(0) }
+
     val spacingPx = remember { with(density) { dotSpacing.toPx() } }
     val sizePx = remember { with(density) { dotSize.toPx() } }
 
     LaunchedEffect(mode) {
-        selectedDots.clear(); errorState = false; showError = false; firstPattern = ""; step = 0
+        selectedDots.clear()
+        errorState = false
+        showError = false
+        firstPattern = ""
+        step = 0
         promptText = when (mode) {
             "unlock" -> "Draw pattern to unlock"
             "set" -> "Connect at least 4 dots to make pattern"
@@ -2756,78 +3519,265 @@ fun PatternDrawScreen(mode: String, savedHash: String?, onDismiss: () -> Unit, o
 
     val shakeOffset by animateFloatAsState(
         targetValue = if (showError) 10f else 0f,
-        animationSpec = if (showError) repeatable(iterations = 3, animation = tween(50), repeatMode = RepeatMode.Reverse) else tween(0)
+        animationSpec = if (showError) {
+            repeatable(iterations = 3, animation = tween(50), repeatMode = RepeatMode.Reverse)
+        } else {
+            tween(0)
+        }
     )
-    LaunchedEffect(showError) { if (showError) { delay(600); showError = false; selectedDots.clear() } }
+
+    LaunchedEffect(showError) {
+        if (showError) {
+            delay(600)
+            showError = false
+            selectedDots.clear()
+        }
+    }
 
     fun hitDotAt(px: Float, py: Float): Int? {
         val hitRadius = spacingPx * 0.6f
-        for (row in 0 until gridRows) for (col in 0 until gridColumns) {
-            val cx = col * spacingPx + sizePx / 2; val cy = row * spacingPx + sizePx / 2
-            if (kotlin.math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy)) <= hitRadius) return row * gridColumns + col + 1
+        for (row in 0 until gridRows) {
+            for (col in 0 until gridColumns) {
+                val cx = col * spacingPx + sizePx / 2
+                val cy = row * spacingPx + sizePx / 2
+                val dist = kotlin.math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy))
+                if (dist <= hitRadius) {
+                    return row * gridColumns + col + 1
+                }
+            }
         }
         return null
     }
 
     fun handleComplete() {
-        val patternStr = selectedDots.joinToString(","); val dotCount = selectedDots.size; val hash = hashPattern(patternStr)
-        if (dotCount == 1 && patternStr == "9") { when (mode) { "unlock", "change_verify", "toggle_off" -> { onPatternVerified(); return } } }
-        when (mode) {
-            "unlock" -> if (hash == savedHash) onPatternVerified() else { showError = true; errorState = true; promptText = "Incorrect pattern" }
-            "set", "change_set" -> {
-                if (dotCount < 4) { showError = true; errorState = true; promptText = "Connect at least 4 dots" }
-                else if (step == 0) { firstPattern = patternStr; step = 1; selectedDots.clear(); promptText = "Do it again to confirm" }
-                else {
-                    if (hashPattern(patternStr) == hashPattern(firstPattern)) onPatternSet(hash)
-                    else { showError = true; errorState = true; promptText = "Patterns don't match. Try again."; firstPattern = ""; step = 0 }
+        val patternStr = selectedDots.joinToString(",")
+        val dotCount = selectedDots.size
+        val hash = hashPattern(patternStr)
+
+        if (dotCount == 1 && patternStr == "9") {
+            when (mode) {
+                "unlock", "change_verify", "toggle_off" -> {
+                    onPatternVerified()
+                    return
                 }
             }
-            "change_verify", "toggle_off" -> if (hash == savedHash) onPatternVerified() else { showError = true; errorState = true; promptText = "Incorrect pattern" }
+        }
+
+        when (mode) {
+            "unlock" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
+            "set" -> {
+                if (dotCount < 4) {
+                    showError = true
+                    errorState = true
+                    promptText = "Connect at least 4 dots"
+                } else if (step == 0) {
+                    firstPattern = patternStr
+                    step = 1
+                    selectedDots.clear()
+                    promptText = "Do it again to confirm"
+                } else {
+                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                        onPatternSet(hash)
+                    } else {
+                        showError = true
+                        errorState = true
+                        promptText = "Patterns don't match. Try again."
+                        firstPattern = ""
+                        step = 0
+                    }
+                }
+            }
+            "change_verify" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
+            "change_set" -> {
+                if (dotCount < 4) {
+                    showError = true
+                    errorState = true
+                    promptText = "Connect at least 4 dots"
+                } else if (step == 0) {
+                    firstPattern = patternStr
+                    step = 1
+                    selectedDots.clear()
+                    promptText = "Do it again to confirm"
+                } else {
+                    if (hashPattern(patternStr) == hashPattern(firstPattern)) {
+                        onPatternSet(hash)
+                    } else {
+                        showError = true
+                        errorState = true
+                        promptText = "Patterns don't match. Try again."
+                        firstPattern = ""
+                        step = 0
+                    }
+                }
+            }
+            "toggle_off" -> {
+                if (hash == savedHash) {
+                    onPatternVerified()
+                } else {
+                    showError = true
+                    errorState = true
+                    promptText = "Incorrect pattern"
+                }
+            }
         }
     }
 
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp))
-                    Text(when (mode) { "unlock" -> "Unlock"; "set" -> "Set Pattern"; "change_verify" -> "Change Pattern"; "change_set" -> "Set New Pattern"; "toggle_off" -> "Disable Lock"; else -> "Pattern" }, color = WHITE, fontSize = 18.sp)
-                }
-                Spacer(Modifier.weight(0.3f))
-                Box(Modifier.size(dotSpacing * 2 + dotSize).offset { IntOffset(shakeOffset.toInt(), 0) }
-                    .pointerInput(mode, step) {
-                        detectDragGestures(
-                            onDragStart = { offset -> hitDotAt(offset.x, offset.y)?.let { dot -> if (!selectedDots.contains(dot)) selectedDots.add(dot) } },
-                            onDrag = { change, _ -> change.consume(); hitDotAt(change.position.x, change.position.y)?.let { dot -> if (!selectedDots.contains(dot)) selectedDots.add(dot) } },
-                            onDragEnd = { handleComplete() },
-                            onDragCancel = { selectedDots.clear() }
-                        )
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(
+                Modifier.fillMaxSize().navigationBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        when (mode) {
+                            "unlock" -> "Unlock"
+                            "set" -> "Set Pattern"
+                            "change_verify" -> "Change Pattern"
+                            "change_set" -> "Set New Pattern"
+                            "toggle_off" -> "Disable Lock"
+                            else -> "Pattern"
+                        },
+                        color = WHITE,
+                        fontSize = 18.sp
+                    )
+                }
+
+                Spacer(Modifier.weight(0.3f))
+
+                Box(
+                    Modifier
+                        .size(dotSpacing * 2 + dotSize)
+                        .offset { IntOffset(shakeOffset.toInt(), 0) }
+                        .pointerInput(mode, step) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    hitDotAt(offset.x, offset.y)?.let { dot ->
+                                        if (!selectedDots.contains(dot)) {
+                                            selectedDots.add(dot)
+                                        }
+                                    }
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    hitDotAt(change.position.x, change.position.y)?.let { dot ->
+                                        if (!selectedDots.contains(dot)) {
+                                            selectedDots.add(dot)
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    handleComplete()
+                                },
+                                onDragCancel = {
+                                    selectedDots.clear()
+                                }
+                            )
+                        }
                 ) {
                     Canvas(Modifier.fillMaxSize()) {
                         if (selectedDots.size >= 2) {
                             val path = Path()
                             for (i in 0 until selectedDots.size - 1) {
-                                val from = selectedDots[i]; val to = selectedDots[i + 1]
-                                path.moveTo((from-1)%gridColumns*spacingPx+sizePx/2, (from-1)/gridColumns*spacingPx+sizePx/2)
-                                path.lineTo((to-1)%gridColumns*spacingPx+sizePx/2, (to-1)/gridColumns*spacingPx+sizePx/2)
+                                val from = selectedDots[i]
+                                val to = selectedDots[i + 1]
+                                val fromCol = (from - 1) % gridColumns
+                                val fromRow = (from - 1) / gridColumns
+                                val toCol = (to - 1) % gridColumns
+                                val toRow = (to - 1) / gridColumns
+
+                                path.moveTo(
+                                    fromCol * spacingPx + sizePx / 2,
+                                    fromRow * spacingPx + sizePx / 2
+                                )
+                                path.lineTo(
+                                    toCol * spacingPx + sizePx / 2,
+                                    toRow * spacingPx + sizePx / 2
+                                )
                             }
-                            drawPath(path, color = if (errorState) DELETE_BG else WHITE, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                            drawPath(
+                                path,
+                                color = if (errorState) DELETE_BG else WHITE,
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
                         }
                     }
-                    for (row in 0 until gridRows) for (col in 0 until gridColumns) {
-                        Box(Modifier.offset(x = dotSpacing * col, y = dotSpacing * row).size(dotSize).background(WHITE, RectangleShape))
+
+                    for (row in 0 until gridRows) {
+                        for (col in 0 until gridColumns) {
+                            Box(
+                                Modifier
+                                    .offset(x = dotSpacing * col, y = dotSpacing * row)
+                                    .size(dotSize)
+                                    .background(WHITE, RectangleShape)
+                            )
+                        }
                     }
                 }
+
                 Spacer(Modifier.height(32.dp))
-                Text(promptText, color = if (errorState) DELETE_BG else MUTED, fontSize = 14.sp)
+
+                Text(
+                    promptText,
+                    color = if (errorState) DELETE_BG else MUTED,
+                    fontSize = 14.sp
+                )
+
                 Spacer(Modifier.height(24.dp))
+
                 if (mode != "unlock") {
-                    Button(onClick = { selectedDots.clear(); firstPattern = ""; errorState = false; showError = false; step = 0
-                        promptText = when (mode) { "set" -> "Connect at least 4 dots to make pattern"; "change_verify" -> "Draw the last pattern to change"; "change_set" -> "Connect at least 4 dots to make new pattern"; "toggle_off" -> "Draw pattern to disable lock"; else -> "" }
-                    }, shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) { Text("Reset") }
+                    Button(
+                        onClick = {
+                            selectedDots.clear()
+                            firstPattern = ""
+                            errorState = false
+                            showError = false
+                            step = 0
+                            promptText = when (mode) {
+                                "set" -> "Connect at least 4 dots to make pattern"
+                                "change_verify" -> "Draw the last pattern to change"
+                                "change_set" -> "Connect at least 4 dots to make new pattern"
+                                "toggle_off" -> "Draw pattern to disable lock"
+                                else -> ""
+                            }
+                        },
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Text("Reset")
+                    }
                 }
+
                 Spacer(Modifier.weight(0.3f))
             }
         }
@@ -2837,7 +3787,14 @@ fun PatternDrawScreen(mode: String, savedHash: String?, onDismiss: () -> Unit, o
 
 //PART 12 START
 @Composable
-fun ScriptsManagerScreen(scripts: List<Script>, onDismiss: () -> Unit, onAddScript: () -> Unit, onEditScript: (Script) -> Unit, onDeleteScript: (String) -> Unit, onToggleScript: (String) -> Unit) {
+fun ScriptsManagerScreen(
+    scripts: List<Script>,
+    onDismiss: () -> Unit,
+    onAddScript: () -> Unit,
+    onEditScript: (Script) -> Unit,
+    onDeleteScript: (String) -> Unit,
+    onToggleScript: (String) -> Unit
+) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var scriptToDelete by remember { mutableStateOf<String?>(null) }
     var showGuide by remember { mutableStateOf(false) }
@@ -2847,44 +3804,135 @@ fun ScriptsManagerScreen(scripts: List<Script>, onDismiss: () -> Unit, onAddScri
             onDismissRequest = { showDeleteConfirm = false; scriptToDelete = null },
             title = { Text("Delete Script?", color = WHITE, fontSize = 18.sp) },
             text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
-            confirmButton = { TextButton({ onDeleteScript(scriptToDelete!!); showDeleteConfirm = false; scriptToDelete = null }) { Text("Delete", color = WHITE) } },
-            dismissButton = { TextButton({ showDeleteConfirm = false; scriptToDelete = null }) { Text("Cancel", color = WHITE) } },
-            containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE, shape = RectangleShape, tonalElevation = 0.dp
+            confirmButton = {
+                TextButton({
+                    onDeleteScript(scriptToDelete!!)
+                    showDeleteConfirm = false
+                    scriptToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    scriptToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
         )
     }
-    if (showGuide) ScriptGuideScreen(onDismiss = { showGuide = false })
 
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+    if (showGuide) {
+        ScriptGuideScreen(onDismiss = { showGuide = false })
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("Scripts", color = WHITE, fontSize = 18.sp)
-                    if (scripts.isNotEmpty()) { Spacer(Modifier.width(4.dp)); Text("(${scripts.size})", color = MUTED, fontSize = 14.sp) }
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Scripts", color = WHITE, fontSize = 18.sp)
+                    if (scripts.isNotEmpty()) {
+                        Spacer(Modifier.width(4.dp))
+                        Text("(${scripts.size})", color = MUTED, fontSize = 14.sp)
+                    }
                     Spacer(Modifier.weight(1f))
-                    Button(onClick = { showGuide = true }, shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                    Button(
+                        onClick = { showGuide = true },
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
                         Text("?", fontSize = 14.sp, color = WHITE)
                     }
                 }
+
                 if (scripts.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("No scripts", color = MUTED, fontSize = 16.sp) }
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No scripts", color = MUTED, fontSize = 16.sp)
+                    }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
                         items(scripts) { script ->
-                            Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), color = ITEM_BG) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clickable { onEditScript(script) }, verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(checked = script.enabled, onCheckedChange = { onToggleScript(script.id) }, modifier = Modifier.padding(end = 4.dp),
-                                        colors = SwitchDefaults.colors(checkedThumbColor = WHITE, checkedTrackColor = WHITE.copy(alpha = 0.3f), uncheckedThumbColor = WHITE.copy(alpha = 0.5f), uncheckedTrackColor = Color(0xFF444444)))
-                                    Text(script.title.ifBlank { "Untitled" }, color = if (script.enabled) WHITE else MUTED, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    IconButton({ scriptToDelete = script.id; showDeleteConfirm = true }) { Icon(Icons.Default.Close, "Delete", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp)) }
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+                                        .clickable { onEditScript(script) },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Switch(
+                                        checked = script.enabled,
+                                        onCheckedChange = { onToggleScript(script.id) },
+                                        modifier = Modifier.padding(end = 4.dp),
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = WHITE,
+                                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                            uncheckedTrackColor = Color(0xFF444444)
+                                        )
+                                    )
+                                    Text(
+                                        script.title.ifBlank { "Untitled" },
+                                        color = if (script.enabled) WHITE else MUTED,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton({
+                                        scriptToDelete = script.id
+                                        showDeleteConfirm = true
+                                    }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            "Delete",
+                                            tint = WHITE.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                Surface(Modifier.fillMaxWidth().navigationBarsPadding(), color = SURFACE) {
-                    Button(onClick = onAddScript, modifier = Modifier.fillMaxWidth().padding(12.dp), shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) {
-                        Icon(Icons.Default.Add, null, tint = WHITE); Spacer(Modifier.width(8.dp)); Text("Add Script", color = WHITE)
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Button(
+                        onClick = onAddScript,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Script", color = WHITE)
                     }
                 }
             }
@@ -2893,42 +3941,128 @@ fun ScriptsManagerScreen(scripts: List<Script>, onDismiss: () -> Unit, onAddScri
 }
 
 @Composable
-fun ScriptEditorScreen(script: Script?, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+fun ScriptEditorScreen(
+    script: Script?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
     var title by remember { mutableStateOf(script?.title ?: "") }
     var code by remember { mutableStateOf(script?.code ?: "") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (script != null) "Edit Script" else "Add Script", color = WHITE, fontSize = 18.sp)
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp)) }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (script != null) "Edit Script" else "Add Script",
+                    color = WHITE,
+                    fontSize = 18.sp
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = WHITE, modifier = Modifier.size(20.dp))
+                }
             }
         },
         text = {
             Column {
-                OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
-                    modifier = Modifier.fillMaxWidth(), textStyle = TextStyle(color = WHITE, fontSize = 14.sp), shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = FIELD_BG, unfocusedContainerColor = FIELD_BG, focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent, cursorColor = WHITE))
-                Spacer(Modifier.height(12.dp)); Text("Code", color = MUTED, fontSize = 12.sp); Spacer(Modifier.height(4.dp))
-                OutlinedTextField(value = code, onValueChange = { code = it },
-                    placeholder = { Column { Text("JavaScript code...", color = WHITE.copy(alpha = 0.5f), fontSize = 14.sp); Spacer(Modifier.height(4.dp)); Text("Note: Paste your code here. For editing, use an\nexternal code editor for a better experience.", color = MUTED.copy(alpha = 0.6f), fontSize = 11.sp) } },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 350.dp), textStyle = TextStyle(color = WHITE, fontSize = 14.sp, lineHeight = 18.sp), shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = FIELD_BG, unfocusedContainerColor = FIELD_BG, focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent, cursorColor = WHITE))
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = { Text("Script name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = WHITE
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Text("Code", color = MUTED, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    placeholder = {
+                        Column {
+                            Text(
+                                "JavaScript code...",
+                                color = WHITE.copy(alpha = 0.5f),
+                                fontSize = 14.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Note: Paste your code here. For editing, use an\nexternal code editor for a better experience.",
+                                color = MUTED.copy(alpha = 0.6f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 350.dp),
+                    textStyle = TextStyle(
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    ),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = WHITE
+                    )
+                )
             }
         },
         confirmButton = {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onDismiss, modifier = Modifier.weight(1f), shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) { Text("Cancel", color = WHITE) }
-                Button(onClick = { onSave(title, code) }, modifier = Modifier.weight(1f), shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) { Text("Save", color = WHITE) }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                ) {
+                    Text("Cancel", color = WHITE)
+                }
+                Button(
+                    onClick = { onSave(title, code) },
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                ) {
+                    Text("Save", color = WHITE)
+                }
             }
         },
-        containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE, shape = RectangleShape, tonalElevation = 0.dp
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
     )
 }
 
 @Composable
 fun ScriptGuideScreen(onDismiss: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
+
     val guideText = """
 WebView Script Guide
 
@@ -2966,20 +4100,57 @@ Errors are silently caught. Use console.log
 for debugging via remote DevTools.
 """.trimIndent()
 
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("Script Guide", color = WHITE, fontSize = 18.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Script Guide", color = WHITE, fontSize = 18.sp)
                 }
+
                 Divider(color = DIVIDER_COLOR, thickness = 1.dp)
-                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
-                    item { Text(guideText, color = WHITE.copy(alpha = 0.9f), fontSize = 13.sp, lineHeight = 20.sp) }
+
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().padding(16.dp)
+                ) {
+                    item {
+                        Text(
+                            guideText,
+                            color = WHITE.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
                 }
-                Surface(Modifier.fillMaxWidth().navigationBarsPadding(), color = SURFACE) {
-                    Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                        Button(onClick = { clipboardManager.setText(AnnotatedString(guideText)) }, shape = RectangleShape, colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) {
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(guideText))
+                            },
+                            shape = RectangleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                        ) {
                             Text("Copy Guide", color = WHITE)
                         }
                     }
@@ -2993,9 +4164,14 @@ for debugging via remote DevTools.
 //PART 13 START
 @Composable
 fun FiltersManagerScreen(
-    filters: List<Filter>, filtersEnabled: Boolean, totalBlocked: Int,
-    onDismiss: () -> Unit, onToggleMaster: (Boolean) -> Unit, onToggleFilter: (String) -> Unit,
-    onDeleteFilter: (String) -> Unit, onImportFilter: (String, String) -> Unit
+    filters: List<Filter>,
+    filtersEnabled: Boolean,
+    totalBlocked: Int,
+    onDismiss: () -> Unit,
+    onToggleMaster: (Boolean) -> Unit,
+    onToggleFilter: (String) -> Unit,
+    onDeleteFilter: (String) -> Unit,
+    onImportFilter: (String, String) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var filterToDelete by remember { mutableStateOf<Filter?>(null) }
@@ -3010,62 +4186,165 @@ fun FiltersManagerScreen(
                 Column {
                     Text(f.name, color = WHITE, fontSize = 14.sp)
                     Text("${f.networkRuleCount} network rules", color = MUTED, fontSize = 12.sp)
-                    Text("${f.cosmeticRuleCount} cosmetic rules", color = MUTED, fontSize = 12.sp)
-                    Text("${f.scriptletRuleCount} scriptlet rules", color = MUTED, fontSize = 12.sp)
+                    Text("${f.cosmeticRuleCount} cosmetic (skipped)", color = MUTED, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("This cannot be undone.", color = MUTED, fontSize = 14.sp)
                 }
             },
-            confirmButton = { TextButton({ onDeleteFilter(f.id); showDeleteConfirm = false; filterToDelete = null }) { Text("Delete", color = WHITE) } },
-            dismissButton = { TextButton({ showDeleteConfirm = false; filterToDelete = null }) { Text("Cancel", color = WHITE) } },
-            containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE, shape = RectangleShape, tonalElevation = 0.dp
+            confirmButton = {
+                TextButton({
+                    onDeleteFilter(f.id)
+                    showDeleteConfirm = false
+                    filterToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    filterToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
         )
     }
 
     if (showImportDialog) {
-        FilterImportDialog(onDismiss = { showImportDialog = false }, onImport = { name, rawText -> onImportFilter(name, rawText); showImportDialog = false })
+        FilterImportDialog(
+            onDismiss = { showImportDialog = false },
+            onImport = { name, rawText ->
+                onImportFilter(name, rawText)
+                showImportDialog = false
+            }
+        )
     }
 
-    Popup(alignment = Alignment.TopStart, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().background(SURFACE), color = SURFACE) {
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Close", tint = WHITE) }
-                    Spacer(Modifier.width(4.dp)); Text("Filters", color = WHITE, fontSize = 18.sp)
-                }
-                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text(if (filtersEnabled) "Enabled" else "Disabled", color = WHITE, fontSize = 14.sp)
-                        if (totalBlocked > 0) Text("$totalBlocked blocked this session", color = MUTED, fontSize = 11.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
                     }
-                    Switch(checked = filtersEnabled, onCheckedChange = onToggleMaster,
-                        colors = SwitchDefaults.colors(checkedThumbColor = WHITE, checkedTrackColor = WHITE.copy(alpha = 0.3f), uncheckedThumbColor = WHITE.copy(alpha = 0.5f), uncheckedTrackColor = Color(0xFF444444)))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Filters", color = WHITE, fontSize = 18.sp)
                 }
+
                 Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            if (filtersEnabled) "Enabled" else "Disabled",
+                            color = WHITE,
+                            fontSize = 14.sp
+                        )
+                        if (totalBlocked > 0) {
+                            Text(
+                                "$totalBlocked blocked on this page",
+                                color = MUTED,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = filtersEnabled,
+                        onCheckedChange = onToggleMaster,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = WHITE,
+                            checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                            uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                            uncheckedTrackColor = Color(0xFF444444)
+                        )
+                    )
+                }
+
+                Divider(color = DIVIDER_COLOR, thickness = 1.dp)
+
                 if (filters.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("No filters", color = MUTED, fontSize = 16.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("Tap Import to add EasyList or uBlock lists", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                            Text("Tap Import to add a filter list", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
                         items(filters) { filter ->
-                            Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), color = ITEM_BG) {
-                                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                color = ITEM_BG
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(12.dp)
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(filter.name, color = if (filter.enabled) WHITE else MUTED, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                filter.name,
+                                                color = if (filter.enabled) WHITE else MUTED,
+                                                fontSize = 14.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                             Spacer(Modifier.height(2.dp))
-                                            Text("net ${filter.networkRuleCount} · cos ${filter.cosmeticRuleCount} · js ${filter.scriptletRuleCount}", color = MUTED, fontSize = 11.sp)
+                                            Text(
+                                                "${filter.networkRuleCount} network rules",
+                                                color = MUTED,
+                                                fontSize = 11.sp
+                                            )
+                                            Text(
+                                                "${filter.cosmeticRuleCount} cosmetic (skipped)",
+                                                color = MUTED.copy(alpha = 0.7f),
+                                                fontSize = 11.sp
+                                            )
                                         }
-                                        Switch(checked = filter.enabled, onCheckedChange = { onToggleFilter(filter.id) },
-                                            colors = SwitchDefaults.colors(checkedThumbColor = WHITE, checkedTrackColor = WHITE.copy(alpha = 0.3f), uncheckedThumbColor = WHITE.copy(alpha = 0.5f), uncheckedTrackColor = Color(0xFF444444)))
-                                        IconButton({ filterToDelete = filter; showDeleteConfirm = true }) {
-                                            Icon(Icons.Default.Close, "Delete", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                        Switch(
+                                            checked = filter.enabled,
+                                            onCheckedChange = { onToggleFilter(filter.id) },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = WHITE,
+                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                                uncheckedTrackColor = Color(0xFF444444)
+                                            )
+                                        )
+                                        IconButton({
+                                            filterToDelete = filter
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Delete",
+                                                tint = WHITE.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -3073,10 +4352,20 @@ fun FiltersManagerScreen(
                         }
                     }
                 }
-                Surface(Modifier.fillMaxWidth().navigationBarsPadding(), color = SURFACE) {
-                    Button(onClick = { showImportDialog = true }, modifier = Modifier.fillMaxWidth().padding(12.dp), shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) {
-                        Icon(Icons.Default.Add, null, tint = WHITE); Spacer(Modifier.width(8.dp)); Text("Import Filter", color = WHITE)
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Button(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Import Filter", color = WHITE)
                     }
                 }
             }
@@ -3085,7 +4374,10 @@ fun FiltersManagerScreen(
 }
 
 @Composable
-fun FilterImportDialog(onDismiss: () -> Unit, onImport: (String, String) -> Unit) {
+fun FilterImportDialog(
+    onDismiss: () -> Unit,
+    onImport: (String, String) -> Unit
+) {
     var filterName by remember { mutableStateOf("") }
     var selectedFileName by remember { mutableStateOf("") }
     var fileContent by remember { mutableStateOf("") }
@@ -3098,11 +4390,21 @@ fun FilterImportDialog(onDismiss: () -> Unit, onImport: (String, String) -> Unit
             try {
                 val inputStream = context.contentResolver.openInputStream(uri)
                 val content = inputStream?.bufferedReader()?.readText() ?: ""
-                inputStream?.close(); fileContent = content
+                inputStream?.close()
+                fileContent = content
                 val cursor = context.contentResolver.query(uri, null, null, null, null)
-                cursor?.use { if (it.moveToFirst()) { val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (nameIndex >= 0) selectedFileName = it.getString(nameIndex) } }
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            selectedFileName = it.getString(nameIndex)
+                        }
+                    }
+                }
                 if (selectedFileName.isEmpty()) selectedFileName = "filter.txt"
-                if (filterName.isEmpty()) filterName = selectedFileName.removeSuffix(".txt")
+                if (filterName.isEmpty()) {
+                    filterName = selectedFileName.removeSuffix(".txt")
+                }
             } catch (e: Exception) { }
         }
     }
@@ -3112,23 +4414,297 @@ fun FilterImportDialog(onDismiss: () -> Unit, onImport: (String, String) -> Unit
         title = { Text("Import Filter", color = WHITE, fontSize = 18.sp) },
         text = {
             Column {
-                OutlinedTextField(value = filterName, onValueChange = { filterName = it }, singleLine = true, placeholder = { Text("Filter name", color = WHITE.copy(alpha = 0.5f)) },
-                    modifier = Modifier.fillMaxWidth(), textStyle = TextStyle(color = WHITE, fontSize = 14.sp), shape = RectangleShape,
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = FIELD_BG, unfocusedContainerColor = FIELD_BG, focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent, cursorColor = WHITE))
+                OutlinedTextField(
+                    value = filterName,
+                    onValueChange = { filterName = it },
+                    singleLine = true,
+                    placeholder = { Text("Filter name", color = WHITE.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                    shape = RectangleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = FIELD_BG,
+                        unfocusedContainerColor = FIELD_BG,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = WHITE
+                    )
+                )
+
                 Spacer(Modifier.height(12.dp))
-                Button(onClick = { filePickerLauncher.launch("text/plain") }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)) {
-                    Text(if (selectedFileName.isEmpty()) "Select File" else selectedFileName, color = WHITE, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                Button(
+                    onClick = { filePickerLauncher.launch("text/plain") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                ) {
+                    Text(
+                        if (selectedFileName.isEmpty()) "Select File"
+                        else selectedFileName,
+                        color = WHITE,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (filterName.isNotBlank() && fileContent.isNotBlank()) onImport(filterName, fileContent) }, enabled = filterName.isNotBlank() && fileContent.isNotBlank()) {
+            TextButton(
+                onClick = {
+                    if (filterName.isNotBlank() && fileContent.isNotBlank()) {
+                        onImport(filterName, fileContent)
+                    }
+                },
+                enabled = filterName.isNotBlank() && fileContent.isNotBlank()
+            ) {
                 Text("Import", color = if (filterName.isNotBlank() && fileContent.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = WHITE) } },
-        containerColor = SURFACE, titleContentColor = WHITE, textContentColor = WHITE, shape = RectangleShape, tonalElevation = 0.dp
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = WHITE)
+            }
+        },
+        containerColor = SURFACE,
+        titleContentColor = WHITE,
+        textContentColor = WHITE,
+        shape = RectangleShape,
+        tonalElevation = 0.dp
     )
 }
 //PART 13 END
+
+//PART 14 START
+@Composable
+fun ElementRulesScreen(
+    rules: List<CustomHideRule>,
+    onDismiss: () -> Unit,
+    onToggleRule: (String) -> Unit,
+    onDeleteRule: (String) -> Unit,
+    onAddRule: (String, String) -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var ruleToDelete by remember { mutableStateOf<String?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm && ruleToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false; ruleToDelete = null },
+            title = { Text("Delete Rule?", color = WHITE, fontSize = 18.sp) },
+            text = { Text("This cannot be undone.", color = MUTED, fontSize = 14.sp) },
+            confirmButton = {
+                TextButton({
+                    onDeleteRule(ruleToDelete!!)
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Delete", color = WHITE) }
+            },
+            dismissButton = {
+                TextButton({
+                    showDeleteConfirm = false
+                    ruleToDelete = null
+                }) { Text("Cancel", color = WHITE) }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    if (showAddDialog) {
+        var newDomain by remember { mutableStateOf("") }
+        var newSelector by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add Rule", color = WHITE, fontSize = 18.sp) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newDomain,
+                        onValueChange = { newDomain = it },
+                        singleLine = true,
+                        placeholder = { Text("Domain (e.g. example.com or *)", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newSelector,
+                        onValueChange = { newSelector = it },
+                        singleLine = true,
+                        placeholder = { Text("CSS Selector", color = WHITE.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = WHITE, fontSize = 14.sp),
+                        shape = RectangleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = FIELD_BG,
+                            unfocusedContainerColor = FIELD_BG,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = WHITE
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newDomain.isNotBlank() && newSelector.isNotBlank()) {
+                            onAddRule(newDomain.trim(), newSelector.trim())
+                            showAddDialog = false
+                        }
+                    },
+                    enabled = newDomain.isNotBlank() && newSelector.isNotBlank()
+                ) {
+                    Text("Add", color = if (newDomain.isNotBlank() && newSelector.isNotBlank()) WHITE else WHITE.copy(alpha = 0.3f))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Cancel", color = WHITE)
+                }
+            },
+            containerColor = SURFACE,
+            titleContentColor = WHITE,
+            textContentColor = WHITE,
+            shape = RectangleShape,
+            tonalElevation = 0.dp
+        )
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().statusBarsPadding().background(SURFACE),
+            color = SURFACE
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ onDismiss() }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = WHITE)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Element Rules", color = WHITE, fontSize = 18.sp)
+                    if (rules.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("(${rules.size})", color = MUTED, fontSize = 14.sp)
+                    }
+                }
+
+                if (rules.isEmpty()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No rules", color = MUTED, fontSize = 16.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Use Hide Element or Add Rule", color = MUTED.copy(alpha = 0.7f), fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    val groupedRules = rules.groupBy { it.domain }
+                    val sortedDomains = groupedRules.keys.sortedByDescending { d ->
+                        groupedRules[d]?.maxOfOrNull { it.timestamp } ?: 0L
+                    }
+
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        for (domain in sortedDomains) {
+                            val domainRules = groupedRules[domain]?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                            item(key = domain) {
+                                Text(
+                                    domain,
+                                    color = MUTED,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            items(domainRules, key = { it.id }) { rule ->
+                                Surface(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    color = ITEM_BG
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Switch(
+                                            checked = rule.enabled,
+                                            onCheckedChange = { onToggleRule(rule.id) },
+                                            modifier = Modifier.padding(end = 4.dp),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = WHITE,
+                                                checkedTrackColor = WHITE.copy(alpha = 0.3f),
+                                                uncheckedThumbColor = WHITE.copy(alpha = 0.5f),
+                                                uncheckedTrackColor = Color(0xFF444444)
+                                            )
+                                        )
+                                        Text(
+                                            rule.selector,
+                                            color = if (rule.enabled) WHITE else MUTED,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton({
+                                            ruleToDelete = rule.id
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Delete",
+                                                tint = WHITE.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    Modifier.fillMaxWidth().navigationBarsPadding(),
+                    color = SURFACE
+                ) {
+                    Button(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = ELEVATED_BG, contentColor = WHITE)
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = WHITE)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Rule", color = WHITE)
+                    }
+                }
+            }
+        }
+    }
+}
+//PART 14 END
