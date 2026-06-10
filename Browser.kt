@@ -2349,7 +2349,7 @@ fun ContentLayer() {
                                                 if (firstTabIdx >= 0) {
                                                     coroutineScope.launch {
                                                         isChipScrolling = true
-                                                        tabListState.animateScrollToItem(firstTabIdx, scrollOffset = 0)
+                                                        tabListState.scrollToItem(firstTabIdx, scrollOffset = 0)
                                                         isChipScrolling = false
                                                     }
                                                 }
