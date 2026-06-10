@@ -2101,7 +2101,7 @@ fun ContentLayer() {
             LaunchedEffect(showTabManager) {
                 realTabs.forEachIndexed { index, tab ->
                     tab.thumbnailBytes?.let { bytes ->
-                        delay(5)
+                        delay(10)
                         withContext(Dispatchers.IO) {
                             try {
                                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
@@ -2170,6 +2170,15 @@ fun ContentLayer() {
                             }
                         }
 
+                        // Sync chip scroll to selected chip
+                        LaunchedEffect(selectedChipDomain) {
+                            val domainIdx = displayOrder.indexOf(selectedChipDomain)
+                            if (domainIdx >= 0 && domainCount > 1) {
+                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
+                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
+                            }
+                        }
+
                         if (realTabs.isEmpty()) {
                             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 Text("No open tabs", color = MUTED, fontSize = 16.sp)
@@ -2215,7 +2224,10 @@ fun ContentLayer() {
                                                 val isHighlighted = tabIndex == currentTabIndex
                                                 val isPending     = pendingDeletions.containsKey(tabIndex)
                                                 val tabDomain     = getDomainName(tab.url)
-                                                LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
+                                                LaunchedEffect(tab.url) { 
+                                                    delay(10)
+                                                    loadTabFavicon(tabDomain) 
+                                                }
                                                 val tabFav = tabFavicons[tabDomain]
                                                 val thumbBmp = thumbnailBitmapCache[tabIndex]
 
