@@ -2090,7 +2090,6 @@ fun ContentLayer() {
                 getDomainName(tabs[currentTabIndex].url)
             } else ""
 
-            // Build flat list of all tabs in display order
             val flatTabs = buildList {
                 for (domain in sortedDomains) {
                     addAll(domainGroups[domain] ?: emptyList())
@@ -2147,7 +2146,6 @@ fun ContentLayer() {
                         }
 
                         val tabListState = rememberLazyListState()
-                        val density = LocalDensity.current
                         val domainCount = sortedDomains.size
 
                         val chipScrollState = rememberScrollState()
@@ -2156,50 +2154,25 @@ fun ContentLayer() {
 
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
-                        // Auto-sync chip to visible domain (lightweight, no touch interception)
-                        LaunchedEffect(tabListState.firstVisibleItemIndex) {
-                            val visibleTab = flatTabs.getOrNull(tabListState.firstVisibleItemIndex) ?: return@LaunchedEffect
-                            val domain = getDomainName(visibleTab.url)
-                            if (domain.isNotBlank()) {
-                                selectedChipDomain = domain
-                            }
-                        }
-
-                        // Scroll current tab to top when opening
+                        // Scroll current tab to top instantly when opening
                         LaunchedEffect(showTabManager) {
                             if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                                 val flatIdx = flatTabs.indexOfFirst { tabs.indexOf(it) == currentTabIndex }
                                 if (flatIdx >= 0) {
-                                    val tabHeightPx = with(density) { 92.dp.toPx() }
-                                    val groupGapPx = with(density) { 48.dp.toPx() }
-                                    
-                                    // Calculate offset accounting for group gaps
-                                    var offsetPx = 0f
-                                    var lastDomain = ""
-                                    for (i in 0 until flatIdx) {
-                                        val tabDomain = getDomainName(flatTabs[i].url)
-                                        if (tabDomain != lastDomain && lastDomain.isNotEmpty()) {
-                                            offsetPx += groupGapPx
-                                        }
-                                        offsetPx += tabHeightPx
-                                        lastDomain = tabDomain
-                                    }
-                                    // Add group gap for first item of a new domain
-                                    val currentDomain = getDomainName(flatTabs[flatIdx].url)
-                                    if (flatIdx > 0) {
-                                        val prevDomain = getDomainName(flatTabs[flatIdx - 1].url)
-                                        if (currentDomain != prevDomain) {
-                                            offsetPx += groupGapPx
-                                        }
-                                    }
-                                    
-                                    tabListState.scrollToItem(0, offsetPx.toInt())
-                                    selectedChipDomain = currentDomain
+                                    tabListState.scrollToItem(flatIdx, 0)
+                                    selectedChipDomain = getDomainName(flatTabs[flatIdx].url)
                                 }
                             }
                         }
 
-                        // Sync chip scroll to selected chip
+                        // Auto-sync chip to visible domain while scrolling
+                        LaunchedEffect(tabListState.firstVisibleItemIndex) {
+                            val visibleTab = flatTabs.getOrNull(tabListState.firstVisibleItemIndex) ?: return@LaunchedEffect
+                            val domain = getDomainName(visibleTab.url)
+                            if (domain.isNotBlank()) selectedChipDomain = domain
+                        }
+
+                        // Sync chip row scroll to selected chip
                         LaunchedEffect(selectedChipDomain) {
                             val domainIdx = sortedDomains.indexOf(selectedChipDomain)
                             if (domainIdx >= 0 && domainCount > 1) {
@@ -2223,17 +2196,14 @@ fun ContentLayer() {
                                 items(flatTabs, key = { tabs.indexOf(it) }) { tab ->
                                     val tabIndex = tabs.indexOf(tab)
                                     val tabDomain = getDomainName(tab.url)
-                                    
-                                    // Check if this is the first tab of a new domain
                                     val flatIdx = flatTabs.indexOf(tab)
                                     val isFirstInGroup = flatIdx == 0 || getDomainName(flatTabs[flatIdx - 1].url) != tabDomain
-                                    
+
                                     Column {
-                                        // Group gap between domains
                                         if (isFirstInGroup) {
                                             Spacer(Modifier.height(48.dp))
                                         }
-                                        
+
                                         val isHighlighted = tabIndex == currentTabIndex
                                         val isPending = pendingDeletions.containsKey(tabIndex)
                                         LaunchedEffect(tab.url) {
@@ -2373,7 +2343,6 @@ fun ContentLayer() {
                                             }
                                             .clickable {
                                                 selectedChipDomain = domain
-                                                // Find the first tab of this domain in flatTabs
                                                 val firstTabIdx = flatTabs.indexOfFirst { getDomainName(it.url) == domain }
                                                 if (firstTabIdx >= 0) {
                                                     coroutineScope.launch {
