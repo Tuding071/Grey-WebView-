@@ -2090,8 +2090,11 @@ fun ContentLayer() {
                 getDomainName(tabs[currentTabIndex].url)
             } else ""
 
-            val groupedTabs = buildList {
-                for (domain in sortedDomains) { addAll(domainGroups[domain] ?: emptyList()) }
+            // Build flat list of all tabs in display order
+            val flatTabs = buildList {
+                for (domain in sortedDomains) {
+                    addAll(domainGroups[domain] ?: emptyList())
+                }
             }
 
             LaunchedEffect(Unit) {
@@ -2099,17 +2102,19 @@ fun ContentLayer() {
             }
 
             LaunchedEffect(showTabManager) {
-                realTabs.forEachIndexed { index, tab ->
+                flatTabs.forEachIndexed { index, tab ->
                     tab.thumbnailBytes?.let { bytes ->
                         delay(10)
                         withContext(Dispatchers.IO) {
                             try {
                                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                                 withContext(Dispatchers.Main) {
-                                    thumbnailBitmapCache[index] = bmp
+                                    val tabIndex = tabs.indexOf(tab)
+                                    if (tabIndex >= 0) thumbnailBitmapCache[tabIndex] = bmp
                                 }
                             } catch (e: Exception) {
-                                thumbnailBitmapCache[index] = null
+                                val tabIndex = tabs.indexOf(tab)
+                                if (tabIndex >= 0) thumbnailBitmapCache[tabIndex] = null
                             }
                         }
                     }
@@ -2142,10 +2147,8 @@ fun ContentLayer() {
                         }
 
                         val tabListState = rememberLazyListState()
-                        val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
-                        val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
-                        val domainCount = displayOrder.size
                         val density = LocalDensity.current
+                        val domainCount = sortedDomains.size
 
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
@@ -2156,23 +2159,40 @@ fun ContentLayer() {
                         // Scroll current tab to top when opening
                         LaunchedEffect(showTabManager) {
                             if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                                val currentDomain = getDomainName(tabs[currentTabIndex].url)
-                                val domainIdx = displayOrder.indexOf(currentDomain)
-                                if (domainIdx >= 0) {
-                                    val groupTabs = groupedForDisplay[currentDomain] ?: emptyList()
-                                    val tabIdxInGroup = groupTabs.indexOfFirst { it.url == tabs[currentTabIndex].url }
-                                    if (tabIdxInGroup >= 0) {
-                                        val scrollOffset = with(density) { (tabIdxInGroup * 96.dp.toPx()).toInt() }
-                                        tabListState.scrollToItem(domainIdx, scrollOffset)
-                                        selectedChipDomain = currentDomain
+                                val flatIdx = flatTabs.indexOfFirst { tabs.indexOf(it) == currentTabIndex }
+                                if (flatIdx >= 0) {
+                                    val tabHeightPx = with(density) { 92.dp.toPx() }
+                                    val groupGapPx = with(density) { 48.dp.toPx() }
+                                    
+                                    // Calculate offset accounting for group gaps
+                                    var offsetPx = 0f
+                                    var lastDomain = ""
+                                    for (i in 0 until flatIdx) {
+                                        val tabDomain = getDomainName(flatTabs[i].url)
+                                        if (tabDomain != lastDomain && lastDomain.isNotEmpty()) {
+                                            offsetPx += groupGapPx
+                                        }
+                                        offsetPx += tabHeightPx
+                                        lastDomain = tabDomain
                                     }
+                                    // Add group gap for first item of a new domain
+                                    val currentDomain = getDomainName(flatTabs[flatIdx].url)
+                                    if (flatIdx > 0) {
+                                        val prevDomain = getDomainName(flatTabs[flatIdx - 1].url)
+                                        if (currentDomain != prevDomain) {
+                                            offsetPx += groupGapPx
+                                        }
+                                    }
+                                    
+                                    tabListState.scrollToItem(0, offsetPx.toInt())
+                                    selectedChipDomain = currentDomain
                                 }
                             }
                         }
 
                         // Sync chip scroll to selected chip
                         LaunchedEffect(selectedChipDomain) {
-                            val domainIdx = displayOrder.indexOf(selectedChipDomain)
+                            val domainIdx = sortedDomains.indexOf(selectedChipDomain)
                             if (domainIdx >= 0 && domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
                                 chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
@@ -2188,145 +2208,126 @@ fun ContentLayer() {
                                 state = tabListState,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .fillMaxWidth()
-                                    .pointerInput(displayOrder.toList()) {
-                                        fun domainAtY(y: Float): String {
-                                            val item = tabListState.layoutInfo.visibleItemsInfo
-                                                .lastOrNull { it.offset <= y.toInt() } ?: return ""
-                                            val idx = item.index
-                                                .coerceIn(0, (domainCount - 1).coerceAtLeast(0))
-                                            return displayOrder.getOrElse(idx) { "" }
-                                        }
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            domainAtY(down.position.y)
-                                                .takeIf { it.isNotBlank() }
-                                                ?.let { selectedChipDomain = it }
-                                            do {
-                                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                if (!change.pressed) break
-                                                domainAtY(change.position.y)
-                                                    .takeIf { it.isNotBlank() }
-                                                    ?.let { selectedChipDomain = it }
-                                            } while (true)
-                                        }
-                                    },
+                                    .fillMaxWidth(),
                                 contentPadding = PaddingValues(bottom = screenHeightDp)
                             ) {
-                                for (domain in displayOrder) {
-                                    val groupTabs = groupedForDisplay[domain] ?: continue
+                                items(flatTabs, key = { tabs.indexOf(it) }) { tab ->
+                                    val tabIndex = tabs.indexOf(tab)
+                                    val tabDomain = getDomainName(tab.url)
+                                    
+                                    // Check if this is the first tab of a new domain
+                                    val flatIdx = flatTabs.indexOf(tab)
+                                    val isFirstInGroup = flatIdx == 0 || getDomainName(flatTabs[flatIdx - 1].url) != tabDomain
+                                    
+                                    Column {
+                                        // Group gap between domains
+                                        if (isFirstInGroup) {
+                                            Spacer(Modifier.height(48.dp))
+                                        }
+                                        
+                                        val isHighlighted = tabIndex == currentTabIndex
+                                        val isPending = pendingDeletions.containsKey(tabIndex)
+                                        LaunchedEffect(tab.url) {
+                                            delay(10)
+                                            loadTabFavicon(tabDomain)
+                                        }
+                                        val tabFav = tabFavicons[tabDomain]
+                                        val thumbBmp = thumbnailBitmapCache[tabIndex]
 
-                                    item(key = domain) {
-                                        Column(Modifier.padding(bottom = 48.dp)) {
-                                            groupTabs.forEach { tab ->
-                                                val tabIndex      = tabs.indexOf(tab)
-                                                val isHighlighted = tabIndex == currentTabIndex
-                                                val isPending     = pendingDeletions.containsKey(tabIndex)
-                                                val tabDomain     = getDomainName(tab.url)
-                                                LaunchedEffect(tab.url) { 
-                                                    delay(5)
-                                                    loadTabFavicon(tabDomain) 
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 2.dp)
+                                                .padding(horizontal = 8.dp)
+                                                .drawWithContent {
+                                                    drawRect(if (isPending) DELETE_BG else ITEM_BG)
+                                                    if (isHighlighted) {
+                                                        drawRect(
+                                                            color = Color.White,
+                                                            size = Size(4.dp.toPx(), size.height)
+                                                        )
+                                                    }
+                                                    drawContent()
                                                 }
-                                                val tabFav = tabFavicons[tabDomain]
-                                                val thumbBmp = thumbnailBitmapCache[tabIndex]
-
-                                                Box(
-                                                    Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 2.dp)
-                                                        .padding(horizontal = 8.dp)
-                                                        .drawWithContent {
-                                                            drawRect(if (isPending) DELETE_BG else ITEM_BG)
-                                                            if (isHighlighted) {
-                                                                drawRect(
-                                                                    color = Color.White,
-                                                                    size = Size(4.dp.toPx(), size.height)
-                                                                )
-                                                            }
-                                                            drawContent()
-                                                        }
-                                                ) {
-                                                    Row(
+                                        ) {
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(10.dp)
+                                                    .clickable(enabled = !isPending) {
+                                                        currentTabIndex = tabIndex
+                                                        showTabManager = false
+                                                    },
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (thumbBmp != null) {
+                                                    Image(
+                                                        thumbBmp.asImageBitmap(),
+                                                        "Thumbnail",
                                                         Modifier
-                                                            .fillMaxWidth()
-                                                            .padding(10.dp)
-                                                            .clickable(enabled = !isPending) {
-                                                                currentTabIndex = tabIndex
-                                                                showTabManager = false
-                                                            },
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                            .size(80.dp, 72.dp)
+                                                            .border(0.8.dp, Color.DarkGray, RectangleShape)
+                                                            .clip(RectangleShape),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        Modifier
+                                                            .size(80.dp, 72.dp)
+                                                            .background(Color(0xFF121212), RectangleShape)
+                                                    )
+                                                }
+
+                                                Spacer(Modifier.width(10.dp))
+
+                                                if (tabFav != null) {
+                                                    Image(
+                                                        tabFav.asImageBitmap(), tabDomain,
+                                                        Modifier.size(32.dp).clip(CircleShape),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        Modifier.size(32.dp).clip(CircleShape)
+                                                            .background(Color.DarkGray),
+                                                        contentAlignment = Alignment.Center
                                                     ) {
-                                                        if (thumbBmp != null) {
-                                                            Image(
-                                                                thumbBmp.asImageBitmap(),
-                                                                "Thumbnail",
-                                                                Modifier
-                                                                    .size(80.dp, 72.dp)
-                                                                    .border(0.8.dp, Color.DarkGray, RectangleShape)
-                                                                    .clip(RectangleShape),
-                                                                contentScale = ContentScale.Crop
-                                                            )
-                                                        } else {
-                                                            Box(
-                                                                Modifier
-                                                                    .size(80.dp, 72.dp)
-                                                                    .background(Color(0xFF121212), RectangleShape)
-                                                            )
-                                                        }
+                                                        Text(
+                                                            tabDomain.take(1).uppercase(),
+                                                            color = WHITE,
+                                                            fontSize = 14.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
 
-                                                        Spacer(Modifier.width(10.dp))
+                                                Spacer(Modifier.width(12.dp))
 
-                                                        if (tabFav != null) {
-                                                            Image(
-                                                                tabFav.asImageBitmap(), tabDomain,
-                                                                Modifier.size(32.dp).clip(CircleShape),
-                                                                contentScale = ContentScale.Fit
-                                                            )
-                                                        } else {
-                                                            Box(
-                                                                Modifier.size(32.dp).clip(CircleShape)
-                                                                    .background(Color.DarkGray),
-                                                                contentAlignment = Alignment.Center
-                                                            ) {
-                                                                Text(
-                                                                    tabDomain.take(1).uppercase(),
-                                                                    color = WHITE,
-                                                                    fontSize = 14.sp,
-                                                                    fontWeight = FontWeight.Bold
-                                                                )
-                                                            }
-                                                        }
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(
+                                                        if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
+                                                        color = WHITE,
+                                                        fontSize = 14.sp,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Spacer(Modifier.height(2.dp))
+                                                    Text(
+                                                        tabDomain,
+                                                        color = MUTED.copy(alpha = 0.7f),
+                                                        fontSize = 11.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
 
-                                                        Spacer(Modifier.width(12.dp))
-
-                                                        Column(Modifier.weight(1f)) {
-                                                            Text(
-                                                                if (tab.title == "New Tab" || tab.title.isBlank()) tab.url else tab.title,
-                                                                color = WHITE,
-                                                                fontSize = 14.sp,
-                                                                maxLines = 2,
-                                                                overflow = TextOverflow.Ellipsis
-                                                            )
-                                                            Spacer(Modifier.height(2.dp))
-                                                            Text(
-                                                                tabDomain,
-                                                                color = MUTED.copy(alpha = 0.7f),
-                                                                fontSize = 11.sp,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis
-                                                            )
-                                                        }
-
-                                                        if (isPending) {
-                                                            IconButton({ undoDeleteTab(tabIndex) }) {
-                                                                Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
-                                                            }
-                                                        } else {
-                                                            IconButton({ requestDeleteTab(tabIndex) }) {
-                                                                Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
-                                                            }
-                                                        }
+                                                if (isPending) {
+                                                    IconButton({ undoDeleteTab(tabIndex) }) {
+                                                        Icon(Icons.Default.Undo, "Undo", tint = WHITE, modifier = Modifier.size(18.dp))
+                                                    }
+                                                } else {
+                                                    IconButton({ requestDeleteTab(tabIndex) }) {
+                                                        Icon(Icons.Default.Close, "Close", tint = WHITE.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
                                                     }
                                                 }
                                             }
@@ -2363,10 +2364,11 @@ fun ContentLayer() {
                                             }
                                             .clickable {
                                                 selectedChipDomain = domain
-                                                val domainIdx = displayOrder.indexOf(domain)
-                                                if (domainIdx >= 0) {
+                                                // Find the first tab of this domain in flatTabs
+                                                val firstTabIdx = flatTabs.indexOfFirst { getDomainName(it.url) == domain }
+                                                if (firstTabIdx >= 0) {
                                                     coroutineScope.launch {
-                                                        tabListState.animateScrollToItem(domainIdx, scrollOffset = 0)
+                                                        tabListState.animateScrollToItem(firstTabIdx, scrollOffset = 0)
                                                     }
                                                 }
                                             }
