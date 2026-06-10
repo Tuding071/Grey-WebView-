@@ -2143,18 +2143,24 @@ fun ContentLayer() {
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
+                        val density = LocalDensity.current
 
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        // Instantly scroll to current tab's group at top when tab manager opens
+                        // Scroll current tab to top when opening
                         LaunchedEffect(showTabManager) {
                             if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                                 val currentDomain = getDomainName(tabs[currentTabIndex].url)
                                 val domainIdx = displayOrder.indexOf(currentDomain)
                                 if (domainIdx >= 0) {
-                                    tabListState.scrollToItem(domainIdx, scrollOffset = 0)
+                                    val groupTabs = groupedForDisplay[currentDomain] ?: emptyList()
+                                    val tabIdxInGroup = groupTabs.indexOfFirst { it.url == tabs[currentTabIndex].url }
+                                    if (tabIdxInGroup >= 0) {
+                                        val scrollOffset = with(density) { (tabIdxInGroup * 96.dp.toPx()).toInt() }
+                                        tabListState.scrollToItem(domainIdx, scrollOffset)
+                                    }
                                 }
                             }
                         }
