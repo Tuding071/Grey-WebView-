@@ -2101,6 +2101,7 @@ fun ContentLayer() {
             LaunchedEffect(showTabManager) {
                 realTabs.forEachIndexed { index, tab ->
                     tab.thumbnailBytes?.let { bytes ->
+                        delay(5)
                         withContext(Dispatchers.IO) {
                             try {
                                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
@@ -2143,11 +2144,14 @@ fun ContentLayer() {
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
+                        val domainCount = displayOrder.size
                         val density = LocalDensity.current
 
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+
+                        var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
                         // Scroll current tab to top when opening
                         LaunchedEffect(showTabManager) {
@@ -2160,6 +2164,7 @@ fun ContentLayer() {
                                     if (tabIdxInGroup >= 0) {
                                         val scrollOffset = with(density) { (tabIdxInGroup * 96.dp.toPx()).toInt() }
                                         tabListState.scrollToItem(domainIdx, scrollOffset)
+                                        selectedChipDomain = currentDomain
                                     }
                                 }
                             }
@@ -2174,7 +2179,30 @@ fun ContentLayer() {
                                 state = tabListState,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .fillMaxWidth(),
+                                    .fillMaxWidth()
+                                    .pointerInput(displayOrder.toList()) {
+                                        fun domainAtY(y: Float): String {
+                                            val item = tabListState.layoutInfo.visibleItemsInfo
+                                                .lastOrNull { it.offset <= y.toInt() } ?: return ""
+                                            val idx = item.index
+                                                .coerceIn(0, (domainCount - 1).coerceAtLeast(0))
+                                            return displayOrder.getOrElse(idx) { "" }
+                                        }
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            domainAtY(down.position.y)
+                                                .takeIf { it.isNotBlank() }
+                                                ?.let { selectedChipDomain = it }
+                                            do {
+                                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                if (!change.pressed) break
+                                                domainAtY(change.position.y)
+                                                    .takeIf { it.isNotBlank() }
+                                                    ?.let { selectedChipDomain = it }
+                                            } while (true)
+                                        }
+                                    },
                                 contentPadding = PaddingValues(bottom = screenHeightDp)
                             ) {
                                 for (domain in displayOrder) {
@@ -2303,6 +2331,7 @@ fun ContentLayer() {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isActiveTabDomain = domain == highlightDomain
+                                    val isSelectedDomain  = domain == selectedChipDomain
                                     val tabCount  = domainGroups[domain]?.size ?: 0
                                     val fav       = faviconBitmaps[domain]
 
@@ -2310,7 +2339,7 @@ fun ContentLayer() {
                                         Modifier
                                             .padding(horizontal = 4.dp)
                                             .drawWithContent {
-                                                drawRect(ITEM_BG)
+                                                drawRect(if (isSelectedDomain) Color.DarkGray else ITEM_BG)
                                                 if (isActiveTabDomain) {
                                                     drawRect(
                                                         color = Color.White,
@@ -2321,6 +2350,7 @@ fun ContentLayer() {
                                                 drawContent()
                                             }
                                             .clickable {
+                                                selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
                                                 if (domainIdx >= 0) {
                                                     coroutineScope.launch {
