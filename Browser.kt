@@ -2167,13 +2167,7 @@ fun ContentLayer() {
                             val domainIdx    = displayOrder.indexOf(targetDomain)
                             if (domainIdx < 0) return@LaunchedEffect
 
-                            val tabsInGroup   = groupedForDisplay[targetDomain] ?: emptyList()
-                            val tabIdxInGroup = tabsInGroup.indexOfFirst { it.url == targetUrl }.coerceAtLeast(0)
-
-                            val viewportPx  = tabListState.layoutInfo.viewportSize.height.toFloat()
-                            val tabHeightPx = with(density) { 92.dp.toPx() }
-                            val offset = (tabIdxInGroup * tabHeightPx - viewportPx / 2f + tabHeightPx / 2f).toInt().coerceAtLeast(0)
-                            tabListState.scrollToItem(domainIdx, offset)
+                            tabListState.scrollToItem(domainIdx, 0)
 
                             if (domainCount > 1) {
                                 val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
