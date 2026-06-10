@@ -2225,7 +2225,7 @@ fun ContentLayer() {
                                                 val isPending     = pendingDeletions.containsKey(tabIndex)
                                                 val tabDomain     = getDomainName(tab.url)
                                                 LaunchedEffect(tab.url) { 
-                                                    delay(100)
+                                                    delay(500)
                                                     loadTabFavicon(tabDomain) 
                                                 }
                                                 val tabFav = tabFavicons[tabDomain]
