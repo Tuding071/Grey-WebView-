@@ -2156,6 +2156,15 @@ fun ContentLayer() {
 
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
+                        // Auto-sync chip to visible domain (lightweight, no touch interception)
+                        LaunchedEffect(tabListState.firstVisibleItemIndex) {
+                            val visibleTab = flatTabs.getOrNull(tabListState.firstVisibleItemIndex) ?: return@LaunchedEffect
+                            val domain = getDomainName(visibleTab.url)
+                            if (domain.isNotBlank()) {
+                                selectedChipDomain = domain
+                            }
+                        }
+
                         // Scroll current tab to top when opening
                         LaunchedEffect(showTabManager) {
                             if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
