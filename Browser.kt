@@ -2152,25 +2152,41 @@ fun ContentLayer() {
 
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
-                        LaunchedEffect(selectedChipDomain) {
-                            val domainIdx = displayOrder.indexOf(selectedChipDomain)
-                            if (domainIdx >= 0 && domainCount > 1) {
-                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
-                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
-                            }
-                        }
+                        // Pre-calculate target scroll position before render
+                        val targetDomainIdx = displayOrder.indexOfFirst { it == highlightDomain }
+                        val targetTabIdxInGroup = if (targetDomainIdx >= 0) {
+                            val groupTabs = groupedForDisplay[highlightDomain] ?: emptyList()
+                            groupTabs.indexOfFirst { tabs.indexOf(it) == highlightedTabIndex }.coerceAtLeast(0)
+                        } else -1
 
+                        // Calculate how many items above the target domain (each domain = 1 item)
+                        val itemsAbove = targetDomainIdx.coerceAtLeast(0)
+                        // Each tab row: 2dp vertical padding × 2 + 10dp row padding × 2 + ~14sp title + ~11sp subtitle + 32dp favicon area ≈ 92dp
+                        val tabRowHeightDp = 92.dp
+                        // Domain group bottom padding = 48.dp
+                        val domainBottomPaddingDp = 48.dp
+                        // Offset within the domain group
+                        val offsetWithinDomain = if (targetTabIdxInGroup >= 0) {
+                            targetTabIdxInGroup * tabRowHeightDp
+                        } else 0.dp
+
+                        // Calculate total offset to center the target tab
                         LaunchedEffect(Unit) {
-                            if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
-                            val targetUrl    = tabs[highlightedTabIndex].url
-                            val targetDomain = getDomainName(targetUrl)
-                            val domainIdx    = displayOrder.indexOf(targetDomain)
-                            if (domainIdx < 0) return@LaunchedEffect
-
-                            tabListState.scrollToItem(domainIdx, 0)
+                            if (targetDomainIdx < 0) return@LaunchedEffect
+                            // Total offset in px: sum of all items above + offset within domain - half viewport to center
+                            val headerHeightDp = 60.dp // approximate header + status bar
+                            val chipRowHeightDp = 52.dp // chips row
+                            val bottomBarDp = 56.dp // bottom bar with button
+                            val viewportHeightDp = screenHeightDp - headerHeightDp - chipRowHeightDp - bottomBarDp
+                            
+                            val targetCenterDp = (itemsAbove * (tabRowHeightDp * 6 + domainBottomPaddingDp)) / 6 + offsetWithinDomain + tabRowHeightDp / 2
+                            val scrollOffsetDp = targetCenterDp - viewportHeightDp / 2
+                            
+                            val offsetPx = with(density) { scrollOffsetDp.toPx().toInt().coerceAtLeast(0) }
+                            tabListState.scrollToItem(0, offsetPx)
 
                             if (domainCount > 1) {
-                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
+                                val progress = targetDomainIdx.toFloat() / (domainCount - 1).toFloat()
                                 chipScrollState.scrollTo((progress * chipScrollState.maxValue).toInt())
                             }
                         }
@@ -2184,30 +2200,7 @@ fun ContentLayer() {
                                 state = tabListState,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .fillMaxWidth()
-                                    .pointerInput(displayOrder.toList()) {
-                                        fun domainAtY(y: Float): String {
-                                            val item = tabListState.layoutInfo.visibleItemsInfo
-                                                .lastOrNull { it.offset <= y.toInt() } ?: return ""
-                                            val idx = item.index
-                                                .coerceIn(0, (domainCount - 1).coerceAtLeast(0))
-                                            return displayOrder.getOrElse(idx) { "" }
-                                        }
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            domainAtY(down.position.y)
-                                                .takeIf { it.isNotBlank() }
-                                                ?.let { selectedChipDomain = it }
-                                            do {
-                                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                if (!change.pressed) break
-                                                domainAtY(change.position.y)
-                                                    .takeIf { it.isNotBlank() }
-                                                    ?.let { selectedChipDomain = it }
-                                            } while (true)
-                                        }
-                                    },
+                                    .fillMaxWidth(),
                                 contentPadding = PaddingValues(bottom = screenHeightDp)
                             ) {
                                 for (domain in displayOrder) {
