@@ -2152,41 +2152,51 @@ fun ContentLayer() {
 
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
 
-                        // Pre-calculate target scroll position before render
-                        val targetDomainIdx = displayOrder.indexOfFirst { it == highlightDomain }
-                        val targetTabIdxInGroup = if (targetDomainIdx >= 0) {
-                            val groupTabs = groupedForDisplay[highlightDomain] ?: emptyList()
-                            groupTabs.indexOfFirst { tabs.indexOf(it) == highlightedTabIndex }.coerceAtLeast(0)
-                        } else -1
+                        LaunchedEffect(selectedChipDomain) {
+                            val domainIdx = displayOrder.indexOf(selectedChipDomain)
+                            if (domainIdx >= 0 && domainCount > 1) {
+                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
+                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
+                            }
+                        }
 
-                        // Calculate how many items above the target domain (each domain = 1 item)
-                        val itemsAbove = targetDomainIdx.coerceAtLeast(0)
-                        // Each tab row: 2dp vertical padding × 2 + 10dp row padding × 2 + ~14sp title + ~11sp subtitle + 32dp favicon area ≈ 92dp
-                        val tabRowHeightDp = 92.dp
-                        // Domain group bottom padding = 48.dp
-                        val domainBottomPaddingDp = 48.dp
-                        // Offset within the domain group
-                        val offsetWithinDomain = if (targetTabIdxInGroup >= 0) {
-                            targetTabIdxInGroup * tabRowHeightDp
-                        } else 0.dp
-
-                        // Calculate total offset to center the target tab
                         LaunchedEffect(Unit) {
-                            if (targetDomainIdx < 0) return@LaunchedEffect
-                            // Total offset in px: sum of all items above + offset within domain - half viewport to center
-                            val headerHeightDp = 60.dp // approximate header + status bar
-                            val chipRowHeightDp = 52.dp // chips row
-                            val bottomBarDp = 56.dp // bottom bar with button
-                            val viewportHeightDp = screenHeightDp - headerHeightDp - chipRowHeightDp - bottomBarDp
-                            
-                            val targetCenterDp = (itemsAbove * (tabRowHeightDp * 6 + domainBottomPaddingDp)) / 6 + offsetWithinDomain + tabRowHeightDp / 2
-                            val scrollOffsetDp = targetCenterDp - viewportHeightDp / 2
-                            
-                            val offsetPx = with(density) { scrollOffsetDp.toPx().toInt().coerceAtLeast(0) }
-                            tabListState.scrollToItem(0, offsetPx)
+                            if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
+                            val targetDomain = getDomainName(tabs[highlightedTabIndex].url)
+                            val domainIdx = displayOrder.indexOf(targetDomain)
+                            if (domainIdx < 0) return@LaunchedEffect
+
+                            // Count total tabs above the target domain
+                            var tabsAbove = 0
+                            for (i in 0 until domainIdx) {
+                                val domain = displayOrder[i]
+                                tabsAbove += (groupedForDisplay[domain]?.size ?: 0)
+                            }
+                            val groupTabs = groupedForDisplay[targetDomain] ?: emptyList()
+                            val tabIdxInGroup = groupTabs.indexOfFirst { tabs.indexOf(it) == highlightedTabIndex }.coerceAtLeast(0)
+                            tabsAbove += tabIdxInGroup
+
+                            // Each tab item is ~92dp (4dp vertical padding + 10dp row padding × 2 + content)
+                            // Each domain group has 48dp bottom padding
+                            val tabHeightPx = with(density) { 92.dp.toPx() }
+                            val domainPadPx = with(density) { 48.dp.toPx() }
+                            val viewportHeightPx = tabListState.layoutInfo.viewportSize.height.toFloat()
+
+                            // Calculate offset: all tabs above + domain paddings - half viewport for centering
+                            var offsetPx = 0f
+                            var domainIdx2 = 0
+                            for (domain in displayOrder) {
+                                if (domainIdx2 >= domainIdx) break
+                                val tabsInDomain = groupedForDisplay[domain]?.size ?: 0
+                                offsetPx += tabsInDomain * tabHeightPx + domainPadPx
+                                domainIdx2++
+                            }
+                            offsetPx += tabIdxInGroup * tabHeightPx - viewportHeightPx / 2f + tabHeightPx / 2f
+
+                            tabListState.scrollToItem(0, offsetPx.toInt().coerceAtLeast(0))
 
                             if (domainCount > 1) {
-                                val progress = targetDomainIdx.toFloat() / (domainCount - 1).toFloat()
+                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
                                 chipScrollState.scrollTo((progress * chipScrollState.maxValue).toInt())
                             }
                         }
