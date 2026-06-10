@@ -2086,8 +2086,8 @@ fun ContentLayer() {
                     .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
             )
             val allSidebarItems = sortedDomains
-            val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
-                getDomainName(tabs[highlightedTabIndex].url)
+            val highlightDomain = if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                getDomainName(tabs[currentTabIndex].url)
             } else ""
 
             val groupedTabs = buildList {
@@ -2143,61 +2143,19 @@ fun ContentLayer() {
                         val tabListState = rememberLazyListState()
                         val groupedForDisplay = groupedTabs.groupBy { getDomainName(it.url) }
                         val displayOrder = sortedDomains.filter { it in groupedForDisplay.keys }
-                        val domainCount = displayOrder.size
 
                         val chipScrollState = rememberScrollState()
                         val coroutineScope = rememberCoroutineScope()
-                        val density = LocalDensity.current
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
-                        var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
-
-                        LaunchedEffect(selectedChipDomain) {
-                            val domainIdx = displayOrder.indexOf(selectedChipDomain)
-                            if (domainIdx >= 0 && domainCount > 1) {
-                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
-                                chipScrollState.animateScrollTo((progress * chipScrollState.maxValue).toInt())
-                            }
-                        }
-
-                        LaunchedEffect(Unit) {
-                            if (highlightedTabIndex < 0 || highlightedTabIndex >= tabs.size) return@LaunchedEffect
-                            val targetDomain = getDomainName(tabs[highlightedTabIndex].url)
-                            val domainIdx = displayOrder.indexOf(targetDomain)
-                            if (domainIdx < 0) return@LaunchedEffect
-
-                            // Count total tabs above the target domain
-                            var tabsAbove = 0
-                            for (i in 0 until domainIdx) {
-                                val domain = displayOrder[i]
-                                tabsAbove += (groupedForDisplay[domain]?.size ?: 0)
-                            }
-                            val groupTabs = groupedForDisplay[targetDomain] ?: emptyList()
-                            val tabIdxInGroup = groupTabs.indexOfFirst { tabs.indexOf(it) == highlightedTabIndex }.coerceAtLeast(0)
-                            tabsAbove += tabIdxInGroup
-
-                            // Each tab item is ~92dp (4dp vertical padding + 10dp row padding × 2 + content)
-                            // Each domain group has 48dp bottom padding
-                            val tabHeightPx = with(density) { 92.dp.toPx() }
-                            val domainPadPx = with(density) { 48.dp.toPx() }
-                            val viewportHeightPx = tabListState.layoutInfo.viewportSize.height.toFloat()
-
-                            // Calculate offset: all tabs above + domain paddings - half viewport for centering
-                            var offsetPx = 0f
-                            var domainIdx2 = 0
-                            for (domain in displayOrder) {
-                                if (domainIdx2 >= domainIdx) break
-                                val tabsInDomain = groupedForDisplay[domain]?.size ?: 0
-                                offsetPx += tabsInDomain * tabHeightPx + domainPadPx
-                                domainIdx2++
-                            }
-                            offsetPx += tabIdxInGroup * tabHeightPx - viewportHeightPx / 2f + tabHeightPx / 2f
-
-                            tabListState.scrollToItem(0, offsetPx.toInt().coerceAtLeast(0))
-
-                            if (domainCount > 1) {
-                                val progress = domainIdx.toFloat() / (domainCount - 1).toFloat()
-                                chipScrollState.scrollTo((progress * chipScrollState.maxValue).toInt())
+                        // Instantly scroll to current tab's group at top when tab manager opens
+                        LaunchedEffect(showTabManager) {
+                            if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
+                                val currentDomain = getDomainName(tabs[currentTabIndex].url)
+                                val domainIdx = displayOrder.indexOf(currentDomain)
+                                if (domainIdx >= 0) {
+                                    tabListState.scrollToItem(domainIdx, scrollOffset = 0)
+                                }
                             }
                         }
 
@@ -2220,7 +2178,7 @@ fun ContentLayer() {
                                         Column(Modifier.padding(bottom = 48.dp)) {
                                             groupTabs.forEach { tab ->
                                                 val tabIndex      = tabs.indexOf(tab)
-                                                val isHighlighted = tabIndex == highlightedTabIndex
+                                                val isHighlighted = tabIndex == currentTabIndex
                                                 val isPending     = pendingDeletions.containsKey(tabIndex)
                                                 val tabDomain     = getDomainName(tab.url)
                                                 LaunchedEffect(tab.url) { loadTabFavicon(tabDomain) }
@@ -2339,8 +2297,6 @@ fun ContentLayer() {
                             ) {
                                 allSidebarItems.forEach { domain ->
                                     val isActiveTabDomain = domain == highlightDomain
-                                    val isSelectedDomain  = domain == selectedChipDomain
-                                    val isPinned  = pinnedDomains.contains(domain)
                                     val tabCount  = domainGroups[domain]?.size ?: 0
                                     val fav       = faviconBitmaps[domain]
 
@@ -2348,7 +2304,7 @@ fun ContentLayer() {
                                         Modifier
                                             .padding(horizontal = 4.dp)
                                             .drawWithContent {
-                                                drawRect(if (isSelectedDomain) Color.DarkGray else ITEM_BG)
+                                                drawRect(ITEM_BG)
                                                 if (isActiveTabDomain) {
                                                     drawRect(
                                                         color = Color.White,
@@ -2359,17 +2315,16 @@ fun ContentLayer() {
                                                 drawContent()
                                             }
                                             .clickable {
-                                                selectedChipDomain = domain
                                                 val domainIdx = displayOrder.indexOf(domain)
                                                 if (domainIdx >= 0) {
                                                     coroutineScope.launch {
-                                                        tabListState.animateScrollToItem(domainIdx)
+                                                        tabListState.animateScrollToItem(domainIdx, scrollOffset = 0)
                                                     }
                                                 }
                                             }
                                     ) {
                                         Box(Modifier.padding(6.dp).width(52.dp), contentAlignment = Alignment.Center) {
-                                            if (isPinned) Icon(Icons.Default.PushPin, "Pinned", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
+                                            if (isActiveTabDomain) Icon(Icons.Default.PushPin, "Active", tint = WHITE, modifier = Modifier.size(10.dp).align(Alignment.TopStart))
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                 if (fav != null) Image(fav.asImageBitmap(), domain, Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Fit)
                                                 else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.DarkGray), contentAlignment = Alignment.Center) {
