@@ -2160,6 +2160,7 @@ fun ContentLayer() {
                             if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
                                 val flatIdx = flatTabs.indexOfFirst { tabs.indexOf(it) == currentTabIndex }
                                 if (flatIdx >= 0) {
+                                    delay(50)
                                     tabListState.scrollToItem(flatIdx, 0)
                                     selectedChipDomain = getDomainName(flatTabs[flatIdx].url)
                                 }
