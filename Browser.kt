@@ -2153,6 +2153,7 @@ fun ContentLayer() {
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
 
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
+                        var isChipScrolling by remember { mutableStateOf(false) }
 
                         // Scroll current tab to top instantly when opening
                         LaunchedEffect(showTabManager) {
@@ -2165,8 +2166,9 @@ fun ContentLayer() {
                             }
                         }
 
-                        // Auto-sync chip to visible domain while scrolling
+                        // Auto-sync chip to visible domain while scrolling (suppressed during chip tap)
                         LaunchedEffect(tabListState.firstVisibleItemIndex) {
+                            if (isChipScrolling) return@LaunchedEffect
                             val visibleTab = flatTabs.getOrNull(tabListState.firstVisibleItemIndex) ?: return@LaunchedEffect
                             val domain = getDomainName(visibleTab.url)
                             if (domain.isNotBlank()) selectedChipDomain = domain
@@ -2346,7 +2348,9 @@ fun ContentLayer() {
                                                 val firstTabIdx = flatTabs.indexOfFirst { getDomainName(it.url) == domain }
                                                 if (firstTabIdx >= 0) {
                                                     coroutineScope.launch {
+                                                        isChipScrolling = true
                                                         tabListState.animateScrollToItem(firstTabIdx, scrollOffset = 0)
+                                                        isChipScrolling = false
                                                     }
                                                 }
                                             }
