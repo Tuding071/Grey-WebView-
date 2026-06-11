@@ -2086,8 +2086,8 @@ fun ContentLayer() {
                     .thenBy { d: String -> domainGroups[d]?.firstOrNull()?.let { t -> tabs.indexOf(t) } ?: Int.MAX_VALUE }
             )
             val allSidebarItems = sortedDomains
-            val highlightDomain = if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                getDomainName(tabs[currentTabIndex].url)
+            val highlightDomain = if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                getDomainName(tabs[highlightedTabIndex].url)
             } else ""
 
             val flatTabs = buildList {
@@ -2155,12 +2155,11 @@ fun ContentLayer() {
                         var selectedChipDomain by remember { mutableStateOf(highlightDomain) }
                         var isChipScrolling by remember { mutableStateOf(false) }
 
-                        // Scroll current tab to top instantly when opening
+                        // Scroll highlighted tab to top instantly when opening
                         LaunchedEffect(showTabManager) {
-                            if (currentTabIndex >= 0 && currentTabIndex < tabs.size) {
-                                val flatIdx = flatTabs.indexOfFirst { tabs.indexOf(it) == currentTabIndex }
+                            if (highlightedTabIndex >= 0 && highlightedTabIndex < tabs.size) {
+                                val flatIdx = flatTabs.indexOfFirst { tabs.indexOf(it) == highlightedTabIndex }
                                 if (flatIdx >= 0) {
-                                    delay(50)
                                     tabListState.scrollToItem(flatIdx, 0)
                                     selectedChipDomain = getDomainName(flatTabs[flatIdx].url)
                                 }
@@ -2207,7 +2206,7 @@ fun ContentLayer() {
                                             Spacer(Modifier.height(48.dp))
                                         }
 
-                                        val isHighlighted = tabIndex == currentTabIndex
+                                        val isHighlighted = tabIndex == highlightedTabIndex
                                         val isPending = pendingDeletions.containsKey(tabIndex)
                                         LaunchedEffect(tab.url) {
                                             delay(10)
